@@ -13,10 +13,10 @@
 | Phase | 名称 | 状态 | 目标 |
 |-------|------|------|------|
 | P0 | 骨架搭建 | ✅ 已完成 | Monorepo、Schema、模板、前端壳 |
-| P1 | 核心引擎验证 | ✅ 已完成 | API 跑通 SERP → Brief → 初稿（后端） |
-| P2 | 自动化攻坚 | 🟡 进行中 | Semrush RPA + 内链 + 配图 M9 已接入；队列/browser 池待做 |
-| P3 | SaaS 化基座 | 🟡 进行中 | Auth JWT + 多租户 Guard + 项目 CRUD 已接入 |
-| P4 | 资产完善与变现 | 🔲 待开始 | 配图、计费、Prompt 版本库 |
+| P1 | 核心引擎验证 | ✅ 已完成 | SERP → Brief → 初稿（后端 + 入队） |
+| P2 | 自动化攻坚 | 🟡 进行中 | Semrush、内链、配图、QuillBot 已接入；队列/browser 池待做 |
+| P3 | SaaS 化基座 | 🟡 进行中 | Auth、多租户、项目 CRUD、工作台壳、站点/关键词/审核页已接入 |
+| P4 | 资产完善与变现 | 🟡 进行中 | 导出、计费、Prompt、组织配额已完成；S3/E2E/WordPress UI 待做 |
 
 ---
 
@@ -39,7 +39,7 @@
 | INF-002 | Docker PostgreSQL + Redis 本地环境 | [x] | P0 | — | `docker-compose.yml`、`docs/SETUP.md` |
 | INF-003 | 环境变量模板与校验 | [x] | P1 | — | `.env.example`、`apps/platform/api/.env` |
 | INF-004 | CI：lint + typecheck + test | [x] | P3 | CORE-008 | `.github/workflows/` 或等效 |
-| INF-005 | S3/对象存储接入配置 | [~] | P4 | — | 环境变量 + `core/storage/`（本地 fallback 已接，S3 SDK 待接） |
+| INF-005 | S3/对象存储接入配置 | [x] | P4 | — | `core/storage/s3-storage.service.ts`（`S3_BUCKET` 配置后启用，否则本地 fallback） |
 
 ### INF-003 验收
 - [x] `.env.example` 覆盖 DATABASE_URL、REDIS_URL、各 Provider API Key
@@ -84,7 +84,7 @@
 | CORE-007 | Redis 连接模块 | [x] | P1 | INF-002 | `core/redis/` |
 | CORE-008 | BullMQ 根模块与队列注册 | [x] | P1 | CORE-007 | `core/queue/` |
 | CORE-009 | 全局 ValidationPipe + 响应拦截器 | [x] | P1 | — | `main.ts`（ValidationPipe 已有） |
-| CORE-010 | 限流 Guard（按 orgId） | [ ] | P3 | CORE-005 | `core/guards/` |
+| CORE-010 | 限流 Guard（按 orgId） | [x] | P3 | CORE-005 | `core/guards/rate-limit.guard.ts` |
 
 ### CORE-005 验收
 - [ ] 每个受保护 API 可从 Guard 获取 `traceId`、`userId`、`organizationId`、`role`
@@ -105,9 +105,9 @@
 | ID | 任务 | 状态 | Phase | 依赖 | 落位 |
 |----|------|------|-------|------|------|
 | AUTH-001 | Auth 模块骨架（module/controller/service） | [x] | P3 | — | `modules/auth/` |
-| AUTH-002 | 对接 Logto 或 Supabase Auth | [~] | P3 | AUTH-001 | `modules/auth/`（当前为自建 JWT，Logto 待接） |
+| AUTH-002 | 对接 Logto 或 Supabase Auth | [x] | P3 | AUTH-001 | `modules/auth/logto/`（OIDC 回调 + 平台 JWT） |
 | AUTH-003 | JWT/Session 校验中间件 | [x] | P3 | AUTH-002 | `modules/auth/` |
-| AUTH-004 | 用户与 Organization 同步（首次登录建 org） | [~] | P3 | AUTH-002 | `modules/auth/`（ensureUserForEmail 骨架） |
+| AUTH-004 | 用户与 Organization 同步（首次登录建 org） | [x] | P3 | AUTH-002 | `modules/auth/`（syncUserFromLogto + ensureUserForEmail） |
 | AUTH-005 | RBAC：ADMIN / MEMBER 权限装饰器 | [x] | P3 | AUTH-003 | `core/decorators/` |
 | AUTH-006 | 前端登录对接真实 Auth（替换 Mock） | [x] | P3 | AUTH-002 | `web/src/views/login/`、`api/user.ts` |
 
@@ -151,7 +151,7 @@
 | BILL-002 | CreditUsage 写入 Service | [x] | P4 | BILL-001 | `modules/billing/` |
 | BILL-003 | 监听 `article.completed` 异步扣费 | [x] | P4 | BILL-002, WF-010 | `modules/billing/` |
 | BILL-004 | 用量查询 API（按 org / 项目 / 时间） | [x] | P4 | BILL-002 | `modules/billing/` |
-| BILL-005 | 配额检查（昂贵操作前） | [ ] | P4 | BILL-002 | `modules/billing/` |
+| BILL-005 | 配额检查（昂贵操作前） | [x] | P4 | BILL-002 | `modules/billing/`（`assertArticleQuota`，创建/批量任务） |
 | BILL-006 | 前端用量/账单页 | [x] | P4 | BILL-004 | `web/src/views/platform/` |
 
 ### BILL-003 验收
@@ -179,9 +179,10 @@
 
 | ID | 任务 | 状态 | Phase | 依赖 | 落位 |
 |----|------|------|-------|------|------|
-| SITE-001 | Site 模块（列表 API，供创建任务选站点） | [x] | P3 | CORE-005, PLUGIN-003 | `modules/site/` |
-| SITE-002 | Site DTO + Response 映射 | [~] | P3 | SITE-001 | `modules/site/dto/` |
-| SITE-003 | 前端站点管理页 | [ ] | P3 | SITE-001 | `web/src/views/projects/seo-factory/` |
+| SITE-001 | Site 模块（列表 + CRUD API） | [x] | P3 | CORE-005, PLUGIN-003 | `modules/site/` |
+| SITE-002 | Site DTO + Response 映射 | [x] | P3 | SITE-001 | `modules/site/dto/` |
+| SITE-003 | 前端站点管理页 | [x] | P3 | SITE-001 | `SiteManageView.vue` |
+| SITE-004 | WordPress CMS 配置（站点 REST 凭证） | [x] | P4 | SITE-001 | `site-cms.util.ts`（**后端**；前端 UI 见 CMS-002） |
 
 ### SITE-001 验收
 - [ ] 字段：domain、brandVoice、targetMarket
@@ -220,7 +221,7 @@
 | QUEUE-002 | Processor 调用 WorkflowService 编排 | [x] | P1 | QUEUE-001, WF-001 | `processors/` |
 | QUEUE-003 | 失败重试策略与 FAILED 状态回写 | [x] | P1 | QUEUE-002 | `processors/` |
 | QUEUE-004 | 并发控制与速率限制 | [ ] | P2 | QUEUE-002 | `core/queue/` |
-| QUEUE-005 | Playwright 专用队列（低频限速） | [ ] | P2 | SEO-001 | `processors/` |
+| QUEUE-005 | Playwright 专用队列（低频限速） | [x] | P2 | SEO-001 | `playwright-queue.module.ts`、`semrush-queue.service.ts` |
 
 ### QUEUE-003 验收
 - [ ] 外部 API 超时不崩溃主进程
@@ -238,6 +239,7 @@
 | WF-004 | M5：正文初稿生成 | [x] | P1 | WF-003, LLM-004 | `modules/workflow/` |
 | WF-005 | M6：Semrush 循环优化（≥9.0） | [x] | P2 | WF-004, SEO-003 | `modules/workflow/` |
 | WF-006 | M7：YMYL 敏感内容标记 requires_human_review | [x] | P2 | WF-004 | `modules/content-review/` |
+| WF-006b | QuillBot 润色（paraphrasing 步骤，M6 与 YMYL 之间） | [x] | P2 | WF-005 | `modules/paraphrase/` |
 | WF-007 | M8：内链植入 | [x] | P2 | WF-005 | `modules/workflow/` |
 | WF-008 | M9：配图生成 | [x] | P4 | WF-007, IMG-003 | `modules/workflow/` |
 | WF-009 | M10：HTML/JSON-LD 打包上传 S3 | [~] | P4 | WF-008, EXP-002 | `modules/workflow/`（本地存储已接，S3 待接） |
@@ -263,7 +265,7 @@
 | ID | 任务 | 状态 | Phase | 依赖 | 落位 |
 |----|------|------|-------|------|------|
 | SCRAPER-001 | Scraper 模块骨架 | [x] | P1 | — | `modules/scraper/` |
-| SCRAPER-002 | 竞品页面抓取（受控并发） | [ ] | P2 | SCRAPER-001 | `modules/scraper/` |
+| SCRAPER-002 | 竞品页面抓取（受控并发） | [x] | P2 | SCRAPER-001 | `competitor-page.scraper.ts` |
 | SERP-001 | Serper Provider 适配器（克隆 _template） | [x] | P1 | PKG-003 | `providers/serper/` |
 | SERP-002 | Serper Redis 24h 防御性缓存 | [x] | P1 | SERP-001, CORE-007 | `providers/serper/` |
 | SERP-003 | ScraperService 对接 ISerpProvider | [x] | P1 | SCRAPER-001, SERP-002 | `modules/scraper/` |
@@ -312,9 +314,9 @@
 | SEO-001 | seo-checker 模块骨架 | [x] | P2 | — | `modules/seo-checker/` |
 | SEO-002 | Playwright + stealth Semrush RPA 适配器 | [x] | P2 | PKG-003 | `providers/semrush/` |
 | SEO-003 | checkScore 实现与 Cookie 注入 | [x] | P2 | SEO-002 | `providers/semrush/` |
-| SEO-004 | 浏览器池管理与资源释放 | [ ] | P2 | SEO-002 | `providers/semrush/` |
+| SEO-004 | 浏览器池管理与资源释放 | [x] | P2 | SEO-002 | `semrush-browser-pool.ts` |
 | SEO-005 | 查分结果写入 ArticleJob.semrushScore | [x] | P2 | SEO-003, WF-005 | `modules/seo-checker/` |
-| SEO-006 | 低频限速与风控策略 | [ ] | P2 | QUEUE-005 | `providers/semrush/` |
+| SEO-006 | 低频限速与风控策略 | [x] | P2 | QUEUE-005 | `playwright-queue.config.ts`（concurrency=1 + limiter） |
 
 ### SEO-002 验收
 - [ ] 实现 `ISeoCheckerProvider.checkScore()`
@@ -345,7 +347,8 @@
 | EXP-001 | export 模块骨架 | [x] | P4 | — | `modules/export/` |
 | EXP-002 | HTML 语义化打包（无内联 CSS/JS） | [x] | P4 | EXP-001 | `modules/export/` |
 | EXP-003 | JSON-LD Schema 生成 | [x] | P4 | EXP-002 | `modules/export/` |
-| EXP-004 | 上传 S3，回写 ArticleJob.outputUrl | [~] | P4 | EXP-002, INF-005 | `modules/export/`（本地存储 + outputUrl 已接） |
+| EXP-004 | 上传 S3，回写 ArticleJob.outputUrl | [~] | P4 | EXP-002, INF-005 | `modules/export/`（导出走 StorageService，S3 已接；outputUrl 仍为 API 下载路径） |
+| EXP-005 | zip 资产包下载（HTML + images/ + meta.txt） | [x] | P4 | EXP-002 | `export-package.util.ts`、`GET .../export/package` |
 | IMG-001 | BFL 官方生图 Provider 适配器 | [x] | P4 | PKG-003 | `providers/bfl/` |
 | IMG-002 | 封面 + 插图生成与 Alt 标签 | [~] | P4 | IMG-001 | `modules/illustration/` |
 | IMG-003 | export 模块对接 IImageProvider | [ ] | P4 | IMG-002, WF-008 | `modules/export/` |
@@ -403,8 +406,12 @@
 | FE-S-004 | 任务创建页 | [x] | P3 | FE-S-003, SITE-001 | `JobCreateView.vue` |
 | FE-S-005 | 任务列表页（分页 + 状态标签） | [x] | P3 | FE-S-003 | `JobListView.vue` |
 | FE-S-006 | 任务详情页（轮询状态） | [x] | P3 | FE-S-003, JOB-004 | `JobDetailView.vue` |
-| FE-S-007 | 站点管理页 | [x] | P3 | SITE-003 | `views/projects/seo-factory/SiteManageView.vue` |
+| FE-S-007 | 站点管理页 | [x] | P3 | SITE-003 | `SiteManageView.vue` |
 | FE-S-008 | composable：useArticleJobPolling | [x] | P3 | FE-S-006 | `composables/seo-factory/` |
+| FE-S-009 | 工作台 Tab 壳（概览/任务/关键词/站点/审核） | [x] | P3 | FE-S-001 | `SeoFactoryWorkbenchShell.vue`、`remaining.ts` |
+| FE-S-010 | 关键词池页 | [x] | P3 | KW-001 | `KeywordPoolView.vue` |
+| FE-S-011 | YMYL 待审核队列页 | [x] | P3 | REV-001 | `ReviewQueueView.vue` |
+| FE-S-012 | 组织设置页（配额/成员） | [x] | P4 | ORG-001 | `OrganizationSettingsView.vue` |
 
 ### FE-S-004 验收
 - [ ] 提交后展示 jobId + QUEUED 状态
@@ -413,6 +420,57 @@
 ### FE-S-006 验收
 - [ ] 轮询间隔合理，onUnmounted 清理定时器
 - [ ] 状态用 dictLabel，禁止 template 三元硬编码
+
+---
+
+## 模块 21 — 平台层：组织 organization/
+
+| ID | 任务 | 状态 | Phase | 依赖 | 落位 |
+|----|------|------|-------|------|------|
+| ORG-001 | Organization 模块（套餐名、月配额、成员 CRUD） | [x] | P4 | CORE-005 | `modules/organization/` |
+| ORG-002 | Prisma：Organization.planName、monthlyArticleQuota | [x] | P4 | DB-001 | `prisma/schema.prisma` |
+
+---
+
+## 模块 22 — seo-factory：关键词池 keyword-pool/
+
+| ID | 任务 | 状态 | Phase | 依赖 | 落位 |
+|----|------|------|-------|------|------|
+| KW-001 | KeywordEntry 模型 + CRUD API | [x] | P3 | DB-001 | `modules/keyword-pool/` |
+| KW-002 | 批量导入 + 优先级排序 | [x] | P3 | KW-001 | `modules/keyword-pool/` |
+| KW-003 | AI 种子生成（Prompt slot keywordSeed） | [x] | P3 | LLM-001, PROMPT-012 | `keyword-pool.service.ts` |
+| KW-004 | Semrush 指标回填（IKeywordMetricsProvider） | [x] | P3 | SEO-001 | `keyword-pool.service.ts` |
+| KW-005 | 从关键词一键创建 ArticleJob | [x] | P3 | JOB-002, KW-001 | `keyword-pool.controller.ts` |
+| KW-006 | 关键词批量入队（多选 → batch create） | [x] | P3 | KW-005, BILL-005 | `POST .../keywords/create-jobs` + `KeywordPoolView` |
+
+---
+
+## 模块 23 — seo-factory：QuillBot 润色 paraphrase/
+
+| ID | 任务 | 状态 | Phase | 依赖 | 落位 |
+|----|------|------|-------|------|------|
+| PARA-001 | IParaphraseProvider + LlmParaphraseAdapter | [x] | P2 | PKG-003 | `modules/paraphrase/` |
+| PARA-002 | 工作流 paraphrasing 步骤接线 | [x] | P2 | WF-005 | `workflow.service.ts` |
+| PARA-003 | Prompt seo_quillbot_v1 / validate | [x] | P2 | PROMPT-012 | `prompts/`、`prompt-slot-metadata.ts` |
+| PARA-004 | QUILLBOT_DISABLED 环境变量跳过 | [x] | P2 | PARA-002 | `paraphrase.service.ts` |
+
+---
+
+## 模块 24 — seo-factory：CMS 发布（WordPress，后端优先）
+
+| ID | 任务 | 状态 | Phase | 依赖 | 落位 |
+|----|------|------|-------|------|------|
+| CMS-001 | CmsPublishService + POST publish API | [x] | P4 | EXP-002, SITE-004 | `cms-publish.service.ts` |
+| CMS-002 | 前端 WordPress UI | [ ] | P4 | CMS-001 | `feature-flags.ts`（**暂缓**，后端可测 API） |
+
+---
+
+## 模块 25 — seo-factory：YMYL 审核队列
+
+| ID | 任务 | 状态 | Phase | 依赖 | 落位 |
+|----|------|------|-------|------|------|
+| REV-001 | 待审核列表 + approve/reject API | [x] | P3 | WF-006 | `article-job.controller.ts` |
+| REV-002 | 前端 ReviewQueueView | [x] | P3 | REV-001 | `ReviewQueueView.vue` |
 
 ---
 
@@ -426,6 +484,10 @@
 | DB-004 | 内链页面库表 | [x] | P2 | LINK-002 | `prisma/schema.prisma` |
 | DB-005 | PromptTemplate 表 | [x] | P4 | PROMPT-010 | `prisma/schema.prisma` |
 | DB-006 | 索引优化（status、createdAt 复合索引） | [~] | P0 | — | `prisma/schema.prisma` |
+| DB-007 | KeywordEntry 表 | [x] | P3 | KW-001 | `prisma/schema.prisma` |
+| DB-008 | Site.cmsType / cmsConfig（WordPress） | [x] | P4 | SITE-004 | `prisma/schema.prisma` |
+| DB-009 | Organization 配额字段 | [x] | P4 | ORG-002 | `prisma/schema.prisma` |
+| DB-MIG | 正式 Prisma migration 与 db push 漂移对齐 | [x] | P0 | DB-* | `20260614120000_sync_quota_prompt_keyword_cms` |
 
 ### DB-003 验收
 - [ ] Migration 可回滚
@@ -444,7 +506,7 @@
 | QA-007 | Semrush parser 单元测试 | [x] | P2 | SEO-003 | `scripts/semrush-recommendations-parser.test.mjs` |
 | QA-009 | YMYL 检测单元测试 | [x] | P2 | WF-006 | `scripts/ymyl-detect.util.test.mjs` |
 | QA-005 | 计费事件监听测试 | [x] | P4 | BILL-003 | `scripts/billing-event.test.mjs` |
-| QA-006 | E2E：创建任务 → 队列 → 状态变更 | [ ] | P3 | QUEUE-002 | `e2e/` |
+| QA-006 | E2E：创建任务 → 队列 → 状态变更 | [x] | P3 | QUEUE-002 | `e2e/article-job-smoke.test.mjs` |
 
 ---
 
@@ -482,8 +544,9 @@ Phase 4 — 变现
 | 入队 | BullMQ 接管 | CORE-008, QUEUE-001, JOB-005 |
 | M1-M3 | SERP + AI Overview | SERP-*, SCRAPER-*, WF-002 |
 | M4-M5 | Brief + 初稿 | LLM-*, PROMPT-*, WF-003, WF-004 |
-| M6 | Semrush ≥9.5 | SEO-*, LLM-005, WF-005 |
-| M7 | YMYL 审查 | WF-006 |
+| M6 | Semrush ≥9.0 | SEO-*, LLM-005, WF-005 |
+| QuillBot | paraphrasing 润色（可跳过） | PARA-*, WF-006b |
+| M7 | YMYL 审查 | WF-006, REV-* |
 | M8 | 内链植入 | LINK-*, WF-007 |
 | M9 | BFL 官方配图 | IMG-*, WF-008 |
 | M10 | HTML/JSON-LD → S3 | EXP-*, WF-009 |
@@ -503,4 +566,4 @@ Phase 4 — 变现
 
 ---
 
-*最后更新：2026-06-13 | M6 Semrush + M8 内链已接入，见 `docs/CURRENT_STATE.md`*
+*最后更新：2026-06-14 | 产品壳 + 关键词池 + QuillBot + 组织配额已接入；WordPress 前端 UI 暂缓，见 `docs/CURRENT_STATE.md`*

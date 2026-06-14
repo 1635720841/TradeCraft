@@ -134,6 +134,10 @@ export interface ArticleJobYmylReview {
   categories: string[];
   matchedSignals: string[];
   reviewedAt: string;
+  humanReviewStatus?: "pending" | "approved" | "rejected";
+  humanReviewNote?: string;
+  humanReviewedAt?: string;
+  humanReviewedBy?: string;
 }
 
 export interface ArticleJobDraftData {
@@ -163,7 +167,7 @@ export interface RewriteArticleJobPayload {
 }
 
 export interface ArticleJobWorkflowProgress {
-  phase: "local-scoring" | "local" | "semrush-check" | "semrush";
+  phase: "local-scoring" | "local" | "semrush-check" | "semrush" | "paraphrasing";
   round?: number;
   maxRounds?: number;
   message: string;
@@ -179,6 +183,7 @@ export type ArticleJobWorkflowStep =
   | "linking"
   | "images"
   | "optimizing"
+  | "paraphrasing"
   | "ymyl";
 
 export interface ArticleJobWorkflowMeta {
@@ -244,6 +249,17 @@ export interface ArticleJobSeoCheckData {
     semrushCurrentWordCount?: number;
     semrushReadabilityScore?: number;
   };
+  quillbot?: {
+    skipped?: boolean;
+    passed?: boolean;
+    usedOriginal?: boolean;
+    completedAt?: string;
+    promptVersion?: string;
+    validatePromptVersion?: string;
+    changesSummary?: string[];
+    warnings?: string[];
+  };
+  cmsPublish?: CmsPublishResult;
   ymylReview?: ArticleJobYmylReview;
 }
 
@@ -297,12 +313,21 @@ export interface BatchArticleJobsResult {
   jobs: ArticleJobItem[];
 }
 
+export interface SiteCmsConfig {
+  baseUrl: string;
+  username: string;
+  defaultStatus: "draft" | "publish";
+  hasApplicationPassword: boolean;
+}
+
 export interface SiteItem {
   id: string;
   domain: string;
   brandVoice?: string | null;
   targetMarket?: string | null;
   contentLanguage?: string | null;
+  cmsType?: string | null;
+  cmsConfig?: SiteCmsConfig | null;
   createdAt: string;
 }
 
@@ -322,4 +347,58 @@ export interface SitePageItem {
 export interface SitePageSyncResult {
   discovered: number;
   upserted: number;
+}
+
+export interface CreateSitePayload {
+  domain: string;
+  brandVoice?: string;
+  targetMarket?: string;
+  contentLanguage?: "en" | "zh-CN";
+  cmsType?: "wordpress";
+  wordpress?: SiteWordPressPayload;
+}
+
+export interface UpdateSitePayload {
+  domain?: string;
+  brandVoice?: string;
+  targetMarket?: string;
+  contentLanguage?: "en" | "zh-CN";
+  cmsType?: "wordpress" | null;
+  wordpress?: SiteWordPressPayload;
+}
+
+export interface SiteWordPressPayload {
+  baseUrl: string;
+  username: string;
+  applicationPassword?: string;
+  defaultStatus?: "draft" | "publish";
+}
+
+export interface CmsPublishResult {
+  provider: "wordpress";
+  postId: number | null;
+  postUrl: string | null;
+  status: string;
+  publishedAt: string;
+  wpStatusRequested: "draft" | "publish";
+}
+
+export interface SeoFactoryProjectStats {
+  totalJobs: number;
+  completedJobs: number;
+  failedJobs: number;
+  activeJobs: number;
+  pendingReviewCount: number;
+  siteCount: number;
+}
+
+export interface PendingReviewItem {
+  id: string;
+  traceId: string;
+  targetKeyword: string;
+  title: string;
+  status: string;
+  ymylReview: ArticleJobYmylReview | null;
+  createdAt: string;
+  updatedAt: string;
 }

@@ -1,0 +1,98 @@
+/* 现代化布局外壳 — 浅色渐变 + 毛玻璃，无边框线条 */
+
+:root {
+  --shell-bg-gradient: linear-gradient(
+    135deg,
+    #f0f9ff 0%,
+    #f8fafc 45%,
+    #f1f5f9 100%
+  );
+  --shell-sidebar-gradient: linear-gradient(
+    180deg,
+    rgb(255 255 255 / 94%) 0%,
+    rgb(240 249 255 / 90%) 55%,
+    rgb(241 245 249 / 88%) 100%
+  );
+  --shell-header-gradient: linear-gradient(
+    90deg,
+    rgb(255 255 255 / 92%) 0%,
+    rgb(240 249 255 / 88%) 50%,
+    rgb(248 250 252 / 90%) 100%
+  );
+  --shell-accent-gradient: linear-gradient(135deg, #0ea5e9 0%, #06b6d4 50%, #22d3ee 100%);
+  --shell-accent-soft: rgb(14 165 233 / 8%);
+  --shell-accent-glow: 0 4px 20px rgb(14 165 233 / 18%);
+  --shell-shadow-soft: 0 8px 32px rgb(14 165 233 / 6%);
+  --shell-shadow-ambient: 0 2px 16px rgb(15 23 42 / 4%);
+  --shell-text-primary: #1e293b;
+  --shell-text-secondary: #64748b;
+  --shell-text-muted: #94a3b8;
+  --shell-radius-sm: 8px;
+  --shell-radius-md: 12px;
+  --shell-radius-pill: 999px;
+  --shell-blur: blur(20px) saturate(1.4);
+}
+
+/* 顶栏 — 毛玻璃渐变 */
+.shell-navbar,
+.shell-header {
+  position: relative;
+  background: var(--shell-header-gradient) !important;
+  backdrop-filter: var(--shell-blur);
+  -webkit-backdrop-filter: var(--shell-blur);
+  box-shadow: var(--shell-shadow-ambient) !important;
+  border: none !important;
+}
+
+.shell-navbar {
+  height: 52px !important;
+}
+
+/* 顶栏右侧操作区 */
+.shell-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--shell-radius-sm);
+  transition:
+    background 0.2s ease,
+    transform 0.15s ease;
+
+  &:hover {
+    background: var(--shell-accent-soft) !important;
+    transform: translateY(-1px);
+  }
+}
+
+/* 用户头像胶囊 */
+.shell-user-pill {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 12px 4px 4px !important;
+  margin-right: 4px;
+  border-radius: var(--shell-radius-pill) !important;
+  transition: background 0.2s ease;
+
+  &:hover {
+    background: var(--shell-accent-soft) !important;
+  }
+
+  img {
+    box-shadow: 0 0 0 2px rgb(14 165 233 / 20%);
+  }
+
+  p {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--shell-text-primary);
+  }
+}
+
+/* Logo 区域渐变标题 */
+.shell-logo-title {
+  background: linear-gradient(135deg, #0ea5e9 0%, #0891b2 50%, #0e7490 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}

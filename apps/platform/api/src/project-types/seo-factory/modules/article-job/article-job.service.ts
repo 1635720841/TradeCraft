@@ -35,7 +35,9 @@ import {
   type SemrushCheckPending,
 } from '../../constants/semrush-check';
 import { resolveResumeStep, withWorkflowMeta } from '../../constants/workflow-resume';
+import { isPendingHumanReview } from '../content-review/ymyl-detect.util';
 import { SeoCheckerService } from '../seo-checker/seo-checker.service';
+import { BillingService } from '../../../../modules/billing/billing.service';
 
 @Injectable()
 export class ArticleJobService {
@@ -44,10 +46,13 @@ export class ArticleJobService {
     private readonly logger: LoggerService,
     private readonly seoCheckerService: SeoCheckerService,
     private readonly siteArticleCrawler: SiteArticleCrawlerService,
+    private readonly billingService: BillingService,
     @InjectQueue(ARTICLE_JOB_QUEUE) private readonly articleJobQueue: Queue<ArticleJobQueuePayload>,
   ) {}
 
   async create(organizationId: string, projectId: string, dto: CreateArticleJobDto) {
+    await this.billingService.assertArticleQuota(organizationId, 1);
+
     const traceId = `tr_${uuidv4()}`;
 
     const site = await this.prisma.site.findFirst({
@@ -137,6 +142,8 @@ export class ArticleJobService {
           : '未找到可运行的关键词',
       );
     }
+
+    await this.billingService.assertArticleQuota(organizationId, keywords.length);
 
     const jobs = [];
     for (const targetKeyword of keywords) {
@@ -564,5 +571,53 @@ export class ArticleJobService {
       return error.message;
     }
     return fallback;
+  }
+
+  async getProjectStats(organizationId: string, projectId: string) {
+    const terminalStatuses = ['COMPLETED', 'FAILED'] as const;
+
+    const [totalJobs, completedJobs, failedJobs, activeJobs, ymylCandidates, siteCount] =
+      await Promise.all([
+        this.prisma.articleJob.count({ where: { organizationId, projectId } }),
+        this.prisma.articleJob.count({
+          where: { organizationId, projectId, status: 'COMPLETED' },
+        }),
+        this.prisma.articleJob.count({
+          where: { organizationId, projectId, status: 'FAILED' },
+        }),
+        this.prisma.articleJob.count({
+          where: {
+            organizationId,
+            projectId,
+            status: { notIn: [...terminalStatuses] },
+          },
+        }),
+        this.prisma.articleJob.findMany({
+          where: {
+            organizationId,
+            projectId,
+            status: 'COMPLETED',
+            seoCheckData: {
+              path: ['ymylReview', 'requires_human_review'],
+              equals: true,
+            },
+          },
+          select: { seoCheckData: true },
+        }),
+        this.prisma.site.count({ where: { organizationId, projectId } }),
+      ]);
+
+    const pendingReviewCount = ymylCandidates.filter((row) =>
+      isPendingHumanReview(row.seoCheckData),
+    ).length;
+
+    return {
+      totalJobs,
+      completedJobs,
+      failedJobs,
+      activeJobs,
+      pendingReviewCount,
+      siteCount,
+    };
   }
 }

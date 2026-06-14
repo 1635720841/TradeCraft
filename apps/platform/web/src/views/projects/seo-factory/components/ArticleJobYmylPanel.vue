@@ -43,9 +43,17 @@
           <span v-else class="text-gray-500">无</span>
         </el-descriptions-item>
         <el-descriptions-item label="可自动导出 HTML">
-          <el-tag :type="review.requires_human_review ? 'danger' : 'success'">
-            {{ review.requires_human_review ? "禁止" : "允许" }}
+          <el-tag :type="canAutoExport ? 'success' : 'danger'">
+            {{ canAutoExport ? "允许" : "禁止" }}
           </el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item v-if="review.requires_human_review" label="人工审核">
+          <el-tag :type="dictTagType(ymylHumanReviewStatusDict, humanReviewStatus)">
+            {{ dictLabel(ymylHumanReviewStatusDict, humanReviewStatus) }}
+          </el-tag>
+          <p v-if="review.humanReviewNote" class="mt-2 text-sm text-gray-600">
+            备注：{{ review.humanReviewNote }}
+          </p>
         </el-descriptions-item>
       </el-descriptions>
 
@@ -68,7 +76,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { ArticleJobYmylReview } from "@/api/seo-factory/types";
-import { ymylCategoryDict } from "@/constants/dicts/seo-factory";
+import { ymylCategoryDict, ymylHumanReviewStatusDict } from "@/constants/dicts/seo-factory";
 import { dictLabel, dictTagType } from "@/utils/dict";
 
 defineOptions({ name: "ArticleJobYmylPanel" });
@@ -79,16 +87,31 @@ const props = defineProps<{
 
 const review = computed(() => props.ymylReview ?? null);
 
+const humanReviewStatus = computed(
+  () => review.value?.humanReviewStatus ?? (review.value?.requires_human_review ? "pending" : "approved")
+);
+
+const canAutoExport = computed(() => {
+  if (!review.value?.requires_human_review) return true;
+  return review.value.humanReviewStatus === "approved";
+});
+
 const signalRows = computed(() =>
   (review.value?.matchedSignals ?? []).map((signal) => ({ signal }))
 );
 
 const summaryText = computed(() => {
   if (!review.value) return "";
-  if (review.value.requires_human_review) {
-    return "文章涉及医疗、金融、法律或安全等高影响主题，请人工复核后再发布。";
+  if (!review.value.requires_human_review) {
+    return "当前稿件未触发 YMYL 规则，后续导出模块将允许生成可发布 HTML。";
   }
-  return "当前稿件未触发 YMYL 规则，后续导出模块将允许生成可发布 HTML。";
+  if (review.value.humanReviewStatus === "approved") {
+    return "人工审核已通过，可下载 HTML 导出文件。";
+  }
+  if (review.value.humanReviewStatus === "rejected") {
+    return "人工审核已驳回，请修改内容后重新生成或续跑任务。";
+  }
+  return "文章涉及医疗、金融、法律或安全等高影响主题，请前往「待审核」或通过下方操作完成人工复核。";
 });
 
 function formatTime(iso: string) {

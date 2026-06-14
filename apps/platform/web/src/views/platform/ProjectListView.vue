@@ -181,7 +181,7 @@ function goDetail(id: string) {
 }
 
 function enterProject(row: ProjectItem) {
-  router.push({ name: "SeoFactoryJobs", params: { projectId: row.id } });
+  router.push({ name: "SeoFactoryOverview", params: { projectId: row.id } });
 }
 
 onMounted(() => {

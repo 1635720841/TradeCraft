@@ -119,7 +119,7 @@ function goBack() {
 function enterProject() {
   if (!project.value) return;
   router.push({
-    name: "SeoFactoryJobs",
+    name: "SeoFactoryOverview",
     params: { projectId: project.value.id }
   });
 }

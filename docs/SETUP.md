@@ -223,6 +223,26 @@ pnpm exec prisma migrate deploy
 
 `migrate deploy` 只跑 `migrations/` 里尚未执行的 SQL，不会根据 schema 自动生成新迁移。
 
+根目录也可执行：`pnpm db:deploy`
+
+### 曾用 db push 导致迁移历史落后（漂移修复）
+
+若本地库表结构已是最新（例如曾执行 `prisma db push`），但 `migrations/` 少了几条，**不要**再 push。按下面处理：
+
+1. 拉取包含新迁移的代码
+2. 若 `pnpm db:deploy` 报错「表/列已存在」，说明库结构已对齐，只需登记迁移历史：
+
+```bash
+cd apps/platform/api
+pnpm exec prisma migrate resolve --applied <迁移文件夹名>
+```
+
+示例：`pnpm exec prisma migrate resolve --applied 20260614120000_sync_quota_prompt_keyword_cms`
+
+3. 再执行 `pnpm exec prisma migrate status`，应显示 `Database schema is up to date`
+
+**全新环境**（生产/CI/新同事空库）直接 `pnpm db:deploy` 即可，会按顺序跑完全部 `migrations/`。
+
 ### 约定
 
 | 做法 | 说明 |
@@ -281,6 +301,29 @@ pnpm db:migrate                 # 重新应用全部迁移
 ```
 
 改表结构时，在步骤 2 之后插入：`pnpm db:migrate`。
+
+### E2E 冒烟（API 级）
+
+覆盖：登录 → 建站点 → 创建任务（202 QUEUED）→ 队列消费后状态变更。
+
+```bash
+pnpm docker:up
+pnpm db:deploy
+pnpm db:seed
+pnpm dev:api            # 另开终端，等 API 就绪
+
+# 根目录或 apps/platform/api
+pnpm test:e2e
+```
+
+环境变量（可选）：
+
+| 变量 | 说明 |
+|------|------|
+| `E2E_API_BASE_URL` | 默认 `http://127.0.0.1:3000` |
+| `E2E_SKIP=true` | 强制跳过 |
+| `E2E_REQUIRED=true` | API 不可达时失败（CI 使用） |
+| `E2E_STATUS_POLL_TIMEOUT_MS` | 等待状态变更超时，默认 90000 |
 
 ---
 

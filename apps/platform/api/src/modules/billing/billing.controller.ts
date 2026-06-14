@@ -34,4 +34,10 @@ export class BillingController {
       },
     };
   }
+
+  @Get('quota')
+  async getQuota(@ReqCtx() ctx: RequestContext) {
+    const data = await this.billingService.getQuotaSummary(ctx.organizationId);
+    return { data, meta: { traceId: ctx.traceId } };
+  }
 }

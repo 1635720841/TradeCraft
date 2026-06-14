@@ -22,3 +22,6 @@ apps/platform/api/.semrush-session/
 
 # Local export artifacts
 apps/platform/api/.data/
+
+# IDE local history
+.history/

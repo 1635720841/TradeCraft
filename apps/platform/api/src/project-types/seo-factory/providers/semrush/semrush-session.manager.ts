@@ -8,21 +8,19 @@
  * - SemrushSessionManager
  */
 
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { mkdir, access, unlink } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { join } from 'node:path';
 import {
-  chromium,
   type Browser,
   type BrowserContext,
-  type LaunchOptions,
   type Locator,
   type Page,
 } from 'playwright';
 import { LoggerService } from '../../../../core/logger/logger.service';
+import { SemrushBrowserPool } from './semrush-browser-pool';
 import {
-  SEMRUSH_BROWSER_CHANNEL,
   SEMRUSH_CACHE_CLEAN_MAX_MS,
   SEMRUSH_CACHE_CLEAN_PATTERN,
   SEMRUSH_NODE_ATTEMPT_TIMEOUT_MS,
@@ -38,48 +36,6 @@ import { SEMRUSH_SWA_SELECTORS, TOOLS_SHARE_SELECTORS } from './semrush.selector
 
 const SESSION_DIR = join(process.cwd(), '.semrush-session');
 const STORAGE_STATE_PATH = join(SESSION_DIR, 'storage-state.json');
-const activeBrowsers = new Set<Browser>();
-
-function registerBrowserShutdownHooks(): void {
-  if ((registerBrowserShutdownHooks as { registered?: boolean }).registered) return;
-  (registerBrowserShutdownHooks as { registered?: boolean }).registered = true;
-
-  const closeAll = () => {
-    void Promise.all([...activeBrowsers].map((browser) => browser.close().catch(() => undefined)));
-  };
-
-  process.once('SIGINT', closeAll);
-  process.once('SIGTERM', closeAll);
-  process.once('exit', closeAll);
-}
-
-registerBrowserShutdownHooks();
-
-function getProxyConfig() {
-  const server = process.env.HTTPS_PROXY ?? process.env.HTTP_PROXY;
-  return server ? { server } : undefined;
-}
-
-function getBrowserLaunchOptions(): LaunchOptions {
-  const headless = process.env.SEMRUSH_HEADLESS !== 'false';
-  const channel = SEMRUSH_BROWSER_CHANNEL;
-
-  const options: LaunchOptions = {
-    headless,
-    proxy: getProxyConfig(),
-    args: [
-      '--disable-blink-features=AutomationControlled',
-      '--no-sandbox',
-      '--disable-dev-shm-usage',
-    ],
-  };
-
-  if (channel === 'chrome' || channel === 'msedge') {
-    options.channel = channel;
-  }
-
-  return options;
-}
 
 function maskUsername(username: string): string {
   if (username.length <= 2) return '**';
@@ -93,42 +49,22 @@ export interface SemrushEditorSession {
 }
 
 @Injectable()
-export class SemrushSessionManager implements OnModuleDestroy {
-  constructor(private readonly logger: LoggerService) {}
-
-  async onModuleDestroy(): Promise<void> {
-    await Promise.all([...activeBrowsers].map((browser) => browser.close().catch(() => undefined)));
-    activeBrowsers.clear();
-  }
+export class SemrushSessionManager {
+  constructor(
+    private readonly logger: LoggerService,
+    private readonly browserPool: SemrushBrowserPool,
+  ) {}
 
   async withBrowser<T>(fn: (context: BrowserContext) => Promise<T>): Promise<T> {
-    const launchOptions = getBrowserLaunchOptions();
-    let browser: Browser;
+    const browser = await this.browserPool.borrow();
+    let context: BrowserContext | null = null;
 
     try {
-      browser = await chromium.launch(launchOptions);
-    } catch (err) {
-      if (launchOptions.channel) {
-        this.logger.warn('System browser launch failed, falling back to bundled Chromium', {
-          action: 'semrush.browser_fallback',
-          channel: launchOptions.channel,
-          errorMessage: err instanceof Error ? err.message : String(err),
-        });
-        const { channel: _c, ...fallback } = launchOptions;
-        browser = await chromium.launch(fallback);
-      } else {
-        throw err;
-      }
-    }
-
-    activeBrowsers.add(browser);
-
-    try {
-      const context = await this.createContext(browser);
+      context = await this.createContext(browser);
       return await fn(context);
     } finally {
-      activeBrowsers.delete(browser);
-      await browser.close().catch(() => undefined);
+      await context?.close().catch(() => undefined);
+      await this.browserPool.release(browser);
     }
   }
 

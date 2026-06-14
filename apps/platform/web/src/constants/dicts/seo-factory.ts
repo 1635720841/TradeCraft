@@ -32,6 +32,37 @@ export const ymylCategoryDict: DictItem[] = [
   { value: "safety", label: "安全决策", type: "danger" }
 ];
 
+/** YMYL 人工审核状态 */
+export const ymylHumanReviewStatusDict: DictItem[] = [
+  { value: "pending", label: "待审核", type: "warning" },
+  { value: "approved", label: "已通过", type: "success" },
+  { value: "rejected", label: "已驳回", type: "danger" }
+];
+
+/** 关键词搜索意图（与 Prisma KeywordIntent 一致） */
+export const keywordIntentDict: DictItem[] = [
+  { value: "INFORMATIONAL", label: "信息型", type: "info" },
+  { value: "COMMERCIAL", label: "商业调研", type: "primary" },
+  { value: "TRANSACTIONAL", label: "交易型", type: "success" },
+  { value: "BRAND", label: "品牌型", type: "warning" },
+  { value: "COMPETITOR", label: "竞品型", type: "danger" }
+];
+
+/** 关键词状态（与 Prisma KeywordStatus 一致） */
+export const keywordStatusDict: DictItem[] = [
+  { value: "PENDING", label: "待筛选", type: "info" },
+  { value: "APPROVED", label: "已通过", type: "success" },
+  { value: "USED", label: "已入队", type: "primary" },
+  { value: "ARCHIVED", label: "已归档", type: "info" }
+];
+
+/** 关键词来源（与 Prisma KeywordSource 一致） */
+export const keywordSourceDict: DictItem[] = [
+  { value: "MANUAL", label: "手动", type: "info" },
+  { value: "IMPORT", label: "批量导入", type: "primary" },
+  { value: "AI_SEED", label: "AI 种子", type: "warning" }
+];
+
 /** 站点页面类型（与 Prisma SitePageType 一致） */
 export const sitePageTypeDict: DictItem[] = [
   { value: "PRODUCT", label: "产品页", type: "success" },

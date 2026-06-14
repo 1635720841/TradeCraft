@@ -80,6 +80,11 @@ export const useUserStore = defineStore("pure-user", {
           });
       });
     },
+    /** Logto / 外部 Auth 回调后写入会话 */
+    async applySession(session: UserResult["data"]) {
+      setToken(session);
+      await this.syncAuthProfile();
+    },
     /** 从后端同步当前用户信息（/api/v1/auth/me） */
     async syncAuthProfile() {
       try {

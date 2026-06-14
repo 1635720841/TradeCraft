@@ -82,9 +82,32 @@ export interface RewriteOutput {
   warnings?: string[];
 }
 
+export interface KeywordSeedItem {
+  keyword: string;
+  intent: 'INFORMATIONAL' | 'COMMERCIAL' | 'TRANSACTIONAL' | 'BRAND' | 'COMPETITOR';
+  businessValueScore: number;
+  contentFitScore: number;
+  rationale?: string;
+}
+
+export interface KeywordSeedInput {
+  siteDomain: string;
+  brandVoice?: string;
+  targetMarket?: string;
+  contentLanguage?: string;
+  count?: number;
+  topicHint?: string;
+}
+
+export interface KeywordSeedOutput {
+  keywords: KeywordSeedItem[];
+  promptVersion: string;
+}
+
 export interface ILLMProvider {
   generateBrief(input: BriefInput): Promise<BriefOutput>;
   generateDraft(input: DraftInput): Promise<DraftOutput>;
   generateOptimize(input: OptimizeInput): Promise<OptimizeOutput>;
   generateRewrite(input: RewriteInput): Promise<RewriteOutput>;
+  generateKeywordSeeds(input: KeywordSeedInput): Promise<KeywordSeedOutput>;
 }

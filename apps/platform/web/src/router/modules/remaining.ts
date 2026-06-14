@@ -11,7 +11,15 @@ export default [
       showLink: false
     }
   },
-  // 全屏403（无权访问）页面
+  {
+    path: "/login/callback",
+    name: "LogtoCallback",
+    component: () => import("@/views/login/LogtoCallbackView.vue"),
+    meta: {
+      title: "Logto 登录",
+      showLink: false
+    }
+  },
   {
     path: "/access-denied",
     name: "AccessDenied",
@@ -21,7 +29,6 @@ export default [
       showLink: false
     }
   },
-  // 全屏500（服务器出错）页面
   {
     path: "/server-error",
     name: "ServerError",
@@ -46,7 +53,6 @@ export default [
       }
     ]
   },
-  // seo-factory 插件页：放 remaining 避免被 formatTwoStageRoutes 拍平导致动态路由失效
   {
     path: "/projects/:projectId/seo-factory",
     name: "SeoFactory",
@@ -57,48 +63,82 @@ export default [
     },
     children: [
       {
-        path: "/projects/:projectId/seo-factory/jobs",
-        name: "SeoFactoryJobs",
-        component: () =>
-          import("@/views/projects/seo-factory/JobListView.vue"),
-        meta: {
-          title: "文章任务",
-          roles: ["admin", "common"],
-          showLink: false
-        }
-      },
-      {
-        path: "/projects/:projectId/seo-factory/jobs/create",
-        name: "SeoFactoryJobCreate",
-        component: () =>
-          import("@/views/projects/seo-factory/JobCreateView.vue"),
-        meta: {
-          title: "新建任务",
-          roles: ["admin", "common"],
-          showLink: false
-        }
-      },
-      {
-        path: "/projects/:projectId/seo-factory/jobs/:jobId",
-        name: "SeoFactoryJobDetail",
-        component: () =>
-          import("@/views/projects/seo-factory/JobDetailView.vue"),
-        meta: {
-          title: "任务详情",
-          roles: ["admin", "common"],
-          showLink: false
-        }
-      },
-      {
-        path: "/projects/:projectId/seo-factory/sites",
-        name: "SeoFactorySites",
-        component: () =>
-          import("@/views/projects/seo-factory/SiteManageView.vue"),
-        meta: {
-          title: "站点管理",
-          roles: ["admin", "common"],
-          showLink: false
-        }
+        path: "",
+        component: () => import("@/views/projects/seo-factory/SeoFactoryLayout.vue"),
+        redirect: "/projects/:projectId/seo-factory/overview",
+        children: [
+          {
+            path: "overview",
+            name: "SeoFactoryOverview",
+            component: () =>
+              import("@/views/projects/seo-factory/WorkbenchOverviewView.vue"),
+            meta: {
+              title: "工作台概览",
+              roles: ["admin", "common"],
+              showLink: false
+            }
+          },
+          {
+            path: "jobs",
+            name: "SeoFactoryJobs",
+            component: () => import("@/views/projects/seo-factory/JobListView.vue"),
+            meta: {
+              title: "文章任务",
+              roles: ["admin", "common"],
+              showLink: false
+            }
+          },
+          {
+            path: "keywords",
+            name: "SeoFactoryKeywords",
+            component: () => import("@/views/projects/seo-factory/KeywordPoolView.vue"),
+            meta: {
+              title: "关键词池",
+              roles: ["admin", "common"],
+              showLink: false
+            }
+          },
+          {
+            path: "jobs/create",
+            name: "SeoFactoryJobCreate",
+            component: () => import("@/views/projects/seo-factory/JobCreateView.vue"),
+            meta: {
+              title: "新建任务",
+              roles: ["admin", "common"],
+              showLink: false
+            }
+          },
+          {
+            path: "jobs/:jobId",
+            name: "SeoFactoryJobDetail",
+            component: () => import("@/views/projects/seo-factory/JobDetailView.vue"),
+            meta: {
+              title: "任务详情",
+              roles: ["admin", "common"],
+              showLink: false
+            }
+          },
+          {
+            path: "sites",
+            name: "SeoFactorySites",
+            component: () => import("@/views/projects/seo-factory/SiteManageView.vue"),
+            meta: {
+              title: "站点管理",
+              roles: ["admin", "common"],
+              showLink: false
+            }
+          },
+          {
+            path: "reviews",
+            name: "SeoFactoryReviews",
+            component: () => import("@/views/projects/seo-factory/ReviewQueueView.vue"),
+            meta: {
+              title: "待审核",
+              roles: ["admin", "common"],
+              showLink: false
+            }
+          }
+        ]
       }
     ]
   }

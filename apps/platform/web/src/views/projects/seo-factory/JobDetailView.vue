@@ -83,7 +83,15 @@
             <span v-else class="text-gray-500">未完成</span>
           </el-descriptions-item>
           <el-descriptions-item label="导出">
-            <div v-if="job.outputUrl" class="flex flex-wrap gap-2">
+            <div v-if="job.outputUrl" class="flex flex-wrap items-center gap-2">
+              <el-button
+                type="primary"
+                link
+                :loading="exportDownloading === 'package'"
+                @click="handleDownloadExport('package')"
+              >
+                下载资产包
+              </el-button>
               <el-button
                 type="primary"
                 link
@@ -100,6 +108,23 @@
               >
                 下载 JSON-LD
               </el-button>
+              <el-button
+                v-if="wordpressCmsUiEnabled && canPublishToCms"
+                type="success"
+                link
+                :loading="cmsPublishing"
+                @click="handlePublishToWordPress"
+              >
+                推送到 WordPress
+              </el-button>
+              <el-link
+                v-if="wordpressCmsUiEnabled && cmsPublishResult?.postUrl"
+                :href="cmsPublishResult.postUrl"
+                target="_blank"
+                type="primary"
+              >
+                查看 WP 文章
+              </el-link>
             </div>
             <span v-else-if="requiresHumanReview" class="text-amber-600">
               YMYL 需人工审核，未生成可发布 HTML
@@ -196,6 +221,16 @@
             :show-current-label="Boolean(rewriteCandidate)"
             @rewrite="rewriteDrawerOpen = true"
           />
+
+          <el-alert
+            v-if="quillbotSummary"
+            class="mt-4"
+            :type="quillbotSummary.type"
+            :closable="false"
+            show-icon
+            title="QuillBot 原创表达优化"
+            :description="quillbotSummary.text"
+          />
         </el-tab-pane>
         <el-tab-pane label="内容审查" name="ymyl">
           <ArticleJobYmylPanel :ymyl-review="ymylReview" />
@@ -239,12 +274,15 @@ import {
   discardArticleRewrite,
   downloadArticleExportHtml,
   downloadArticleExportJsonLd,
+  downloadArticleExportPackage,
+  publishArticleJob,
   retryArticleJob,
   triggerArticleRewrite,
   triggerSemrushCheck
 } from "@/api/seo-factory/article-job";
 import type { RewriteArticleJobPayload } from "@/api/seo-factory/types";
 import { useArticleJobPolling } from "@/composables/seo-factory/useArticleJobPolling";
+import { WORDPRESS_CMS_UI_ENABLED } from "@/constants/feature-flags";
 import { message } from "@/utils/message";
 import { jobStatusDict } from "@/constants/dicts/seo-factory";
 import { LOCAL_SEO_PASS_THRESHOLD } from "@/constants/seo-factory";
@@ -261,6 +299,8 @@ import ArticleJobSerpPanel from "./components/ArticleJobSerpPanel.vue";
 import ArticleJobYmylPanel from "./components/ArticleJobYmylPanel.vue";
 
 defineOptions({ name: "JobDetailView" });
+
+const wordpressCmsUiEnabled = WORDPRESS_CMS_UI_ENABLED;
 
 const route = useRoute();
 const router = useRouter();
@@ -280,7 +320,8 @@ const rewriteDrawerOpen = ref(false);
 const rewriteSubmitting = ref(false);
 const rewriteAccepting = ref(false);
 const rewriteDiscarding = ref(false);
-const exportDownloading = ref<"html" | "jsonld" | null>(null);
+const exportDownloading = ref<"html" | "jsonld" | "package" | null>(null);
+const cmsPublishing = ref(false);
 
 const hasDraftContent = computed(() => {
   const content = job.value?.draftData?.content;
@@ -324,6 +365,28 @@ const ymylReviewDescription = computed(() => {
   const categoryText = categories.length > 0 ? categories.join("、") : "敏感主题";
   const signalPreview = signals.slice(0, 3).join("；");
   return `检测到 ${categoryText} 相关内容，禁止自动导出可发布 HTML。${signalPreview ? `命中：${signalPreview}` : ""}`;
+});
+
+const quillbotSummary = computed(() => {
+  const quillbot = job.value?.seoCheckData?.quillbot;
+  if (!quillbot?.completedAt && !quillbot?.skipped) return null;
+
+  if (quillbot.skipped) {
+    return { type: "info" as const, text: quillbot.warnings?.[0] ?? "已跳过 QuillBot 优化" };
+  }
+
+  if (quillbot.usedOriginal) {
+    return {
+      type: "warning" as const,
+      text: `复检未通过，已保留 Semrush 优化稿。${(quillbot.warnings ?? []).slice(0, 2).join("；") || ""}`
+    };
+  }
+
+  const changes = quillbot.changesSummary?.[0];
+  return {
+    type: "success" as const,
+    text: changes ? `已完成润色：${changes}` : "已完成原创表达优化"
+  };
 });
 
 const optimizingProgressMessage = computed(() => {
@@ -380,7 +443,37 @@ const resumeStepLabel = computed(() => {
   return step ? workflowStepLabel(step) : null;
 });
 
-async function handleDownloadExport(kind: "html" | "jsonld") {
+const cmsPublishResult = computed(() => job.value?.seoCheckData?.cmsPublish ?? null);
+
+const canPublishToCms = computed(
+  () =>
+    job.value?.status === "COMPLETED" &&
+    Boolean(job.value.outputUrl) &&
+    !cmsPublishResult.value?.postUrl
+);
+
+async function handlePublishToWordPress() {
+  if (!canPublishToCms.value || cmsPublishing.value) return;
+
+  cmsPublishing.value = true;
+  try {
+    const result = await publishArticleJob(projectId.value, jobId.value);
+    message(
+      result.status === "publish"
+        ? "已发布到 WordPress"
+        : "已推送到 WordPress 草稿箱",
+      { type: "success" }
+    );
+    await fetchOnce();
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "WordPress 发布失败";
+    message(msg, { type: "error" });
+  } finally {
+    cmsPublishing.value = false;
+  }
+}
+
+async function handleDownloadExport(kind: "html" | "jsonld" | "package") {
   if (!job.value?.outputUrl || exportDownloading.value) return;
 
   exportDownloading.value = kind;
@@ -388,12 +481,19 @@ async function handleDownloadExport(kind: "html" | "jsonld") {
     const blob =
       kind === "html"
         ? await downloadArticleExportHtml(projectId.value, jobId.value)
-        : await downloadArticleExportJsonLd(projectId.value, jobId.value);
+        : kind === "jsonld"
+          ? await downloadArticleExportJsonLd(projectId.value, jobId.value)
+          : await downloadArticleExportPackage(projectId.value, jobId.value);
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     const baseName = job.value.targetKeyword || "article";
     anchor.href = url;
-    anchor.download = kind === "html" ? `${baseName}.html` : `${baseName}.jsonld`;
+    anchor.download =
+      kind === "html"
+        ? `${baseName}.html`
+        : kind === "jsonld"
+          ? `${baseName}.jsonld`
+          : `${baseName}.zip`;
     anchor.click();
     URL.revokeObjectURL(url);
   } catch (error) {

@@ -21,6 +21,7 @@ import {
   DEFAULT_SERP_ARTICLE_LIMIT,
   MAX_SERP_ARTICLE_LIMIT,
 } from '../../constants/serp-filter';
+import { CompetitorPageScraper } from './competitor-page.scraper';
 
 export interface ScrapeJobContext {
   jobId: string;
@@ -38,6 +39,7 @@ export interface ScrapeJobContext {
 export class ScraperService {
   constructor(
     @Inject(SERP_PROVIDER) private readonly serpProvider: ISerpProvider,
+    private readonly competitorPageScraper: CompetitorPageScraper,
     private readonly prisma: PrismaService,
     private readonly logger: LoggerService,
   ) {}
@@ -63,13 +65,19 @@ export class ScraperService {
       { limit, articlesOnly },
     );
 
+    const { items: enrichedOrganic, scrapeMeta } = await this.competitorPageScraper.enrichOrganicItems(
+      filtered,
+      { traceId: ctx.traceId, jobId: ctx.jobId },
+    );
+
     await this.prisma.articleJob.update({
       where: { id: ctx.jobId },
       data: {
         serpData: {
-          organic: filtered,
+          organic: enrichedOrganic,
           organicRaw: serpResult.organic,
           filterMeta: meta,
+          competitorScrapeMeta: scrapeMeta,
           aiOverview: serpResult.aiOverview,
           fingerprint: serpResult.fingerprint,
         } as object,
@@ -86,6 +94,8 @@ export class ScraperService {
       serpExcluded: meta.excluded,
       serpArticlesOnly: articlesOnly,
       serpLimit: limit,
+      competitorScraped: scrapeMeta.succeeded,
+      competitorScrapeFailed: scrapeMeta.failed,
     });
   }
 }

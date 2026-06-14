@@ -11,4 +11,5 @@ export * from './llm/parse-llm-json';
 export * from './cache/serp-fingerprint';
 export * from './seo/local-seo-score';
 export * from './seo/seo-article-filter';
+export * from './seo/competitor-page.util';
 export * from './seo/content-language';

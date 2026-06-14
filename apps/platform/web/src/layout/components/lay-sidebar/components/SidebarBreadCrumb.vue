@@ -105,7 +105,7 @@ watch(
 </script>
 
 <template>
-  <el-breadcrumb class="leading-[50px]! select-none" separator="/">
+  <el-breadcrumb class="shell-breadcrumb leading-[52px]! select-none" separator="/">
     <transition-group name="breadcrumb">
       <el-breadcrumb-item
         v-for="item in levelList"
@@ -119,3 +119,28 @@ watch(
     </transition-group>
   </el-breadcrumb>
 </template>
+
+<style lang="scss" scoped>
+:deep(.shell-breadcrumb) {
+  .el-breadcrumb__inner a {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--shell-text-muted);
+    transition: color 0.2s ease;
+
+    &:hover {
+      color: #0ea5e9;
+    }
+  }
+
+  .el-breadcrumb__item:last-child .el-breadcrumb__inner a {
+    color: var(--shell-text-primary);
+    font-weight: 600;
+  }
+
+  .el-breadcrumb__separator {
+    color: var(--shell-text-muted);
+    font-weight: 400;
+  }
+}
+</style>

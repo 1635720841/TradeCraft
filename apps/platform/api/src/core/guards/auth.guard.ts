@@ -18,13 +18,13 @@ import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import { ForbiddenException, UnauthorizedException } from '../exceptions/auth.exception';
 import { ErrorCodes } from '../exceptions/error-codes';
-import { JwtTokenService } from '../../modules/auth/jwt-token.service';
+import { AuthTokenService } from '../../modules/auth/auth-token.service';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
-    private readonly jwtTokenService: JwtTokenService,
+    private readonly authTokenService: AuthTokenService,
   ) {}
 
   canActivate(context: ExecutionContext): boolean {
@@ -42,7 +42,7 @@ export class AuthGuard implements CanActivate {
       throw new UnauthorizedException(ErrorCodes.UNAUTHORIZED, '请先登录');
     }
 
-    const claims = this.jwtTokenService.verifyAccessToken(token);
+    const claims = this.authTokenService.verifyAccessToken(token);
     const traceId = this.resolveTraceId(request);
 
     const reqCtx: RequestContext = {

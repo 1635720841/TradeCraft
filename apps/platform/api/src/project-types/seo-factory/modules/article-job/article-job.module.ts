@@ -7,18 +7,21 @@
 
 import { Module } from '@nestjs/common';
 import { ProjectModule } from '../../../../modules/project/project.module';
+import { BillingModule } from '../../../../modules/billing/billing.module';
 import { SeoFactoryQueueModule } from '../../seo-factory-queue.module';
 import { LlmModule } from '../llm/llm.module';
 import { SeoCheckerModule } from '../seo-checker/seo-checker.module';
 import { SiteModule } from '../site/site.module';
 import { ArticleJobRewriteService } from './article-job-rewrite.service';
+import { ArticleJobReviewService } from './article-job-review.service';
 import { ArticleJobController } from './article-job.controller';
 import { ArticleJobService } from './article-job.service';
+import { ExportModule } from '../export/export.module';
 
 @Module({
-  imports: [ProjectModule, SeoFactoryQueueModule, SeoCheckerModule, LlmModule, SiteModule],
+  imports: [ProjectModule, BillingModule, SeoFactoryQueueModule, SeoCheckerModule, LlmModule, SiteModule, ExportModule],
   controllers: [ArticleJobController],
-  providers: [ArticleJobService, ArticleJobRewriteService],
+  providers: [ArticleJobService, ArticleJobRewriteService, ArticleJobReviewService],
   exports: [ArticleJobService],
 })
 export class ArticleJobModule {}

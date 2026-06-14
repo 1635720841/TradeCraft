@@ -14,6 +14,10 @@ export interface YmylReviewResult {
   categories: string[];
   matchedSignals: string[];
   reviewedAt: string;
+  humanReviewStatus?: 'pending' | 'approved' | 'rejected';
+  humanReviewNote?: string;
+  humanReviewedAt?: string;
+  humanReviewedBy?: string;
 }
 
 interface YmylCategoryRule {
@@ -104,15 +108,27 @@ export function detectYmylContent(input: {
     categories,
     matchedSignals: [...new Set(matchedSignals)].slice(0, 12),
     reviewedAt: input.reviewedAt ?? new Date().toISOString(),
+    ...(requires_human_review ? { humanReviewStatus: 'pending' as const } : {}),
   };
 }
 
-/** M10 导出前校验：YMYL 且需人工审核时禁止生成可发布 HTML */
+/** M10 导出前校验：YMYL 需人工审核时须审核通过才可发布 HTML */
 export function canPublishArticle(seoCheckData: unknown): boolean {
   const record = (seoCheckData ?? {}) as {
-    ymylReview?: { requires_human_review?: boolean };
+    ymylReview?: {
+      requires_human_review?: boolean;
+      humanReviewStatus?: 'pending' | 'approved' | 'rejected';
+    };
   };
-  return record.ymylReview?.requires_human_review !== true;
+  const review = record.ymylReview;
+  if (review?.requires_human_review !== true) return true;
+  return review.humanReviewStatus === 'approved';
+}
+
+export function isPendingHumanReview(seoCheckData: unknown): boolean {
+  const review = getYmylReview(seoCheckData);
+  if (!review?.requires_human_review) return false;
+  return !review.humanReviewStatus || review.humanReviewStatus === 'pending';
 }
 
 export function getYmylReview(seoCheckData: unknown): YmylReviewResult | null {

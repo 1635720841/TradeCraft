@@ -12,4 +12,6 @@ export * from './llm-provider.interface';
 export * from './serp-provider.interface';
 export * from './image-provider.interface';
 export * from './seo-checker-provider.interface';
+export * from './keyword-metrics-provider.interface';
+export * from './paraphrase-provider.interface';
 export * from './provider.tokens';

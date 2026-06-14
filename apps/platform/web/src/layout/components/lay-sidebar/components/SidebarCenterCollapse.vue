@@ -66,9 +66,19 @@ const toggleClick = () => {
   width: 24px;
   height: 34px;
   cursor: pointer;
-  background: var(--el-bg-color);
-  border: 1px solid var(--pure-border-color);
-  border-radius: 4px;
+  background: rgb(255 255 255 / 85%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: var(--shell-radius-sm);
+  box-shadow: var(--shell-shadow-ambient);
   transform: translate(12px, -50%);
+  transition:
+    background 0.2s ease,
+    box-shadow 0.2s ease;
+
+  &:hover {
+    background: rgb(255 255 255 / 95%);
+    box-shadow: var(--shell-accent-glow);
+  }
 }
 </style>

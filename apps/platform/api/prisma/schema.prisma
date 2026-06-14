@@ -12,12 +12,14 @@ datasource db {
 // ── 平台层 ──
 
 model Organization {
-  id        String        @id @default(uuid())
-  name      String
-  users     User[]
-  projects  Project[]
-  usageLogs CreditUsage[]
-  createdAt DateTime      @default(now())
+  id                   String        @id @default(uuid())
+  name                 String
+  planName             String        @default("trial")
+  monthlyArticleQuota  Int           @default(100)
+  users                User[]
+  projects             Project[]
+  usageLogs            CreditUsage[]
+  createdAt            DateTime      @default(now())
 }
 
 /// Prompt 模板版本库（M12）：平台全局，seo-factory LLM 热更新
@@ -66,6 +68,7 @@ model Project {
   status         ProjectStatus @default(ACTIVE)
   sites          Site[]
   jobs           ArticleJob[]
+  keywords       KeywordEntry[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -110,8 +113,11 @@ model Site {
   brandVoice       String?      @db.Text
   targetMarket     String?
   contentLanguage  String       @default("en")
+  cmsType          String?      /// null | wordpress
+  cmsConfig        Json?        /// WordPress: { baseUrl, username, applicationPassword, defaultStatus }
   jobs             ArticleJob[]
   pages            SitePage[]
+  keywords         KeywordEntry[]
   createdAt      DateTime     @default(now())
 
   @@index([organizationId, projectId])
@@ -183,4 +189,53 @@ enum JobStatus {
   REVIEWING
   COMPLETED
   FAILED
+}
+
+enum KeywordIntent {
+  INFORMATIONAL
+  COMMERCIAL
+  TRANSACTIONAL
+  BRAND
+  COMPETITOR
+}
+
+enum KeywordStatus {
+  PENDING
+  APPROVED
+  ARCHIVED
+  USED
+}
+
+enum KeywordSource {
+  MANUAL
+  IMPORT
+  AI_SEED
+}
+
+/// 项目关键词池：发现、优先级排序与任务入队
+model KeywordEntry {
+  id                  String         @id @default(uuid())
+  organizationId      String
+  projectId           String
+  project             Project        @relation(fields: [projectId], references: [id])
+  siteId              String?
+  site                Site?          @relation(fields: [siteId], references: [id])
+  keyword             String
+  intent              KeywordIntent  @default(INFORMATIONAL)
+  status              KeywordStatus  @default(PENDING)
+  source              KeywordSource  @default(MANUAL)
+  searchVolume        Int?
+  keywordDifficulty   Float?
+  cpc                 Float?
+  businessValueScore  Float          @default(0.5)
+  contentFitScore     Float          @default(0.5)
+  priorityScore       Float          @default(0)
+  notes               String?        @db.Text
+  lastJobId           String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@unique([projectId, keyword])
+  @@index([organizationId, projectId, status])
+  @@index([organizationId, projectId, priorityScore])
 }

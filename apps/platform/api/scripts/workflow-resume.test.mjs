@@ -14,7 +14,7 @@ const resumePath = pathToFileURL(
 const { WORKFLOW_STEPS, resolveResumeStep, resolveFailedStep } = await import(resumePath);
 
 describe('WORKFLOW_STEPS', () => {
-  it('runs enrichment before Semrush', () => {
+  it('runs QuillBot after Semrush and before YMYL', () => {
     assert.deepEqual(WORKFLOW_STEPS, [
       'serp',
       'brief',
@@ -22,6 +22,7 @@ describe('WORKFLOW_STEPS', () => {
       'linking',
       'images',
       'optimizing',
+      'paraphrasing',
       'ymyl',
     ]);
   });
@@ -89,6 +90,46 @@ describe('resolveResumeStep', () => {
       'optimizing',
     );
   });
+
+  it('resumes paraphrasing after Semrush passed', () => {
+    assert.equal(
+      resolveResumeStep({
+        serpData: {},
+        briefData: { outline: [] },
+        draftData: {
+          content: '# Draft',
+          internalLinksApplied: true,
+          imagesApplied: true,
+        },
+        seoCheckData: {
+          semrush: { passed: true, overall: 9.2 },
+        },
+        semrushScore: 9.2,
+      }),
+      'paraphrasing',
+    );
+  });
+
+  it('resumes ymyl after paraphrase completed', () => {
+    assert.equal(
+      resolveResumeStep({
+        serpData: {},
+        briefData: { outline: [] },
+        draftData: {
+          content: '# Draft',
+          internalLinksApplied: true,
+          imagesApplied: true,
+          paraphraseApplied: true,
+        },
+        seoCheckData: {
+          semrush: { passed: true },
+          quillbot: { passed: true, completedAt: '2026-01-01T00:00:00.000Z' },
+        },
+        semrushScore: 9.2,
+      }),
+      'ymyl',
+    );
+  });
 });
 
 describe('resolveFailedStep', () => {
@@ -100,6 +141,23 @@ describe('resolveFailedStep', () => {
         draftData: { content: '# Draft' },
       }),
       'images',
+    );
+  });
+
+  it('maps optimizing to paraphrasing when Semrush done but QuillBot pending', () => {
+    assert.equal(
+      resolveFailedStep({
+        status: 'OPTIMIZING',
+        briefData: {},
+        draftData: {
+          content: '# Draft',
+          internalLinksApplied: true,
+          imagesApplied: true,
+        },
+        seoCheckData: { semrush: { passed: true } },
+        semrushScore: 9.5,
+      }),
+      'paraphrasing',
     );
   });
 });

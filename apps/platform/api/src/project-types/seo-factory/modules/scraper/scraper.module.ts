@@ -7,11 +7,12 @@
 
 import { Module } from '@nestjs/common';
 import { SeoFactoryProvidersModule } from '../../providers/seo-factory-providers.module';
+import { CompetitorPageScraper } from './competitor-page.scraper';
 import { ScraperService } from './scraper.service';
 
 @Module({
   imports: [SeoFactoryProvidersModule],
-  providers: [ScraperService],
+  providers: [ScraperService, CompetitorPageScraper],
   exports: [ScraperService],
 })
 export class ScraperModule {}

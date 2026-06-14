@@ -1,5 +1,5 @@
 /**
- * 工作流编排器：调度 M1-M9 前置链路（SERP → Brief → 初稿 → 内链 → 配图 → Semrush → YMYL）。
+ * 工作流编排器：调度 M1-M9 链路（SERP → Brief → 初稿 → 内链 → 配图 → Semrush → QuillBot → YMYL）。
  *
  * 边界：
  * - 不负责：具体外部 API（各子 Module + Provider）
@@ -29,6 +29,7 @@ import { IllustrationService } from '../illustration/illustration.service';
 import { LinkingService } from '../linking/linking.service';
 import { LlmService } from '../llm/llm.service';
 import type { ArticleJobScraperOptions } from '../../processors/article-job.processor';
+import { ParaphraseService } from '../paraphrase/paraphrase.service';
 import { ScraperService } from '../scraper/scraper.service';
 import { SeoCheckerService } from '../seo-checker/seo-checker.service';
 import { ExportService } from '../export/export.service';
@@ -47,6 +48,7 @@ export class WorkflowService {
     private readonly scraperService: ScraperService,
     private readonly llmService: LlmService,
     private readonly seoCheckerService: SeoCheckerService,
+    private readonly paraphraseService: ParaphraseService,
     private readonly contentReviewService: ContentReviewService,
     private readonly linkingService: LinkingService,
     private readonly illustrationService: IllustrationService,
@@ -143,6 +145,10 @@ export class WorkflowService {
         await this.updateStatus(jobId, 'OPTIMIZING');
         await this.seoCheckerService.runPostDraftPipeline(ctx);
       },
+      paraphrasing: async () => {
+        await this.updateStatus(jobId, 'OPTIMIZING');
+        await this.paraphraseService.runForJob(ctx);
+      },
       ymyl: async () => {
         await this.updateStatus(jobId, 'REVIEWING');
         await this.contentReviewService.runYmylReview({
@@ -205,7 +211,7 @@ export class WorkflowService {
   ): Promise<void> {
     const job = await this.prisma.articleJob.findFirst({
       where: { id: jobId, organizationId, projectId },
-      select: { status: true, briefData: true, draftData: true, seoCheckData: true },
+      select: { status: true, briefData: true, draftData: true, seoCheckData: true, semrushScore: true },
     });
 
     const failedStep = job ? resolveFailedStep(job) : 'serp';

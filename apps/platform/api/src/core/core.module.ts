@@ -13,6 +13,7 @@ import { PrismaService } from './database/prisma.service';
 import { LoggerService } from './logger/logger.service';
 import { APP_FILTER } from '@nestjs/core';
 import { GlobalExceptionFilter } from './exceptions/global-exception.filter';
+import { RateLimitService } from './guards/rate-limit.service';
 import { RedisModule } from './redis/redis.module';
 import { QueueModule } from './queue/queue.module';
 import { StorageModule } from './storage/storage.module';
@@ -23,8 +24,9 @@ import { StorageModule } from './storage/storage.module';
   providers: [
     PrismaService,
     LoggerService,
+    RateLimitService,
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
   ],
-  exports: [PrismaService, LoggerService],
+  exports: [PrismaService, LoggerService, RateLimitService],
 })
 export class CoreModule {}

@@ -40,21 +40,21 @@ export default {
       }
     },
     {
+      path: "/platform/organization",
+      name: "PlatformOrganization",
+      component: () => import("@/views/platform/OrganizationSettingsView.vue"),
+      meta: {
+        title: "企业设置",
+        roles: ["admin", "common"]
+      }
+    },
+    {
       path: "/platform/prompts",
       name: "PlatformPrompts",
       component: () => import("@/views/platform/PromptManageView.vue"),
       meta: {
         title: "Prompt 运营台",
         roles: ["admin"]
-      }
-    },
-    {
-      path: "/platform/seo-jobs",
-      name: "PlatformSeoJobs",
-      redirect: "/projects/00000000-0000-4000-8000-000000000002/seo-factory/jobs",
-      meta: {
-        title: "SEO 文章任务",
-        roles: ["admin", "common"]
       }
     }
   ]

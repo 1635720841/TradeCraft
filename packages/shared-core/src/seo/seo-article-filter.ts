@@ -5,11 +5,16 @@
  * - 不负责：页面正文抓取（由 Scraper / Site 模块处理）
  */
 
+import type { SerpOrganicScrapedMeta } from './competitor-page.util';
+
+export type { SerpOrganicScrapedMeta };
+
 export interface SerpOrganicItem {
   position?: number;
   title?: string;
   snippet?: string;
   link?: string;
+  scraped?: SerpOrganicScrapedMeta;
 }
 
 export interface SerpOrganicFilterMeta {

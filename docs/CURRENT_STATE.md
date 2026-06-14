@@ -1,74 +1,82 @@
 # 项目当前状态
 
-> AI 跨对话必读：以本文件 + 仓库代码为准，不凭记忆。
+> AI 跨对话必读：以本文件 + 仓库代码为准，不凭记忆。  
+> 任务勾选见 `task.md`；架构细则见 `.cursor/skills/seo-saas-platform/`。
 
 ## 阶段
 
-**Phase 4 进行中 — M12 Prompt 版本库已接入**（S3、Logto、E2E 待实现）。
+**Phase 4 进行中 — 产品壳 + 企业配额 + 关键词池 + QuillBot 润色已接入**
 
 ## 已完成
 
-- [x] Monorepo 结构（pnpm workspace）
-- [x] `packages/`：shared-core、platform-sdk、provider-interfaces
-- [x] API 骨架：NestJS + Prisma Schema + Core 模块
-- [x] 平台模块：health、project、auth、billing
-- [x] **P1** Redis + BullMQ 基础设施（`core/redis/`、`core/queue/`）
-- [x] **P1** 事件常量 `article.completed`（`core/event-bus/events.ts`）
-- [x] **P1** Serper Provider + Redis 24h 缓存
-- [x] **P1** LLM Provider（OpenAI 兼容 / DeepSeek）Brief + 初稿 + Prompt 外置
-- [x] **P1** scraper / llm / workflow 模块（M1–M5 编排）
-- [x] **P1** article-job Processor + 创建任务异步入队（202）
-- [x] **P1** 开发种子数据（`pnpm db:seed`）
-- [x] **P2** M6 Semrush：seo-checker + RPA 适配器 + 本地预检循环 + AI 优化
-- [x] **P2** M7 YMYL：`modules/content-review/` + 工作流 `ymyl` 步骤 + 前端警告
-- [x] **P2** M8 内链：`modules/linking/` + `SitePage` 页面库 + 工作流 `linking` 步骤
-- [x] **P2** M9 配图：`modules/illustration/` + BFL Provider + 工作流 `images` 步骤
-- [x] **P3** Auth：`modules/auth/` JWT 登录/刷新 + `AuthGuard` + `@ReqCtx()`
-- [x] **P3** 项目 CRUD：`modules/project/` org 隔离列表/创建/归档
-- [x] **P3** 前端真实登录 + 401 跳转 + 项目创建对话框
-- [x] **P4** M10 导出：`modules/export/` + 本地存储 + 工作流接线 + 前端下载
-- [x] **P4** M11 计费：`modules/billing/` 监听 `article.completed` + 用量 API
-- [x] **P4** 对象存储骨架：`core/storage/`（本地 fallback，S3 SDK 待接）
-- [x] **P4** 启动环境变量校验（INF-003）
-- [x] **P4** M12 Prompt：`modules/prompt/` DB + Redis 1h + CRUD API + 前端管理页
-- [x] 任务 API：批量创建、重试续跑、手动 Semrush 查分、AI 改写
-- [x] 站点 API：列表 + sitemap 采集 + 页面库 sync/list
-- [x] 单元测试：55 项；`cd apps/platform/api && pnpm test`
-- [x] 模块模板：`modules/_template/`
-- [x] Provider 模板：`providers/_template/`
-- [x] Web：pure-admin-thin 接入 monorepo（Layout/登录/权限壳）
-- [x] 平台页面：项目列表（`/platform/projects` → 真实 API）
-- [x] 前端用量页：`/platform/billing`（BILL-006）
-- [x] 前端 Prompt 管理页：`/platform/prompts`（PROMPT-014，ADMIN）
-- [x] Cursor rules + skills
+### 平台与基建
 
-## 未实现（按 Roadmap 顺序）
+- [x] Monorepo（pnpm workspace）+ `packages/`（shared-core、platform-sdk、provider-interfaces）
+- [x] NestJS API + Prisma + Core（guards、exceptions、logger、redis、queue、storage、**按 org 限流**）
+- [x] Prisma migration 历史已与 schema 对齐（`20260614120000_sync_quota_prompt_keyword_cms`，共 8 条）
+- [x] 对象存储：`S3_BUCKET` 配置后走 S3/MinIO，否则 `.data/exports` 本地 fallback
+- [x] E2E 冒烟：`e2e/article-job-smoke.test.mjs`（登录 → 建站点 → 入队 → 状态变更；CI 已接）
+- [x] 开发种子 `pnpm db:seed`；单元测试 **85** 项（`pnpm test`）；E2E `pnpm test:e2e`
+- [x] Auth：自建 JWT 登录/刷新 + **Logto OIDC 回调**（可选）+ `AuthGuard` + `@ReqCtx()` + RBAC（ADMIN / MEMBER）
+- [x] 项目 CRUD（org 隔离）+ 前端真实登录 / 401 跳转 / 项目创建
+- [x] 计费：`article.completed` 事件 → CreditUsage + 用量 API + 前端 `/platform/billing`
+- [x] **BILL-005** 配额：`Organization.monthlyArticleQuota` + `BillingService.assertArticleQuota()`（创建/批量任务前）
+- [x] 组织管理：`modules/organization/` + 前端 `/platform/organization`（套餐名、月配额、成员 CRUD，ADMIN）
+- [x] M12 Prompt：DB + Redis 1h + CRUD + 前端 `/platform/prompts`（ADMIN）
 
-- [ ] Logto/Supabase 外部 IdP 对接（当前为自建 JWT 开发 Auth）
-- [ ] S3 生产存储（`S3_BUCKET` 已预留，当前回退本地 `.data/exports`）
-- [ ] 竞品正文抓取（SCRAPER-002）
-- [ ] Playwright 专用队列 + 浏览器池
-- [x] 租户隔离单测（ArticleJob / Project + 计费幂等）
-- [ ] E2E 测试
-- [ ] 配额检查 Guard（BILL-005、CORE-010）
+### seo-factory 引擎（M1–M12 编排）
 
-## 工作流现状（M1–M11）
+- [x] Serper + Redis 24h 缓存 → Brief + 初稿（Prompt 外置 / DB 热更新）；**竞品页面正文**写入 `serpData.organic[].scraped`
+- [x] M6 Semrush：RPA + **Playwright 专用队列** + **浏览器池复用** + 本地预检循环 + AI 优化（门槛 **9.0**）
+- [x] M8 内链：`SitePage` 页面库 + sitemap 同步 + `linking` 步骤
+- [x] M9 配图：BFL Provider + `images` 步骤
+- [x] **QuillBot 润色**：工作流 `paraphrasing` 步骤 + `modules/paraphrase/` + Prompt `seo_quillbot_v1`；`QUILLBOT_DISABLED=true` 可跳过
+- [x] YMYL：`content-review` + `ymyl` 步骤 + 前端警告 + **待审核队列** `/reviews`
+- [x] M10 导出：HTML / JSON-LD 本地存储 + API 下载 + **zip 资产包**（HTML + images/ + meta.txt）
+- [x] article-job：202 入队、批量创建、失败续跑、手动 Semrush、AI 改写
+- [x] 站点：CRUD + 页面库 sync/list（供内链）
+
+### 产品壳（前端）
+
+- [x] 工作台：`SeoFactoryLayout` + Tab 壳（概览 / 文章任务 / 关键词池 / 站点 / 待审核）
+- [x] `SiteManageView` 站点 CRUD + 页面库
+- [x] `KeywordPoolView` 关键词池（CRUD、导入、优先级、AI 种子、Semrush 指标回填、一键建任务、**批量入队**）
+- [x] `ReviewQueueView` YMYL 人工审核
+- [x] `OrganizationSettingsView` 企业设置
+
+### WordPress CMS（刻意延后产品化）
+
+- [x] **后端**：`Site.cmsType` / `cmsConfig`、`CmsPublishService`、`POST .../publish`
+- [ ] **前端 UI**：已通过 `WORDPRESS_CMS_UI_ENABLED = false` 隐藏（站点 WordPress 配置、任务详情「推送到 WordPress」）
+- 启用方式：改 `apps/platform/web/src/constants/feature-flags.ts` 为 `true`
+
+## 未实现 / 进行中
+
+| 项 | 说明 |
+|----|------|
+| WordPress 产品 UI | 后端就绪，前端 feature flag 关闭（**刻意延后**） |
+
+## 工作流现状（代码真实顺序）
 
 ```
-SERP → Brief → 初稿 → 内链 → 配图 → Semrush 优化 → YMYL → 导出 → COMPLETED → 计费入账
+SERP → Brief → 初稿 → 内链 → 配图 → Semrush 优化 → QuillBot 润色 → YMYL → 导出 → COMPLETED → 计费入账
 ```
 
-| 步骤 | 状态 |
-|------|------|
-| M1–M3 SERP | ✅ |
-| M4–M5 Brief + 初稿 | ✅ |
-| M6 Semrush 优化 | ✅（门槛 9.0） |
-| M7 YMYL | ✅ |
-| M8 内链 | ✅ |
-| M9 配图 | ✅ |
-| M10 导出 | ✅（本地存储 + API 下载；YMYL 阻断可发布 HTML） |
-| M11 计费 | ✅（`article.completed` → CreditUsage） |
-| M12 Prompt | ✅（DB 热更新 + Redis 缓存 + 管理页） |
+| 步骤 | workflow key | 状态 |
+|------|--------------|------|
+| M1–M3 SERP | `serp` | ✅ |
+| M4 Brief | `brief` | ✅ |
+| M5 初稿 | `draft` | ✅ |
+| M8 内链 | `linking` | ✅ |
+| M9 配图 | `images` | ✅ |
+| M6 Semrush | `optimizing` | ✅（≥9.0） |
+| QuillBot | `paraphrasing` | ✅（可 env 跳过） |
+| YMYL | `ymyl` | ✅ |
+| M10 导出 | export 模块 | ✅（本地 + 单文件下载 + zip 资产包） |
+| M11 计费 | `article.completed` | ✅ |
+| M12 Prompt | DB 热更新 | ✅ |
+
+编排常量：`project-types/seo-factory/constants/workflow-resume.ts`
 
 ## 关键路径
 
@@ -76,29 +84,54 @@ SERP → Brief → 初稿 → 内链 → 配图 → Semrush 优化 → YMYL → 
 |------|------|
 | 开发任务清单 | `task.md` |
 | 工作流编排 | `project-types/seo-factory/modules/workflow/` |
-| 导出模块 | `project-types/seo-factory/modules/export/` |
-| 计费模块 | `modules/billing/` |
-| Prompt 模块 | `modules/prompt/` |
-| 对象存储 | `core/storage/` |
-| 内链模块 | `project-types/seo-factory/modules/linking/` |
-| Semrush RPA | `providers/semrush/semrush-rpa.adapter.ts` |
-| 单元测试 | `apps/platform/api/scripts/*.test.mjs`，`pnpm test` |
-| Prisma | `apps/platform/api/prisma/schema.prisma` |
+| QuillBot 润色 | `project-types/seo-factory/modules/paraphrase/` |
+| 关键词池 | `project-types/seo-factory/modules/keyword-pool/` |
+| 组织/配额 | `modules/organization/`、`modules/billing/` |
+| WordPress 发布（API） | `project-types/seo-factory/modules/export/cms-publish.service.ts` |
+| 前端功能开关 | `apps/platform/web/src/constants/feature-flags.ts` |
+| 工作台路由 | `apps/platform/web/src/router/modules/remaining.ts` |
+| 单元测试 | `apps/platform/api/scripts/*.test.mjs` |
+| Prisma migrations | `apps/platform/api/prisma/migrations/`（`pnpm db:deploy`） |
+| 对象存储 | `core/storage/`（`S3_BUCKET` → S3，否则本地） |
 
 ## 本地验证
 
 ```bash
 pnpm docker:up
-pnpm db:migrate
-pnpm db:seed   # 开发账号 admin@dev.local / admin123
+pnpm db:deploy   # 生产/空库；开发见 docs/SETUP.md 漂移修复
+pnpm db:seed
 pnpm dev:api
+pnpm dev:web
 
 # 单元测试
 cd apps/platform/api && pnpm test
+
+# 前端类型检查
+cd apps/platform/web && pnpm exec vue-tsc --noEmit
+
+# E2E 冒烟（需 API + Postgres + Redis + seed）
+pnpm test:e2e
 ```
+
+## 开发账号（seed）
+
+| 角色 | 邮箱 | 密码 |
+|------|------|------|
+| ADMIN | admin@dev.local | admin123 |
+| MEMBER | member@dev.local | member123 |
 
 ## 本地环境
 
-安装与启动详见 **[docs/SETUP.md](SETUP.md)**。
+安装与启动详见 **[docs/SETUP.md](SETUP.md)**。  
+基础设施：Docker PostgreSQL 16（5432）+ Redis 7（6379）。
 
-基础设施：Docker PostgreSQL 16（5432）+ Redis 7（6379）
+## 文档维护约定
+
+| 事件 | 动作 |
+|------|------|
+| 完成功能 | 更新本文件 + `task.md` 对应 `[x]` |
+| 暂缓/隐藏功能 | 在本文件「未实现」写明原因与开关位置 |
+| 工作流变更 | 同步 `workflow-resume.ts` 与本节表格 |
+| 架构决策 | 可选 `docs/adr/ADR-NNN-标题.md` |
+
+*最后更新：2026-06-14*

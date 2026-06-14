@@ -17,6 +17,8 @@ import { UnauthorizedException } from '../../core/exceptions/auth.exception';
 import { ErrorCodes } from '../../core/exceptions/error-codes';
 import { JwtTokenService } from './jwt-token.service';
 import type { LoginDto } from './dto/login.dto';
+import { LogtoAuthService, type LogtoIdentity } from './logto/logto-auth.service';
+import { isLocalLoginAllowed } from './logto/logto.config';
 
 export interface AuthSessionPayload {
   accessToken: string;
@@ -42,9 +44,13 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtTokenService: JwtTokenService,
+    private readonly logtoAuthService: LogtoAuthService,
   ) {}
 
   async login(dto: LoginDto): Promise<AuthSessionPayload> {
+    if (!isLocalLoginAllowed()) {
+      throw new UnauthorizedException(ErrorCodes.UNAUTHORIZED, '本地密码登录已关闭，请使用 Logto 登录');
+    }
     const email = this.resolveLoginEmail(dto.username);
     const user = await this.prisma.user.findFirst({
       where: { email },
@@ -105,7 +111,87 @@ export class AuthService {
     return { ...user, role: user.role as Role };
   }
 
-  /** 开发/首次登录：确保 Organization + User 存在（后期 Logto webhook 复用） */
+  /** Logto 授权码换平台 JWT 会话 */
+  async loginWithLogtoCode(code: string, redirectUri: string): Promise<AuthSessionPayload> {
+    const identity = await this.logtoAuthService.exchangeAuthorizationCode(code, redirectUri);
+    const user = await this.syncUserFromLogto(identity);
+    return this.buildSession(user);
+  }
+
+  /** Logto 首次登录：按 authSubject 关联或创建 User + Organization */
+  async syncUserFromLogto(identity: LogtoIdentity): Promise<{
+    id: string;
+    email: string;
+    name: string | null;
+    organizationId: string;
+    role: PrismaRole;
+  }> {
+    const email = identity.email.trim().toLowerCase();
+
+    const bySubject = await this.prisma.user.findFirst({
+      where: { authSubject: identity.sub },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        organizationId: true,
+        role: true,
+      },
+    });
+    if (bySubject) {
+      return bySubject;
+    }
+
+    const byEmail = await this.prisma.user.findFirst({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        organizationId: true,
+        role: true,
+      },
+    });
+    if (byEmail) {
+      return this.prisma.user.update({
+        where: { id: byEmail.id },
+        data: {
+          authSubject: identity.sub,
+          name: byEmail.name ?? identity.name ?? null,
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          organizationId: true,
+          role: true,
+        },
+      });
+    }
+
+    const org = await this.prisma.organization.create({
+      data: { name: `${email} 的企业` },
+    });
+
+    return this.prisma.user.create({
+      data: {
+        email,
+        name: identity.name ?? email.split('@')[0],
+        organizationId: org.id,
+        role: PrismaRole.ADMIN,
+        authSubject: identity.sub,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        organizationId: true,
+        role: true,
+      },
+    });
+  }
+
+  /** 开发/首次登录：确保 Organization + User 存在（Logto 同步复用 syncUserFromLogto） */
   async ensureUserForEmail(input: {
     email: string;
     name?: string;

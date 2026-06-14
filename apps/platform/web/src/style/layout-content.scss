@@ -1,0 +1,507 @@
+/* 内容区整体设计 — Aurora Light 毛玻璃卡片体系 */
+
+:root {
+  --content-surface: rgb(255 255 255 / 78%);
+  --content-surface-solid: rgb(255 255 255 / 92%);
+  --content-surface-hover: rgb(255 255 255 / 88%);
+  --content-shadow: 0 4px 24px rgb(14 165 233 / 7%);
+  --content-shadow-hover: 0 8px 32px rgb(14 165 233 / 12%);
+  --content-radius: 16px;
+  --content-radius-inner: 12px;
+  --content-blur: blur(16px) saturate(1.3);
+  --content-header-gradient: linear-gradient(
+    90deg,
+    rgb(14 165 233 / 6%) 0%,
+    rgb(6 182 212 / 3%) 50%,
+    transparent 100%
+  );
+}
+
+/* ── 内容主区域 ── */
+.app-main,
+.app-main-nofixed-header {
+  position: relative;
+  background: var(--shell-bg-gradient);
+
+  /* 装饰光晕 */
+  &::before {
+    position: fixed;
+    top: 120px;
+    right: -60px;
+    z-index: 0;
+    width: 280px;
+    height: 280px;
+    pointer-events: none;
+    content: "";
+    background: radial-gradient(
+      circle,
+      rgb(14 165 233 / 8%) 0%,
+      transparent 70%
+    );
+  }
+
+  &::after {
+    position: fixed;
+    bottom: 60px;
+    left: 240px;
+    z-index: 0;
+    width: 200px;
+    height: 200px;
+    pointer-events: none;
+    content: "";
+    background: radial-gradient(
+      circle,
+      rgb(6 182 212 / 6%) 0%,
+      transparent 70%
+    );
+  }
+}
+
+.main-content {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  padding: 16px 20px 20px;
+
+  /* 去掉页面内冗余 p-4（卡片自身有内边距） */
+  > .p-4:has(> .el-card),
+  > .p-4:has(> .el-card + .el-card) {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    padding: 0 !important;
+
+    > .el-card:only-child {
+      flex: 1;
+    }
+  }
+}
+
+/* ── 卡片 ── */
+.main-content .el-card {
+  overflow: hidden;
+  background: var(--content-surface) !important;
+  backdrop-filter: var(--content-blur);
+  -webkit-backdrop-filter: var(--content-blur);
+  border: none !important;
+  border-radius: var(--content-radius) !important;
+  box-shadow: var(--content-shadow);
+  transition:
+    box-shadow 0.25s ease,
+    transform 0.25s ease;
+
+  &:hover {
+    box-shadow: var(--content-shadow-hover);
+  }
+
+  + .el-card {
+    margin-top: 16px;
+  }
+
+  .el-card__header {
+    padding: 16px 20px;
+    background: var(--content-header-gradient);
+    border-bottom: none !important;
+
+    .font-medium,
+    > div > span:first-child {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--shell-text-primary);
+    }
+  }
+
+  .el-card__body {
+    padding: 20px;
+  }
+}
+
+/* 操作指引类卡片 */
+.main-content .ops-guide-card {
+  .el-card__body {
+    padding: 16px 20px;
+  }
+}
+
+/* ── 表格 ── */
+.main-content .el-table {
+  --el-table-border-color: transparent;
+  --el-table-header-bg-color: rgb(14 165 233 / 4%);
+  --el-table-row-hover-bg-color: rgb(14 165 233 / 5%);
+  --el-table-tr-bg-color: transparent;
+
+  overflow: hidden;
+  background: transparent !important;
+  border-radius: var(--content-radius-inner);
+
+  &::before,
+  &::after {
+    display: none;
+  }
+
+  .el-table__inner-wrapper::before {
+    display: none;
+  }
+
+  th.el-table__cell {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--shell-text-secondary);
+    background: var(--el-table-header-bg-color) !important;
+    border-bottom: none !important;
+  }
+
+  td.el-table__cell {
+    border-bottom: none !important;
+  }
+
+  .el-table__body tr {
+    transition: background 0.15s ease;
+
+    &:not(:last-child) td {
+      border-bottom: 1px solid rgb(14 165 233 / 5%) !important;
+    }
+  }
+
+  /* 斑马纹柔和化 */
+  &.el-table--striped .el-table__body tr.el-table__row--striped td {
+    background: rgb(14 165 233 / 2%) !important;
+  }
+}
+
+/* ── 主按钮渐变 ── */
+.main-content .el-button--primary:not(.is-link):not(.is-text) {
+  background: var(--shell-accent-gradient) !important;
+  border: none !important;
+  border-radius: var(--shell-radius-sm);
+  box-shadow: 0 2px 12px rgb(14 165 233 / 25%);
+  transition:
+    box-shadow 0.2s ease,
+    transform 0.15s ease;
+
+  &:hover,
+  &:focus {
+    background: linear-gradient(135deg, #0284c7 0%, #0891b2 50%, #06b6d4 100%) !important;
+    box-shadow: 0 4px 16px rgb(14 165 233 / 35%);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+}
+
+.main-content .el-button--primary.is-link {
+  color: #0ea5e9 !important;
+
+  &:hover {
+    color: #0284c7 !important;
+  }
+}
+
+/* 默认按钮 */
+.main-content .el-button:not(.el-button--primary):not(.is-link):not(.is-text) {
+  border: none;
+  border-radius: var(--shell-radius-sm);
+  background: rgb(255 255 255 / 70%);
+  box-shadow: 0 1px 4px rgb(15 23 42 / 6%);
+  transition:
+    background 0.2s ease,
+    box-shadow 0.2s ease;
+
+  &:hover {
+    background: var(--content-surface-hover);
+    box-shadow: 0 2px 8px rgb(14 165 233 / 10%);
+    color: #0ea5e9;
+  }
+}
+
+/* ── 标签 ── */
+.main-content .el-tag {
+  border: none;
+  border-radius: var(--shell-radius-pill);
+  font-weight: 500;
+
+  &.el-tag--success {
+    background: rgb(16 185 129 / 12%);
+    color: #059669;
+  }
+
+  &.el-tag--warning {
+    background: rgb(245 158 11 / 12%);
+    color: #d97706;
+  }
+
+  &.el-tag--danger {
+    background: rgb(239 68 68 / 12%);
+    color: #dc2626;
+  }
+
+  &.el-tag--info {
+    background: rgb(14 165 233 / 10%);
+    color: #0284c7;
+  }
+}
+
+/* ── 提示框 ── */
+.main-content .el-alert {
+  border: none !important;
+  border-radius: var(--content-radius-inner);
+
+  &.el-alert--info {
+    background: rgb(14 165 233 / 8%);
+  }
+
+  &.el-alert--success {
+    background: rgb(16 185 129 / 8%);
+  }
+
+  &.el-alert--warning {
+    background: rgb(245 158 11 / 8%);
+  }
+
+  &.el-alert--error {
+    background: rgb(239 68 68 / 8%);
+  }
+}
+
+/* ── 统计数字 ── */
+.main-content .el-statistic {
+  padding: 16px 20px;
+  background: rgb(255 255 255 / 60%);
+  border-radius: var(--content-radius-inner);
+  box-shadow: 0 2px 12px rgb(14 165 233 / 5%);
+  transition: box-shadow 0.2s ease;
+
+  &:hover {
+    box-shadow: 0 4px 16px rgb(14 165 233 / 10%);
+  }
+
+  .el-statistic__head {
+    font-size: 13px;
+    color: var(--shell-text-muted);
+  }
+
+  .el-statistic__content {
+    font-weight: 700;
+    color: var(--shell-text-primary);
+  }
+}
+
+/* ── 分页 ── */
+.main-content .el-pagination {
+  .el-pager li {
+    border-radius: var(--shell-radius-sm);
+    transition: all 0.2s ease;
+
+    &.is-active {
+      background: var(--shell-accent-gradient) !important;
+      color: #fff !important;
+      font-weight: 600;
+    }
+
+    &:hover:not(.is-active) {
+      color: #0ea5e9;
+      background: var(--shell-accent-soft);
+    }
+  }
+
+  .btn-prev,
+  .btn-next {
+    border-radius: var(--shell-radius-sm);
+
+    &:hover {
+      color: #0ea5e9;
+    }
+  }
+}
+
+/* ── 空状态 ── */
+.main-content .el-empty {
+  padding: 40px 0;
+
+  .el-empty__description p {
+    color: var(--shell-text-muted);
+  }
+}
+
+/* ── 表单 ── */
+.main-content .el-input__wrapper,
+.main-content .el-select__wrapper,
+.main-content .el-textarea__inner {
+  border-radius: var(--shell-radius-sm) !important;
+  box-shadow: 0 0 0 1px rgb(14 165 233 / 10%) inset !important;
+  transition: box-shadow 0.2s ease;
+
+  &:hover {
+    box-shadow: 0 0 0 1px rgb(14 165 233 / 25%) inset !important;
+  }
+
+  &.is-focus,
+  &:focus {
+    box-shadow:
+      0 0 0 1px #0ea5e9 inset,
+      0 0 0 3px rgb(14 165 233 / 12%) !important;
+  }
+}
+
+.main-content .el-form-item__label {
+  font-weight: 500;
+  color: var(--shell-text-secondary);
+}
+
+/* ── 对话框 ── */
+.el-dialog {
+  border-radius: var(--content-radius) !important;
+  overflow: hidden;
+  border: none !important;
+  box-shadow: var(--content-shadow-hover) !important;
+
+  .el-dialog__header {
+    padding: 18px 24px 12px;
+    margin-right: 0;
+    background: var(--content-header-gradient);
+    border-bottom: none;
+
+    .el-dialog__title {
+      font-weight: 600;
+      color: var(--shell-text-primary);
+    }
+  }
+
+  .el-dialog__body {
+    padding: 20px 24px;
+  }
+
+  .el-dialog__footer {
+    padding: 12px 24px 20px;
+    border-top: none;
+  }
+}
+
+/* ── 页脚 ── */
+.layout-footer {
+  padding: 16px 0 20px;
+  font-size: 13px;
+  color: var(--shell-text-muted);
+
+  a {
+    color: #0ea5e9;
+    font-weight: 500;
+    transition: color 0.2s ease;
+
+    &:hover {
+      color: #0284c7;
+    }
+  }
+}
+
+/* ── 回到顶部 ── */
+.el-backtop {
+  width: 44px !important;
+  height: 44px !important;
+  background: var(--shell-accent-gradient) !important;
+  border-radius: 50% !important;
+  box-shadow: var(--shell-accent-glow) !important;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease !important;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 24px rgb(14 165 233 / 30%) !important;
+  }
+
+  svg {
+    color: #fff;
+  }
+}
+
+/* ── 内容区滚动条 ── */
+.app-main .el-scrollbar__wrap {
+  scrollbar-color: rgb(14 165 233 / 20%) transparent;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgb(14 165 233 / 20%);
+    border-radius: var(--shell-radius-pill);
+
+    &:hover {
+      background: rgb(14 165 233 / 35%);
+    }
+  }
+}
+
+/* ── 描述列表 / Tabs 等 ── */
+.main-content .el-tabs__item {
+  font-weight: 500;
+  color: var(--shell-text-muted);
+  transition: color 0.2s ease;
+
+  &.is-active {
+    color: #0ea5e9;
+    font-weight: 600;
+  }
+
+  &:hover {
+    color: #0ea5e9;
+  }
+}
+
+.main-content .el-tabs__active-bar {
+  background: var(--shell-accent-gradient);
+  border-radius: var(--shell-radius-pill);
+  height: 3px;
+}
+
+.main-content .el-tabs__nav-wrap::after {
+  display: none;
+}
+
+.main-content .el-descriptions {
+  .el-descriptions__label {
+    color: var(--shell-text-muted);
+    font-weight: 500;
+  }
+
+  .el-descriptions__content {
+    color: var(--shell-text-primary);
+  }
+
+  &.is-bordered {
+    border-radius: var(--content-radius-inner);
+    overflow: hidden;
+
+    .el-descriptions__cell {
+      border-color: rgb(14 165 233 / 8%) !important;
+    }
+
+    .el-descriptions__label {
+      background: rgb(14 165 233 / 4%) !important;
+    }
+  }
+}
+
+/* ── 抽屉 ── */
+.el-drawer {
+  .el-drawer__header {
+    padding: 18px 24px 12px;
+    margin-bottom: 0;
+    background: var(--content-header-gradient);
+    border-bottom: none;
+
+    .el-drawer__title {
+      font-weight: 600;
+      color: var(--shell-text-primary);
+    }
+  }
+
+  .el-drawer__body {
+    padding: 20px 24px;
+  }
+}

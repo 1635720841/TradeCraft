@@ -8,10 +8,12 @@
  * - SiteController
  */
 
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import type { RequestContext } from '@wm/shared-core';
 import { ReqCtx } from '../../../../core/decorators/request-context.decorator';
 import { ProjectService } from '../../../../modules/project/project.service';
+import { CreateSiteDto } from './dto/create-site.dto';
+import { UpdateSiteDto } from './dto/update-site.dto';
 import { SiteArticleCrawlerService } from './site-article-crawler.service';
 import { SiteService } from './site.service';
 
@@ -28,6 +30,40 @@ export class SiteController {
     await this.projectService.assertAccessible(ctx.organizationId, projectId);
     const sites = await this.siteService.findMany(ctx.organizationId, projectId);
     return { data: sites, meta: { traceId: ctx.traceId } };
+  }
+
+  @Post()
+  async create(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Body() dto: CreateSiteDto,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const site = await this.siteService.create(ctx.organizationId, projectId, dto);
+    return { data: site, meta: { traceId: ctx.traceId } };
+  }
+
+  @Get(':siteId')
+  async getOne(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('siteId') siteId: string,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const site = await this.siteService.findOne(ctx.organizationId, projectId, siteId);
+    return { data: site, meta: { traceId: ctx.traceId } };
+  }
+
+  @Patch(':siteId')
+  async update(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('siteId') siteId: string,
+    @Body() dto: UpdateSiteDto,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const site = await this.siteService.update(ctx.organizationId, projectId, siteId, dto);
+    return { data: site, meta: { traceId: ctx.traceId } };
   }
 
   @Get(':siteId/seo-articles')

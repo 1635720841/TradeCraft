@@ -42,5 +42,7 @@
 }
 
 @utility navbar-bg-hover {
+  @apply rounded-lg transition-all duration-200;
+  @apply hover:bg-[rgb(14_165_233/8%)]! hover:-translate-y-px;
   @apply dark:text-white dark:hover:bg-[#242424]!;
 }

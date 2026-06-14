@@ -3,12 +3,12 @@
  */
 
 import { Module } from '@nestjs/common';
-import { SeoFactoryProvidersModule } from '../../providers/seo-factory-providers.module';
+import { PlaywrightQueueModule } from '../../playwright-queue.module';
 import { LlmModule } from '../llm/llm.module';
 import { SeoCheckerService } from './seo-checker.service';
 
 @Module({
-  imports: [LlmModule, SeoFactoryProvidersModule],
+  imports: [LlmModule, PlaywrightQueueModule],
   providers: [SeoCheckerService],
   exports: [SeoCheckerService],
 })

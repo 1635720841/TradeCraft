@@ -8,13 +8,12 @@
  * - SeoCheckerService
  */
 
-import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { JobStatus } from '@prisma/client';
 import { scoreLocalSeo, buildLocalScoreGapPlan, type LocalSeoScoreResult } from '@wm/shared-core';
 import {
-  SEO_CHECKER_PROVIDER,
-  type ISeoCheckerProvider,
   type SeoScore,
+  type SeoCheckInput,
 } from '@wm/provider-interfaces';
 import { BusinessException } from '../../../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
@@ -61,6 +60,7 @@ import {
   mergeDraftEnrichments,
 } from '../illustration/draft-enrichment.util';
 import type { InternalLinkRecord } from '../linking/link-match.util';
+import { SemrushQueueService } from '../../services/semrush-queue.service';
 
 interface SerpOrganicRow {
   title?: string;
@@ -96,7 +96,7 @@ export class SeoCheckerService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly llmService: LlmService,
-    @Inject(SEO_CHECKER_PROVIDER) private readonly semrushChecker: ISeoCheckerProvider,
+    private readonly semrushQueue: SemrushQueueService,
     private readonly logger: LoggerService,
   ) {}
 
@@ -323,11 +323,14 @@ export class SeoCheckerService implements OnModuleInit {
         priorOptimizeRounds: countOptimizeRounds(optimizeHistory, 'semrush'),
       });
     } else {
-      semrushResult = await this.semrushChecker.checkScore({
-        content: currentContent,
-        keyword: ctx.targetKeyword,
-        recommendedKeywords,
-      });
+      semrushResult = await this.runSemrushCheck(
+        {
+          content: currentContent,
+          keyword: ctx.targetKeyword,
+          recommendedKeywords,
+        },
+        ctx,
+      );
 
       if (!semrushResult.skipped && !hasOptimizeBaseline(optimizeHistory, 'semrush')) {
         await this.llmService.recordOptimizeSnapshot(ctx, {
@@ -428,11 +431,14 @@ export class SeoCheckerService implements OnModuleInit {
         semrushScore: semrushResult.overall,
         message: `第 ${semrushOptimizeRounds} 轮优化完成，重新 Semrush 终检中…`,
       });
-      const candidateSemrush = await this.semrushChecker.checkScore({
-        content: currentContent,
-        keyword: ctx.targetKeyword,
-        recommendedKeywords: semrushKeywords,
-      });
+      const candidateSemrush = await this.runSemrushCheck(
+        {
+          content: currentContent,
+          keyword: ctx.targetKeyword,
+          recommendedKeywords: semrushKeywords,
+        },
+        ctx,
+      );
       const semrushImproved = candidateSemrush.overall >= bestSemrushScore;
       const semrushPassing = candidateSemrush.overall >= SEMRUSH_PASS_THRESHOLD;
       const localGuard = meetsSemrushLocalGuard(
@@ -806,11 +812,14 @@ export class SeoCheckerService implements OnModuleInit {
       ctx.targetKeyword,
     );
 
-    const semrushResult = await this.semrushChecker.checkScore({
-      content: reconciledContent,
-      keyword: ctx.targetKeyword,
-      recommendedKeywords,
-    });
+    const semrushResult = await this.runSemrushCheck(
+      {
+        content: reconciledContent,
+        keyword: ctx.targetKeyword,
+        recommendedKeywords,
+      },
+      ctx,
+    );
 
     if (semrushResult.skipped) {
       throw new BusinessException(
@@ -1274,6 +1283,13 @@ export class SeoCheckerService implements OnModuleInit {
       semrushCurrentWordCount: semrush.semrushCurrentWordCount,
       semrushReadabilityScore: semrush.semrushReadabilityScore,
     };
+  }
+
+  private runSemrushCheck(input: SeoCheckInput, ctx: LlmJobContext): Promise<SeoScore> {
+    return this.semrushQueue.runCheck(input, {
+      traceId: ctx.traceId,
+      jobId: ctx.jobId,
+    });
   }
 
   private evaluateLocal(

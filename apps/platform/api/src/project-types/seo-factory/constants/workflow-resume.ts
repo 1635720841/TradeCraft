@@ -1,4 +1,4 @@
-/** 工作流步骤：SERP → Brief → 初稿 → 内链 → 配图 → Semrush 优化 → YMYL 审查 */
+/** 工作流步骤：SERP → Brief → 初稿 → 内链 → 配图 → Semrush 优化 → QuillBot → YMYL 审查 */
 import { SEMRUSH_PASS_THRESHOLD } from './seo-score';
 
 export const WORKFLOW_STEPS = [
@@ -8,6 +8,7 @@ export const WORKFLOW_STEPS = [
   'linking',
   'images',
   'optimizing',
+  'paraphrasing',
   'ymyl',
 ] as const;
 
@@ -40,11 +41,21 @@ export function resolveFailedStep(job: {
   status: string;
   briefData: unknown;
   draftData: unknown;
+  seoCheckData?: unknown;
+  semrushScore?: number | null;
 }): WorkflowResumeStep {
   if (job.status === 'RESEARCHING') return 'serp';
   if (job.status === 'LINKING') return 'linking';
   if (job.status === 'ILLUSTRATING') return 'images';
-  if (job.status === 'OPTIMIZING') return 'optimizing';
+  if (job.status === 'OPTIMIZING') {
+    if (
+      !isSemrushOptimizationIncomplete(job.seoCheckData, job.semrushScore) &&
+      !isParaphraseCompleted(job.draftData, job.seoCheckData)
+    ) {
+      return 'paraphrasing';
+    }
+    return 'optimizing';
+  }
   if (job.status === 'REVIEWING') return 'ymyl';
   if (job.status === 'DRAFTING') {
     const brief = job.briefData as { outline?: unknown } | null;
@@ -78,12 +89,14 @@ function inferResumeStepFromData(job: {
     content?: string;
     internalLinksApplied?: boolean;
     imagesApplied?: boolean;
+    paraphraseApplied?: boolean;
   } | null;
 
   if (draft?.content?.trim()) {
     if (!draft.internalLinksApplied) return 'linking';
     if (!draft.imagesApplied) return 'images';
     if (isSemrushOptimizationIncomplete(job.seoCheckData, job.semrushScore)) return 'optimizing';
+    if (!isParaphraseCompleted(job.draftData, job.seoCheckData)) return 'paraphrasing';
     if (!isYmylReviewCompleted(job.seoCheckData)) return 'ymyl';
     return 'ymyl';
   }
@@ -104,6 +117,16 @@ function isSemrushOptimizationIncomplete(seoCheckData: unknown, semrushScore?: n
   if (semrush?.skipped) return false;
   if (semrush?.passed === true) return false;
   return semrushScore < SEMRUSH_PASS_THRESHOLD;
+}
+
+function isParaphraseCompleted(draftData: unknown, seoCheckData: unknown): boolean {
+  const draft = draftData as { paraphraseApplied?: boolean } | null;
+  if (draft?.paraphraseApplied) return true;
+
+  const quillbot = (seoCheckData as { quillbot?: { completedAt?: string; skipped?: boolean } } | null)
+    ?.quillbot;
+  if (quillbot?.skipped) return true;
+  return Boolean(quillbot?.completedAt);
 }
 
 function isYmylReviewCompleted(seoCheckData: unknown): boolean {

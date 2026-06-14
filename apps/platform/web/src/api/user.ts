@@ -61,3 +61,24 @@ export type AuthProfileResult = {
 export const getAuthProfile = () => {
   return http.request<AuthProfileResult>("get", "/api/v1/auth/me");
 };
+
+export type LogtoConfigResult = {
+  success: boolean;
+  data: {
+    enabled: boolean;
+    endpoint: string | null;
+    appId: string | null;
+    redirectUri: string | null;
+    authorizeUrl: string | null;
+  };
+};
+
+/** Logto 登录配置（公开） */
+export const getLogtoConfig = () => {
+  return http.request<LogtoConfigResult>("get", "/api/v1/auth/logto/config");
+};
+
+/** Logto 授权码换平台会话 */
+export const logtoCallback = (data: { code: string; redirectUri: string }) => {
+  return http.request<UserResult>("post", "/api/v1/auth/logto/callback", { data });
+};

@@ -1,5 +1,5 @@
 .el-form-item__label {
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .el-breadcrumb__inner,
@@ -25,21 +25,22 @@
   padding: 0 !important;
 }
 
-/* nprogress 适配 element-plus 的主题色 */
+/* nprogress 适配主题色 — 天青渐变 */
 #nprogress {
   & .bar {
-    background-color: var(--el-color-primary) !important;
+    background: linear-gradient(90deg, #0ea5e9, #06b6d4, #22d3ee) !important;
+    height: 3px !important;
   }
 
   & .peg {
     box-shadow:
-      0 0 10px var(--el-color-primary),
-      0 0 5px var(--el-color-primary) !important;
+      0 0 12px #0ea5e9,
+      0 0 6px #06b6d4 !important;
   }
 
   & .spinner-icon {
-    border-top-color: var(--el-color-primary);
-    border-left-color: var(--el-color-primary);
+    border-top-color: #0ea5e9;
+    border-left-color: #06b6d4;
   }
 }
 

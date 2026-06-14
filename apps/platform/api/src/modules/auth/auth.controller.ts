@@ -15,7 +15,13 @@ import { Public } from '../../core/decorators/public.decorator';
 import type { RequestContext } from '@wm/shared-core';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { LogtoCallbackDto } from './dto/logto-callback.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import {
+  buildLogtoAuthorizeUrl,
+  isLogtoEnabled,
+  readLogtoConfig,
+} from './logto/logto.config';
 
 @Controller('api/v1/auth')
 export class AuthController {
@@ -38,6 +44,35 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async refresh(@Body() dto: RefreshTokenDto) {
     const session = await this.authService.refresh(dto.refreshToken);
+    return {
+      success: true,
+      data: session,
+      meta: { traceId: `tr_auth_${uuidv4()}` },
+    };
+  }
+
+  @Public()
+  @Get('logto/config')
+  async logtoConfig() {
+    const cfg = readLogtoConfig();
+    return {
+      success: true,
+      data: {
+        enabled: isLogtoEnabled(),
+        endpoint: cfg?.endpoint ?? null,
+        appId: cfg?.appId ?? null,
+        redirectUri: cfg?.redirectUri ?? null,
+        authorizeUrl: buildLogtoAuthorizeUrl(),
+      },
+      meta: { traceId: `tr_auth_${uuidv4()}` },
+    };
+  }
+
+  @Public()
+  @Post('logto/callback')
+  @HttpCode(HttpStatus.OK)
+  async logtoCallback(@Body() dto: LogtoCallbackDto) {
+    const session = await this.authService.loginWithLogtoCode(dto.code, dto.redirectUri);
     return {
       success: true,
       data: session,

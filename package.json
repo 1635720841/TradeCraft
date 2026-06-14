@@ -14,7 +14,9 @@
     "docker:logs": "docker compose logs -f",
     "db:generate": "pnpm --filter @wm/platform-api db:generate",
     "db:migrate": "pnpm --filter @wm/platform-api db:migrate",
-    "test:seo": "pnpm --filter @wm/platform-api test:local-seo"
+    "db:deploy": "pnpm --filter @wm/platform-api db:deploy",
+    "test:seo": "pnpm --filter @wm/platform-api test:local-seo",
+    "test:e2e": "pnpm --filter @wm/platform-api test:e2e"
   },
   "engines": {
     "node": ">=20"

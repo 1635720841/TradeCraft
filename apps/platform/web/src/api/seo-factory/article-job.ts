@@ -11,7 +11,10 @@ import type {
   BatchArticleJobsResult,
   CreateArticleJobPayload,
   CreateBatchArticleJobsPayload,
+  CmsPublishResult,
+  PendingReviewItem,
   RewriteArticleJobPayload,
+  SeoFactoryProjectStats,
   WmApiResponse
 } from "./types";
 
@@ -56,6 +59,58 @@ export async function listArticleJobs(
     projectBase(projectId),
     { params: { page, limit } }
   );
+}
+
+/** 项目工作台统计 */
+export async function getSeoFactoryProjectStats(
+  projectId: string
+): Promise<SeoFactoryProjectStats> {
+  const res = await http.request<WmApiResponse<SeoFactoryProjectStats>>(
+    "get",
+    `${projectBase(projectId)}/stats/summary`
+  );
+  return res.data;
+}
+
+/** 待 YMYL 人工审核列表 */
+export async function listPendingReviews(
+  projectId: string,
+  page = 1,
+  limit = 20
+): Promise<WmApiResponse<PendingReviewItem[]>> {
+  return http.request<WmApiResponse<PendingReviewItem[]>>(
+    "get",
+    `${projectBase(projectId)}/reviews/pending`,
+    { params: { page, limit } }
+  );
+}
+
+/** 通过 YMYL 人工审核并触发导出 */
+export async function approveArticleReview(
+  projectId: string,
+  jobId: string,
+  note?: string
+): Promise<ArticleJobItem> {
+  const res = await http.request<WmApiResponse<ArticleJobItem>>(
+    "post",
+    `${projectBase(projectId)}/${jobId}/review/approve`,
+    { data: note ? { note } : {} }
+  );
+  return res.data;
+}
+
+/** 驳回 YMYL 人工审核 */
+export async function rejectArticleReview(
+  projectId: string,
+  jobId: string,
+  note?: string
+): Promise<ArticleJobItem> {
+  const res = await http.request<WmApiResponse<ArticleJobItem>>(
+    "post",
+    `${projectBase(projectId)}/${jobId}/review/reject`,
+    { data: note ? { note } : {} }
+  );
+  return res.data;
 }
 
 /** 任务详情 */
@@ -159,6 +214,18 @@ export async function downloadArticleExportJsonLd(
   return downloadArticleExport(projectId, jobId, "jsonld");
 }
 
+/** 下载 M10 导出资产包 zip（HTML + JSON-LD + images/ + meta.txt） */
+export async function downloadArticleExportPackage(
+  projectId: string,
+  jobId: string
+): Promise<Blob> {
+  return http.request<Blob>(
+    "get",
+    `${projectBase(projectId)}/${jobId}/export/package`,
+    { responseType: "blob" }
+  );
+}
+
 function downloadArticleExport(
   projectId: string,
   jobId: string,
@@ -169,4 +236,18 @@ function downloadArticleExport(
     `${projectBase(projectId)}/${jobId}/export/${kind}`,
     { responseType: "blob" }
   );
+}
+
+/** 发布到站点已配置的 WordPress（默认 draft） */
+export async function publishArticleJob(
+  projectId: string,
+  jobId: string,
+  payload: { status?: "draft" | "publish" } = {}
+): Promise<CmsPublishResult> {
+  const res = await http.request<WmApiResponse<CmsPublishResult>>(
+    "post",
+    `${projectBase(projectId)}/${jobId}/publish`,
+    { data: payload }
+  );
+  return res.data;
 }

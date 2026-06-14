@@ -19,9 +19,9 @@
 wm/
 ├── apps/platform/api/src/
 │   ├── core/              # guards, exceptions, logger, context, event-bus
-│   ├── modules/           # auth, project, billing
+│   ├── modules/           # auth, project, billing, organization
 │   └── project-types/seo-factory/
-│       ├── modules/       # workflow, scraper, llm, seo-checker, export
+│       ├── modules/       # workflow, scraper, llm, seo-checker, export, paraphrase, keyword-pool, linking
 │       ├── providers/     # serper, deepseek, flux
 │       └── processors/    # BullMQ
 ├── apps/platform/web/src/
@@ -52,12 +52,17 @@ interface ISeoCheckerProvider { checkScore(...): Promise<SeoScore>; }
 BullMQ 入队
 → M1-M3: ISerpProvider      SERP + AI Overview
 → M4-M5: ILLMProvider       Brief + 初稿（Prompt 外置，记 prompt_version）
-→ M6:   ISeoCheckerProvider  Semrush ≥9.5 循环优化
-→ M8:   内链植入
-→ M9:   IImageProvider      Flux 配图
-→ M10:  export              HTML/JSON-LD → S3
-→ 事件 ArticleCompletedEvent → M11 计费 → 更新状态
+→ M8:   内链植入            linking（SitePage 页面库）
+→ M9:   IImageProvider      BFL 配图
+→ M6:   ISeoCheckerProvider  Semrush ≥9.0 循环优化
+→ QuillBot: IParaphraseProvider  paraphrasing（QUILLBOT_DISABLED 可跳过）
+→ M7:   YMYL 审查           ymyl（requires_human_review）
+→ M10:  export              HTML/JSON-LD → 本地/S3
+→ 事件 article.completed → M11 计费 → COMPLETED
+→ M12: PromptTemplate DB 热更新
 ```
+
+**WordPress CMS**：后端 `CmsPublishService` + `POST .../publish` 已实现；前端 `WORDPRESS_CMS_UI_ENABLED=false` 隐藏，产品化见 task.md CMS-002。
 
 - 编排器 `workflow/` 只调度，各步骤独立 Module
 - 主流程完成只抛事件，计费/通知由 EventEmitter2 监听

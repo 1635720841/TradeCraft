@@ -13,6 +13,16 @@
 
       <el-tabs v-model="activeTab">
         <el-tab-pane label="单条关键词" name="single">
+          <el-alert
+            v-if="!sitesLoading && sites.length === 0"
+            class="mt-2 mb-4"
+            type="warning"
+            :closable="false"
+            show-icon
+            title="请先创建站点"
+            description="文章任务必须绑定站点；请前往「站点管理」新建站点后再提交。"
+          />
+
           <el-form
             ref="singleFormRef"
             :model="singleForm"
@@ -21,7 +31,7 @@
             class="mt-2"
             @submit.prevent
           >
-            <!-- <el-form-item label="目标站点" prop="siteId">
+            <el-form-item label="目标站点" prop="siteId">
               <el-select
                 v-model="singleForm.siteId"
                 placeholder="请选择站点"
@@ -35,7 +45,7 @@
                   :value="site.id"
                 />
               </el-select>
-            </el-form-item> -->
+            </el-form-item>
 
             <el-form-item label="目标关键词" prop="targetKeyword">
               <el-input
@@ -83,7 +93,7 @@
             class="mt-2"
             @submit.prevent
           >
-            <!-- <el-form-item label="目标站点" prop="siteId">
+            <el-form-item label="目标站点" prop="siteId">
               <el-select
                 v-model="batchForm.siteId"
                 placeholder="请选择站点"
@@ -98,7 +108,7 @@
                   :value="site.id"
                 />
               </el-select>
-            </el-form-item> -->
+            </el-form-item>
 
             <el-form-item label="输出语言">
               <el-select v-model="batchForm.contentLanguage" class="w-full">

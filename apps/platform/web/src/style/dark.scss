@@ -28,6 +28,41 @@ html.dark {
   .app-main,
   .app-main-nofixed-header {
     background: #020409 !important;
+
+    &::before,
+    &::after {
+      display: none;
+    }
+  }
+
+  .main-content .el-card {
+    background: var(--el-bg-color) !important;
+    backdrop-filter: none;
+    box-shadow: 0 4px 16px rgb(0 0 0 / 20%);
+  }
+
+  .main-content .el-table {
+    --el-table-header-bg-color: rgb(255 255 255 / 4%);
+    --el-table-row-hover-bg-color: rgb(255 255 255 / 6%);
+  }
+
+  .main-content .el-button:not(.el-button--primary):not(.is-link):not(.is-text) {
+    background: rgb(255 255 255 / 6%);
+    box-shadow: none;
+
+    &:hover {
+      background: rgb(255 255 255 / 10%);
+    }
+  }
+
+  .main-content .el-statistic {
+    background: rgb(255 255 255 / 4%);
+    box-shadow: none;
+  }
+
+  .main-content .el-input__wrapper,
+  .main-content .el-select__wrapper {
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 10%) inset !important;
   }
 
   /* 标签页 */

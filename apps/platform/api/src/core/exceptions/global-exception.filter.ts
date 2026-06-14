@@ -141,6 +141,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     if (status === HttpStatus.FORBIDDEN) return ErrorCodes.FORBIDDEN;
     if (status === HttpStatus.NOT_FOUND) return ErrorCodes.NOT_FOUND;
     if (status === HttpStatus.BAD_REQUEST) return ErrorCodes.VALIDATION_ERROR;
+    if (status === HttpStatus.TOO_MANY_REQUESTS) return ErrorCodes.RATE_LIMIT_EXCEEDED;
     return ErrorCodes.UNKNOWN;
   }
 

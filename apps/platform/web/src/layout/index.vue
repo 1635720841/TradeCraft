@@ -132,14 +132,7 @@ const LayHeader = defineComponent({
     return h(
       "div",
       {
-        class: { "fixed-header": set.fixedHeader },
-        style: [
-          set.hideTabs && layout.value.includes("horizontal")
-            ? isDark.value
-              ? "box-shadow: 0 1px 4px #0d0d0d"
-              : "box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08)"
-            : ""
-        ]
+        class: { "fixed-header": set.fixedHeader }
       },
       {
         default: () => [
@@ -227,8 +220,9 @@ const LayHeader = defineComponent({
   z-index: 2001;
   width: 100%;
   height: 100%;
-  background: #000;
-  opacity: 0.3;
+  background: rgb(15 23 42 / 30%);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
 .re-screen {

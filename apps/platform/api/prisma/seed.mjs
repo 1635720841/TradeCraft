@@ -15,8 +15,11 @@ const MVP_ORGANIZATION_ID = '00000000-0000-4000-8000-000000000001';
 const MVP_PROJECT_ID = '00000000-0000-4000-8000-000000000002';
 const MVP_SITE_ID = '00000000-0000-4000-8000-000000000003';
 const MVP_USER_ID = '00000000-0000-4000-8000-000000000004';
+const MVP_MEMBER_USER_ID = '00000000-0000-4000-8000-000000000005';
 const DEV_USER_EMAIL = 'admin@dev.local';
 const DEV_USER_PASSWORD = 'admin123';
+const DEV_MEMBER_EMAIL = 'member@dev.local';
+const DEV_MEMBER_PASSWORD = 'member123';
 
 const PROMPT_LABELS = {
   seo_brief_v1: 'SEO Brief v1',
@@ -26,6 +29,9 @@ const PROMPT_LABELS = {
   seo_optimize_v3: 'SEO 优化 v3',
   seo_optimize_semrush_v1: 'Semrush 优化 v1',
   seo_rewrite_v1: 'AI 改写 v1',
+  seo_keyword_seed_v1: '关键词种子 v1',
+  seo_quillbot_v1: 'QuillBot 优化 v1',
+  seo_quillbot_validate_v1: 'QuillBot 复检 v1',
 };
 
 const PROMPT_DEFAULT_BINDINGS = {
@@ -34,6 +40,9 @@ const PROMPT_DEFAULT_BINDINGS = {
   localOptimize: 'seo_optimize_v3',
   semrushOptimize: 'seo_optimize_semrush_v1',
   rewrite: 'seo_rewrite_v1',
+  keywordSeed: 'seo_keyword_seed_v1',
+  quillbot: 'seo_quillbot_v1',
+  quillbotValidate: 'seo_quillbot_validate_v1',
 };
 
 /** 旧版开发种子 ID（已废弃，仅清理 legacy） */
@@ -67,8 +76,16 @@ async function resetMvpDevData() {
 async function ensureMvpDevData() {
   await prisma.organization.upsert({
     where: { id: MVP_ORGANIZATION_ID },
-    create: { id: MVP_ORGANIZATION_ID, name: 'MVP 开发企业' },
-    update: {},
+    create: {
+      id: MVP_ORGANIZATION_ID,
+      name: 'MVP 开发企业',
+      planName: 'trial',
+      monthlyArticleQuota: 100,
+    },
+    update: {
+      planName: 'trial',
+      monthlyArticleQuota: 100,
+    },
   });
 
   await prisma.user.upsert({
@@ -86,6 +103,24 @@ async function ensureMvpDevData() {
       passwordHash: hashPassword(DEV_USER_PASSWORD),
       organizationId: MVP_ORGANIZATION_ID,
       role: 'ADMIN',
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { email: DEV_MEMBER_EMAIL },
+    create: {
+      id: MVP_MEMBER_USER_ID,
+      email: DEV_MEMBER_EMAIL,
+      name: '开发成员',
+      passwordHash: hashPassword(DEV_MEMBER_PASSWORD),
+      organizationId: MVP_ORGANIZATION_ID,
+      role: 'MEMBER',
+    },
+    update: {
+      name: '开发成员',
+      passwordHash: hashPassword(DEV_MEMBER_PASSWORD),
+      organizationId: MVP_ORGANIZATION_ID,
+      role: 'MEMBER',
     },
   });
 

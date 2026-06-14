@@ -14,6 +14,7 @@ import { CoreModule } from './core/core.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { HealthModule } from './modules/health/health.module';
+import { OrganizationModule } from './modules/organization/organization.module';
 import { PromptModule } from './modules/prompt/prompt.module';
 import { ProjectModule } from './modules/project/project.module';
 import { SeoFactoryModule } from './project-types/seo-factory/seo-factory.module';
@@ -25,6 +26,7 @@ import { SeoFactoryModule } from './project-types/seo-factory/seo-factory.module
     AuthModule,
     BillingModule,
     HealthModule,
+    OrganizationModule,
     PromptModule,
     ProjectModule,
     SeoFactoryModule,

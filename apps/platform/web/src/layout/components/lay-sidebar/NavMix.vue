@@ -64,7 +64,7 @@ watch(
   <div
     v-if="device !== 'mobile'"
     v-loading="usePermissionStoreHook().wholeMenus.length === 0"
-    class="horizontal-header"
+    class="horizontal-header shell-header"
   >
     <el-menu
       ref="menuRef"
@@ -103,7 +103,7 @@ watch(
       <!-- 国际化 -->
       <el-dropdown id="header-translation" trigger="click">
         <GlobalizationIcon
-          class="navbar-bg-hover w-[40px] h-[48px] p-[11px] cursor-pointer outline-hidden"
+          class="navbar-bg-hover w-[40px] h-[40px] p-[10px] cursor-pointer outline-hidden"
         />
         <template #dropdown>
           <el-dropdown-menu class="translation">

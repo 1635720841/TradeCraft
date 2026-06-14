@@ -13,7 +13,12 @@ import { StorageService } from '../../../../core/storage/storage.service';
 import { BusinessException } from '../../../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { canPublishArticle } from '../content-review/ymyl-detect.util';
+import type { ArticleImageRecord } from '../illustration/article-image.util';
 import { buildArticleJsonLd } from './article-json-ld.util';
+import {
+  buildExportPackageZip,
+  slugifyExportBaseName,
+} from './export-package.util';
 import {
   buildExportHtmlDocument,
   buildExportHtmlUrl,
@@ -162,5 +167,84 @@ export class ExportService {
     }
 
     return stored;
+  }
+
+  async buildExportPackage(
+    organizationId: string,
+    projectId: string,
+    jobId: string,
+  ): Promise<{ buffer: Buffer; fileName: string; imageCount: number }> {
+    const job = await this.prisma.articleJob.findFirst({
+      where: { id: jobId, organizationId, projectId },
+      include: { site: { select: { domain: true } } },
+    });
+
+    if (!job) {
+      throw new BusinessException(ErrorCodes.JOB_NOT_FOUND, '任务不存在');
+    }
+
+    if (!job.outputUrl) {
+      throw new BusinessException(ErrorCodes.NOT_FOUND, '导出文件不存在');
+    }
+
+    if (!canPublishArticle(job.seoCheckData)) {
+      throw new BusinessException(
+        ErrorCodes.VALIDATION_ERROR,
+        'YMYL 需人工审核，暂不可下载可发布资产包',
+      );
+    }
+
+    const [htmlFile, jsonLdFile] = await Promise.all([
+      this.getExportObject(organizationId, projectId, jobId, 'html'),
+      this.getExportObject(organizationId, projectId, jobId, 'jsonld'),
+    ]);
+
+    let manifestText: string | undefined;
+    try {
+      const manifestFile = await this.getExportObject(organizationId, projectId, jobId, 'manifest');
+      manifestText = manifestFile.body.toString('utf8');
+    } catch {
+      manifestText = undefined;
+    }
+
+    const briefData = job.briefData as {
+      title?: string;
+      metaDescription?: string;
+    } | null;
+    const draftData = job.draftData as {
+      title?: string;
+      metaDescription?: string;
+      content?: string;
+      articleImages?: ArticleImageRecord[];
+    } | null;
+
+    const title = draftData?.title ?? briefData?.title ?? job.targetKeyword;
+    const metaDescription = draftData?.metaDescription ?? briefData?.metaDescription;
+    const exportedAt = new Date().toISOString();
+
+    const result = await buildExportPackageZip({
+      targetKeyword: job.targetKeyword,
+      title,
+      metaDescription,
+      siteDomain: job.site.domain,
+      exportedAt,
+      html: htmlFile.body.toString('utf8'),
+      jsonLdText: jsonLdFile.body.toString('utf8'),
+      manifestText,
+      articleImages: draftData?.articleImages,
+      contentMarkdown: draftData?.content,
+    });
+
+    this.logger.info('Export package built', {
+      jobId,
+      organizationId,
+      projectId,
+      action: 'export.package_built',
+      fileName: result.fileName,
+      imageCount: result.imageCount,
+      baseName: slugifyExportBaseName(job.targetKeyword),
+    });
+
+    return result;
   }
 }

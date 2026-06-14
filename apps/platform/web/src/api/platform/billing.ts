@@ -26,6 +26,17 @@ export interface BillingUsageListResult {
   pagination: WmPaginationMeta;
 }
 
+export interface QuotaSummary {
+  planName: string;
+  monthlyQuota: number;
+  usedThisMonth: number;
+  inFlightJobs: number;
+  reservedTotal: number;
+  remaining: number;
+  periodStart: string;
+  periodEnd: string;
+}
+
 /** 获取企业用量记录（分页） */
 export async function listBillingUsage(
   page = 1,
@@ -42,4 +53,13 @@ export async function listBillingUsage(
     total: res.data?.length ?? 0
   };
   return { items: res.data ?? [], pagination };
+}
+
+/** 获取本月文章配额摘要 */
+export async function getBillingQuota(): Promise<QuotaSummary> {
+  const res = await http.request<WmApiResponse<QuotaSummary>>(
+    "get",
+    "/api/v1/platform/billing/quota"
+  );
+  return res.data;
 }

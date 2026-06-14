@@ -23,8 +23,14 @@ import type {
   DraftInput,
   DraftOutput,
   ILLMProvider,
+  KeywordSeedInput,
+  KeywordSeedOutput,
   OptimizeInput,
   OptimizeOutput,
+  ParaphraseInput,
+  ParaphraseOutput,
+  ParaphraseValidateInput,
+  ParaphraseValidateOutput,
   RewriteInput,
   RewriteOutput,
 } from '@wm/provider-interfaces';
@@ -233,6 +239,109 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
       : undefined;
 
     return { content, promptVersion, changesSummary, warnings };
+  }
+
+  async generateKeywordSeeds(input: KeywordSeedInput): Promise<KeywordSeedOutput> {
+    const promptVersion = await this.loadPromptVersion('keywordSeed');
+    const template = await this.promptLoader.load(promptVersion);
+    const count = Math.min(Math.max(input.count ?? 15, 5), 30);
+    const contentLanguage = normalizeContentLanguage(input.contentLanguage);
+
+    const userContent = this.fillTemplate(template, {
+      siteDomain: input.siteDomain,
+      targetMarket: input.targetMarket?.trim() || 'Global',
+      outputLanguage: getContentLanguageLabel(contentLanguage),
+      brandVoice: input.brandVoice ?? defaultBrandVoice(contentLanguage),
+      topicHint: input.topicHint?.trim() || '（无额外主题约束，按站点整体定位扩展）',
+      count: String(count),
+    });
+
+    const parsed = await this.chatJson<{ keywords?: KeywordSeedOutput['keywords'] }>(
+      userContent,
+      'generateKeywordSeeds',
+      resolveLlmSampling('default'),
+      'default',
+    );
+
+    const keywords = Array.isArray(parsed.keywords)
+      ? parsed.keywords
+          .filter(
+            (item): item is KeywordSeedOutput['keywords'][number] =>
+              typeof item?.keyword === 'string' && item.keyword.trim().length >= 2,
+          )
+          .slice(0, count)
+      : [];
+
+    if (keywords.length === 0) {
+      throw new BusinessException(ErrorCodes.EXTERNAL_API_ERROR, 'AI 未返回有效关键词，请重试');
+    }
+
+    return { keywords, promptVersion };
+  }
+
+  async generateParaphrase(input: ParaphraseInput): Promise<ParaphraseOutput> {
+    const promptVersion = await this.loadPromptVersion('quillbot');
+    const template = await this.promptLoader.load(promptVersion);
+    const contentLanguage = normalizeContentLanguage(input.contentLanguage);
+    const protectedTerms =
+      input.protectedTerms?.filter(Boolean).join(', ') || '(none — preserve existing terminology)';
+
+    const userContent = this.fillTemplate(template, {
+      keyword: input.keyword,
+      outputLanguage: getContentLanguageLabel(contentLanguage),
+      brandVoice: input.brandVoice ?? defaultBrandVoice(contentLanguage),
+      protectedTerms,
+      content: input.content,
+    });
+
+    const parsed = await this.chatJson<{
+      content?: string;
+      changesSummary?: string[];
+      warnings?: string[];
+    }>(userContent, 'generateParaphrase', resolveLlmSampling('optimize'), 'rewrite');
+
+    const content = typeof parsed.content === 'string' ? parsed.content : input.content;
+    const changesSummary = Array.isArray(parsed.changesSummary)
+      ? parsed.changesSummary.filter((item): item is string => typeof item === 'string')
+      : undefined;
+    const warnings = Array.isArray(parsed.warnings)
+      ? parsed.warnings.filter((item): item is string => typeof item === 'string')
+      : undefined;
+
+    return { content, promptVersion, changesSummary, warnings };
+  }
+
+  async validateParaphrase(input: ParaphraseValidateInput): Promise<ParaphraseValidateOutput> {
+    const promptVersion = await this.loadPromptVersion('quillbotValidate');
+    const template = await this.promptLoader.load(promptVersion);
+    const contentLanguage = normalizeContentLanguage(input.contentLanguage);
+    const protectedTerms =
+      input.protectedTerms?.filter(Boolean).join(', ') || '(none)';
+
+    const userContent = this.fillTemplate(template, {
+      keyword: input.keyword,
+      outputLanguage: getContentLanguageLabel(contentLanguage),
+      protectedTerms,
+      originalContent: input.originalContent,
+      paraphrasedContent: input.paraphrasedContent,
+    });
+
+    const parsed = await this.chatJson<{ passed?: boolean; warnings?: string[] }>(
+      userContent,
+      'validateParaphrase',
+      resolveLlmSampling('default'),
+      'default',
+    );
+
+    const warnings = Array.isArray(parsed.warnings)
+      ? parsed.warnings.filter((item): item is string => typeof item === 'string')
+      : [];
+
+    return {
+      passed: parsed.passed !== false,
+      warnings,
+      promptVersion,
+    };
   }
 
   private buildPromptVars(input: {

@@ -4,8 +4,9 @@ import Motion from "./utils/motion";
 import { useRouter } from "vue-router";
 import { message } from "@/utils/message";
 import { loginRules } from "./utils/rule";
-import { ref, reactive, toRaw } from "vue";
+import { ref, reactive, toRaw, onMounted } from "vue";
 import { debounce } from "@pureadmin/utils";
+import { getLogtoConfig, type LogtoConfigResult } from "@/api/user";
 import { useNav } from "@/layout/hooks/useNav";
 import { useEventListener } from "@vueuse/core";
 import type { FormInstance } from "element-plus";
@@ -47,6 +48,28 @@ const ruleForm = reactive({
   username: "admin@dev.local",
   password: "admin123"
 });
+
+const logtoConfig = ref<LogtoConfigResult["data"] | null>(null);
+
+onMounted(async () => {
+  try {
+    const res = await getLogtoConfig();
+    if (res?.success && res.data?.enabled) {
+      logtoConfig.value = res.data;
+    }
+  } catch {
+    // Logto 未配置时忽略
+  }
+});
+
+const onLogtoLogin = () => {
+  const url = logtoConfig.value?.authorizeUrl;
+  if (!url) {
+    message("Logto 未配置", { type: "warning" });
+    return;
+  }
+  window.location.href = url;
+};
 
 const onLogin = async (formEl: FormInstance | undefined) => {
   if (!formEl) return;
@@ -209,6 +232,13 @@ useEventListener(document, "keydown", ({ code }) => {
                 @click="onLogin(ruleFormRef)"
               >
                 {{ t("login.pureLogin") }}
+              </el-button>
+            </Motion>
+
+            <Motion v-if="logtoConfig?.enabled" :delay="300">
+              <el-divider>或</el-divider>
+              <el-button class="w-full" size="default" @click="onLogtoLogin">
+                使用 Logto 登录
               </el-button>
             </Motion>
           </el-form>

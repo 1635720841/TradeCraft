@@ -8,6 +8,8 @@ import type {
   SiteItem,
   SitePageItem,
   SitePageSyncResult,
+  CreateSitePayload,
+  UpdateSitePayload,
   WmApiResponse
 } from "./types";
 
@@ -18,6 +20,33 @@ export async function listSites(projectId: string): Promise<SiteItem[]> {
     `/api/v1/projects/${projectId}/sites`
   );
   return res.data ?? [];
+}
+
+/** 创建站点 */
+export async function createSite(
+  projectId: string,
+  payload: CreateSitePayload
+): Promise<SiteItem> {
+  const res = await http.request<WmApiResponse<SiteItem>>(
+    "post",
+    `/api/v1/projects/${projectId}/sites`,
+    { data: payload }
+  );
+  return res.data;
+}
+
+/** 更新站点 */
+export async function updateSite(
+  projectId: string,
+  siteId: string,
+  payload: UpdateSitePayload
+): Promise<SiteItem> {
+  const res = await http.request<WmApiResponse<SiteItem>>(
+    "patch",
+    `/api/v1/projects/${projectId}/sites/${siteId}`,
+    { data: payload }
+  );
+  return res.data;
 }
 
 /** 预览站点采集到的 SEO 文章（sitemap） */

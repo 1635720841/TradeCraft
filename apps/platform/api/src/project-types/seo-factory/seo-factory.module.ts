@@ -11,22 +11,26 @@
 import { Module } from '@nestjs/common';
 import { ArticleJobModule } from './modules/article-job/article-job.module';
 import { ExportModule } from './modules/export/export.module';
+import { KeywordPoolModule } from './modules/keyword-pool/keyword-pool.module';
 import { LinkingModule } from './modules/linking/linking.module';
 import { SiteModule } from './modules/site/site.module';
 import { WorkflowModule } from './modules/workflow/workflow.module';
 import { ArticleJobProcessor } from './processors/article-job.processor';
+import { PlaywrightQueueModule } from './playwright-queue.module';
 import { SeoFactoryProvidersModule } from './providers/seo-factory-providers.module';
 import { SeoFactoryQueueModule } from './seo-factory-queue.module';
 
 @Module({
   imports: [
     SeoFactoryQueueModule,
+    PlaywrightQueueModule,
     SeoFactoryProvidersModule,
     WorkflowModule,
     SiteModule,
     LinkingModule,
     ArticleJobModule,
     ExportModule,
+    KeywordPoolModule,
   ],
   providers: [ArticleJobProcessor],
 })

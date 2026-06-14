@@ -7,7 +7,10 @@ export type PromptRuntimeSlotId =
   | 'draft'
   | 'localOptimize'
   | 'semrushOptimize'
-  | 'rewrite';
+  | 'rewrite'
+  | 'keywordSeed'
+  | 'quillbot'
+  | 'quillbotValidate';
 
 export const PROMPT_RUNTIME_SLOT_IDS: PromptRuntimeSlotId[] = [
   'brief',
@@ -15,6 +18,9 @@ export const PROMPT_RUNTIME_SLOT_IDS: PromptRuntimeSlotId[] = [
   'localOptimize',
   'semrushOptimize',
   'rewrite',
+  'keywordSeed',
+  'quillbot',
+  'quillbotValidate',
 ];
 
 /** 种子 / 兜底默认版本 */
@@ -24,6 +30,9 @@ export const PROMPT_DEFAULT_VERSIONS: Record<PromptRuntimeSlotId, string> = {
   localOptimize: 'seo_optimize_v3',
   semrushOptimize: 'seo_optimize_semrush_v1',
   rewrite: 'seo_rewrite_v1',
+  keywordSeed: 'seo_keyword_seed_v1',
+  quillbot: 'seo_quillbot_v1',
+  quillbotValidate: 'seo_quillbot_validate_v1',
 };
 
 export interface PromptSlotMetadata {
@@ -105,6 +114,46 @@ export const PROMPT_SLOT_METADATA: PromptSlotMetadata[] = [
     placeholders: ['{{keyword}}', '{{instruction}}', '{{content}}', '{{briefSummary}}'],
     sortOrder: 5,
     versionPrefix: 'seo_rewrite_',
+  },
+  {
+    id: 'keywordSeed',
+    label: '关键词种子生成',
+    shortLabel: '关键词种子',
+    workflowStep: 'M2',
+    trigger: '运营在关键词池点击「AI 生成种子词」',
+    uiLocation: 'SEO 工厂 → 关键词池',
+    placeholders: [
+      '{{siteDomain}}',
+      '{{targetMarket}}',
+      '{{outputLanguage}}',
+      '{{brandVoice}}',
+      '{{topicHint}}',
+      '{{count}}',
+    ],
+    sortOrder: 6,
+    versionPrefix: 'seo_keyword_seed_',
+  },
+  {
+    id: 'quillbot',
+    label: 'QuillBot 原创表达优化',
+    shortLabel: 'QuillBot',
+    workflowStep: 'M7',
+    trigger: 'Semrush 优化完成后自动执行',
+    uiLocation: 'SEO 任务详情 → 初稿预览',
+    placeholders: ['{{keyword}}', '{{outputLanguage}}', '{{brandVoice}}', '{{protectedTerms}}', '{{content}}'],
+    sortOrder: 7,
+    versionPrefix: 'seo_quillbot_',
+  },
+  {
+    id: 'quillbotValidate',
+    label: 'QuillBot 改写复检',
+    shortLabel: 'QuillBot 复检',
+    workflowStep: 'M7',
+    trigger: 'QuillBot 改写完成后自动执行',
+    uiLocation: 'SEO 任务详情 → 初稿预览',
+    placeholders: ['{{keyword}}', '{{originalContent}}', '{{paraphrasedContent}}'],
+    sortOrder: 8,
+    versionPrefix: 'seo_quillbot_validate_',
   },
 ];
 

@@ -31,7 +31,7 @@ const { t, locale, translationCh, translationEn } = useTranslationLang();
 </script>
 
 <template>
-  <div class="navbar bg-[#fff] shadow-xs shadow-[rgba(0,21,41,0.08)]">
+  <div class="navbar shell-navbar">
     <LaySidebarTopCollapse
       v-if="device === 'mobile'"
       class="hamburger-container"
@@ -52,7 +52,7 @@ const { t, locale, translationCh, translationEn } = useTranslationLang();
       <!-- 国际化 -->
       <el-dropdown id="header-translation" trigger="click">
         <GlobalizationIcon
-          class="navbar-bg-hover w-[40px] h-[48px] p-[11px] cursor-pointer outline-hidden"
+          class="shell-action-btn w-[40px] h-[52px] p-[11px] cursor-pointer outline-hidden"
         />
         <template #dropdown>
           <el-dropdown-menu class="translation">
@@ -87,7 +87,7 @@ const { t, locale, translationCh, translationEn } = useTranslationLang();
       <LayNotice id="header-notice" />
       <!-- 退出登录 -->
       <el-dropdown trigger="click">
-        <span class="el-dropdown-link navbar-bg-hover select-none">
+        <span class="el-dropdown-link shell-user-pill select-none">
           <img :src="userAvatar" :style="avatarsStyle" />
           <p v-if="username" class="dark:text-white">{{ username }}</p>
         </span>
@@ -104,7 +104,7 @@ const { t, locale, translationCh, translationEn } = useTranslationLang();
         </template>
       </el-dropdown>
       <span
-        class="set-icon navbar-bg-hover"
+        class="set-icon shell-action-btn"
         :title="t('buttons.pureOpenSystemSet')"
         @click="onPanel"
       >
@@ -117,13 +117,13 @@ const { t, locale, translationCh, translationEn } = useTranslationLang();
 <style lang="scss" scoped>
 .navbar {
   width: 100%;
-  height: 48px;
+  height: 52px;
   overflow: hidden;
 
   .hamburger-container {
     float: left;
     height: 100%;
-    line-height: 48px;
+    line-height: 52px;
     cursor: pointer;
   }
 
@@ -132,33 +132,35 @@ const { t, locale, translationCh, translationEn } = useTranslationLang();
     align-items: center;
     justify-content: flex-end;
     min-width: 280px;
-    height: 48px;
-    color: #000000d9;
+    height: 52px;
+    color: var(--shell-text-primary);
 
     .el-dropdown-link {
       display: flex;
       align-items: center;
       justify-content: space-around;
-      height: 48px;
-      padding: 10px;
-      color: #000000d9;
+      height: auto;
+      padding: 4px 12px 4px 4px;
+      color: var(--shell-text-primary);
       cursor: pointer;
 
       p {
-        font-size: 14px;
+        font-size: 13px;
+        font-weight: 500;
       }
 
       img {
-        width: 22px;
-        height: 22px;
+        width: 28px;
+        height: 28px;
         border-radius: 50%;
+        box-shadow: 0 0 0 2px rgb(14 165 233 / 20%);
       }
     }
   }
 
   .breadcrumb-container {
     float: left;
-    margin-left: 16px;
+    margin-left: 20px;
   }
 }
 

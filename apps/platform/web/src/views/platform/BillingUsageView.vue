@@ -19,8 +19,28 @@
         type="info"
         :closable="false"
         show-icon
-        title="文章任务完成（COMPLETED）后自动记入用量；当前按篇计费占位，费用字段待后续套餐接入。"
+        title="文章任务完成（COMPLETED）后自动记入用量；创建任务时会预占配额（含进行中任务）。"
       />
+
+      <el-card v-if="quota" shadow="never" class="mb-4">
+        <template #header>
+          <span class="font-medium">本月配额</span>
+        </template>
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-4 mb-3">
+          <el-statistic title="套餐">
+            <template #default>
+              {{ dictLabel(planNameDict, quota.planName) }}
+            </template>
+          </el-statistic>
+          <el-statistic title="月配额" :value="quota.monthlyQuota" suffix="篇" />
+          <el-statistic title="已占用" :value="quota.reservedTotal" suffix="篇" />
+          <el-statistic title="剩余" :value="quota.remaining" suffix="篇" />
+        </div>
+        <el-progress
+          :percentage="quotaPercent"
+          :status="quotaPercent >= 90 ? 'exception' : undefined"
+        />
+      </el-card>
 
       <div class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <el-statistic title="记录总数" :value="total" />
@@ -82,16 +102,20 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import {
+  getBillingQuota,
   listBillingUsage,
-  type CreditUsageItem
+  type CreditUsageItem,
+  type QuotaSummary
 } from "@/api/platform/billing";
 import { billingServiceTypeDict } from "@/constants/dicts/billing";
+import { planNameDict } from "@/constants/dicts/platform";
 import { dictLabel, dictTagType } from "@/utils/dict";
 
 defineOptions({ name: "BillingUsageView" });
 
 const loading = ref(false);
 const items = ref<CreditUsageItem[]>([]);
+const quota = ref<QuotaSummary | null>(null);
 const page = ref(1);
 const limit = ref(20);
 const total = ref(0);
@@ -104,6 +128,14 @@ const pageEstimatedCost = computed(() =>
   items.value.reduce((sum, row) => sum + (row.estimatedCost ?? 0), 0)
 );
 
+const quotaPercent = computed(() => {
+  if (!quota.value?.monthlyQuota) return 0;
+  return Math.min(
+    100,
+    Math.round((quota.value.reservedTotal / quota.value.monthlyQuota) * 100)
+  );
+});
+
 function formatTime(iso: string) {
   return new Date(iso).toLocaleString("zh-CN");
 }
@@ -115,11 +147,15 @@ function formatCost(value: number) {
 async function fetchUsage() {
   loading.value = true;
   try {
-    const result = await listBillingUsage(page.value, limit.value);
-    items.value = result.items;
-    total.value = result.pagination.total;
-    page.value = result.pagination.page;
-    limit.value = result.pagination.limit;
+    const [usageResult, quotaResult] = await Promise.all([
+      listBillingUsage(page.value, limit.value),
+      getBillingQuota()
+    ]);
+    items.value = usageResult.items;
+    total.value = usageResult.pagination.total;
+    page.value = usageResult.pagination.page;
+    limit.value = usageResult.pagination.limit;
+    quota.value = quotaResult;
   } finally {
     loading.value = false;
   }

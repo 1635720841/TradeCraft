@@ -1,34 +1,38 @@
 /**
- * 对象存储门面：本地磁盘为主，S3 配置项预留。
+ * 对象存储门面：S3 已配置时走 S3，否则本地磁盘 fallback。
  *
  * 边界：
  * - 不负责：导出 HTML 拼装（export 模块）
  */
 
-import { Injectable } from '@nestjs/common';
-import { LoggerService } from '../logger/logger.service';
+import { Injectable, Optional } from '@nestjs/common';
 import { LocalStorageService } from './local-storage.service';
+import { S3StorageService } from './s3-storage.service';
 import type { PutObjectResult, StoredObject } from './storage.types';
 
 @Injectable()
 export class StorageService {
   constructor(
     private readonly localStorage: LocalStorageService,
-    private readonly logger: LoggerService,
+    @Optional() private readonly s3Storage: S3StorageService | null,
   ) {}
 
   async putObject(key: string, body: Buffer, contentType: string): Promise<PutObjectResult> {
-    const bucket = process.env.S3_BUCKET?.trim();
-    if (bucket) {
-      this.logger.warn('S3_BUCKET 已配置但尚未接入 SDK，回退本地存储', {
-        action: 'storage.s3_fallback',
-        bucket,
-      });
+    if (this.s3Storage) {
+      return this.s3Storage.putObject(key, body, contentType);
     }
     return this.localStorage.putObject(key, body, contentType);
   }
 
   async getObject(key: string): Promise<StoredObject | null> {
+    if (this.s3Storage) {
+      return this.s3Storage.getObject(key);
+    }
     return this.localStorage.getObject(key);
+  }
+
+  /** 当前是否使用 S3（供日志/诊断） */
+  isUsingS3(): boolean {
+    return Boolean(this.s3Storage);
   }
 }

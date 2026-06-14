@@ -53,4 +53,26 @@ export class ExportController {
     res.setHeader('Content-Type', file.contentType);
     res.send(file.body);
   }
+
+  @Get(':id/export/package')
+  @Header('Cache-Control', 'private, no-store')
+  async downloadPackage(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const pack = await this.exportService.buildExportPackage(
+      ctx.organizationId,
+      projectId,
+      id,
+    );
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename*=UTF-8''${encodeURIComponent(pack.fileName)}`,
+    );
+    res.send(pack.buffer);
+  }
 }

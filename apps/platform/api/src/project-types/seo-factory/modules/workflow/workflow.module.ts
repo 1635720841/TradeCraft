@@ -11,6 +11,7 @@ import { ExportModule } from '../export/export.module';
 import { IllustrationModule } from '../illustration/illustration.module';
 import { LinkingModule } from '../linking/linking.module';
 import { LlmModule } from '../llm/llm.module';
+import { ParaphraseModule } from '../paraphrase/paraphrase.module';
 import { ScraperModule } from '../scraper/scraper.module';
 import { SeoCheckerModule } from '../seo-checker/seo-checker.module';
 import { WorkflowService } from './workflow.service';
@@ -20,6 +21,7 @@ import { WorkflowService } from './workflow.service';
     ScraperModule,
     LlmModule,
     SeoCheckerModule,
+    ParaphraseModule,
     ContentReviewModule,
     LinkingModule,
     IllustrationModule,

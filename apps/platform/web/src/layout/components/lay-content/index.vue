@@ -52,24 +52,24 @@ const getMainWidth = computed(() => {
 
 const getSectionStyle = computed(() => {
   return [
-    hideTabs.value && layout ? "padding-top: 48px;" : "",
+    hideTabs.value && layout ? "padding-top: 52px;" : "",
     !hideTabs.value && layout
       ? showModel.value == "chrome"
-        ? "padding-top: 85px;"
-        : "padding-top: 81px;"
+        ? "padding-top: 96px;"
+        : "padding-top: 92px;"
       : "",
-    hideTabs.value && !layout.value ? "padding-top: 48px;" : "",
+    hideTabs.value && !layout.value ? "padding-top: 52px;" : "",
     !hideTabs.value && !layout.value
       ? showModel.value == "chrome"
-        ? "padding-top: 85px;"
-        : "padding-top: 81px;"
+        ? "padding-top: 96px;"
+        : "padding-top: 92px;"
       : "",
     props.fixedHeader
       ? ""
       : `padding-top: 0;${
           hideTabs.value
-            ? "min-height: calc(100vh - 48px);"
-            : "min-height: calc(100vh - 86px);"
+            ? "min-height: calc(100vh - 52px);"
+            : "min-height: calc(100vh - 92px);"
         }`
   ];
 });
@@ -197,9 +197,10 @@ const transitionMain = defineComponent({
 <style scoped>
 .app-main {
   position: relative;
+  box-sizing: border-box;
   width: 100%;
   height: 100vh;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 
 .app-main-nofixed-header {
@@ -209,7 +210,23 @@ const transitionMain = defineComponent({
   width: 100%;
 }
 
-.main-content {
-  margin: 24px;
+/* 让滚动容器撑满 header 以下的剩余高度 */
+.app-main :deep(.el-scrollbar) {
+  height: 100%;
+}
+
+.app-main :deep(.el-scrollbar__wrap) {
+  height: 100% !important;
+}
+
+.app-main :deep(.el-scrollbar__view) {
+  min-height: 100%;
+}
+
+.app-main :deep(.grow) {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 100%;
 }
 </style>
