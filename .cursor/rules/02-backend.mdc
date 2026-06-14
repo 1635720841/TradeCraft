@@ -1,0 +1,55 @@
+---
+description: 后端速查 — 编辑 api 时自动加载
+globs: "apps/**/api/**,packages/**,**/*.prisma"
+alwaysApply: false
+---
+
+# 后端速查
+
+> 完整规范：`.cursor/skills/seo-saas-platform/backend.md`
+
+## 目录
+
+```
+api/src/core/          → guards, exceptions, logger, context
+api/src/modules/       → auth, project, billing（平台层）
+api/src/project-types/seo-factory/
+  ├── modules/         → workflow, scraper, llm, seo-checker, export
+  ├── providers/       → serper, deepseek, flux
+  └── processors/      → BullMQ 消费者
+```
+
+## 文件头（强制）
+
+```typescript
+/**
+ * <一句话用途>
+ * 边界：- 不负责：<...>
+ * 入口：<ClassName>
+ */
+```
+
+## 模块模板
+
+`*.module.ts` + `*.controller.ts`(≤15行/方法) + `*.service.ts` + `dto/`
+
+## 关键模式
+
+```typescript
+// IDOR 防护
+findFirst({ where: { id, organizationId: ctx.orgId, projectId: ctx.projectId } })
+
+// 响应
+return { data: toDto(result), meta: { traceId: ctx.traceId } };
+
+// 异步任务
+@HttpCode(202)  // POST 创建长任务
+```
+
+## 管道顺序
+
+Middleware(TraceId) → Guard → Interceptor → Pipe(ValidationPipe) → Controller → Service
+
+## Prisma
+
+Organization → Project → 业务表；过程数据用 `Json?`；索引 orgId/projectId/status/createdAt

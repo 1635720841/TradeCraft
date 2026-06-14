@@ -1,0 +1,164 @@
+---
+description: 多平台/多环境（IOT、ESINO 等）构建与能力开关维护规范
+globs: src/**/*.{vue,ts},src/router/**/*,.env*,package.json
+alwaysApply: false
+---
+
+# 多平台 / 多环境维护规范
+
+> 团队可读文档：`docs/guide/multi-platform.md`（与本文保持同步）
+
+本项目通过 **一套代码、多套构建产物** 区分平台（当前：`iot`、`esino`）。配置入口：`src/config/platform.ts`。
+
+## 架构原则（默认）
+
+- **保持单仓**，用 `pnpm build:iot` / `build:esino` 打不同包；不要为 IOT/ESINO 拆两个独立前端仓库
+- 仅当共用代码长期 <30%、不同团队独立发版、技术栈已分裂时，才考虑拆仓或微前端
+- 差异**往下沉**：页面共用 → hooks/子组件 → `src/api` → `hasPlatformFeature` / 路由 `platforms`
+- **禁止**为防分叉提前建 `views/iot/`、`views/esino/` 全量镜像；按分叉程度渐进拆分
+
+## 三种页面场景（怎么建文件）
+
+| 场景 | 做法 | 文件名 |
+|------|------|--------|
+| 两平台页面完全一样 | 一个 `views` 文件 | `orderList.vue`（不带平台名） |
+| 页面一样，接口/筛选项/列不同 | 共用页面，差异在 `src/api`、`pickPlatformValue`、hooks | 仍一个文件 |
+| 整页 UI/流程差很多 | 两个页面入口 + `meta.platforms` | 语义名如 `bmsUpgradeEsino.vue`，**不要**机械 `xxxIot.vue` |
+
+## 后期同页越改越不一样（升级路径）
+
+```
+共用单页
+  → pickPlatformValue / usePlatformValue（列、筛选项）
+  → hasPlatformFeature（入口、按钮）
+  → hooks / 子组件拆差异块
+  → shared/ + 平台子目录 + 双页面入口 + meta.platforms
+```
+
+**何时拆页**：一个 vue 内平台分支 >5 处；改 iot 常误伤 esino；共用部分 <50%。
+
+**拆页目录示例**（仅整页两套时）：
+
+```
+views/<module>/pages/<domain>/
+  shared/          # 两平台共用组件、hooks
+  OrderListPage.vue           # meta.platforms: iot
+  OrderListPage.esino.vue     # meta.platforms: esino（或语义名 OrderListEsinoPage.vue）
+```
+
+## 两套机制（禁止混用）
+
+| 机制 | 依据 | 用途 | 位置 |
+|------|------|------|------|
+| **构建平台** | `VITE_NAME` | 路由裁剪、能力开关、列配置分叉 | `src/config/platform.ts` |
+| **API 前缀** | **运行时 URL** | 接口网关路径（`/sw`→`sw`，`/esino`→`esino`） | `src/api/utils.ts` |
+
+`pnpm dev:iot` 只影响路由/能力，**不会**单独决定 API 前缀；前缀看页面实际访问路径是否含 `/sw` 或 `/esino`。
+
+## 业务代码必须遵守
+
+- ✅ 使用 `@/config/platform`：`currentPlatform`、`hasPlatformFeature()`、`isPlatform()`、`pickPlatformValue()`
+- ✅ 接口路径：`businessApiPath()` / `proxyUrl.business`（前缀由 URL 推断，见 `src/api/utils.ts`）
+- ✅ 菜单/快捷入口/按钮：`hasPlatformFeature('xxx')` 控制显隐
+- ✅ `src/api/*.ts` 导出请求函数必须写**中文注释**（用途 + `@description METHOD PATH`），便于后期维护/搜索
+- ❌ **禁止**在 `.vue`/业务 `.ts` 中直接读 `import.meta.env.VITE_NAME` 或写 `if (name === 'iot')`
+- ❌ **禁止**在模块顶层解构 `proxyUrl` 后缓存（须每次访问 getter 或调用 `getBusinessApiPrefix()`）
+- ❌ **禁止**在 `src/api/*.ts` 的 `const Api = { ... }` 中拼接 `proxyUrl.esino + "/xxx"`（会把前缀在模块加载时“焊死”）
+
+```typescript
+// ✅ 菜单
+import { hasPlatformFeature } from "@/config/platform";
+const items = [
+  hasPlatformFeature("bmsUpgradeSw") && { key: "bmsUpgrade", label: "BMS升级-SW" },
+].filter(Boolean);
+
+// ✅ 列/筛选项按平台
+import { pickPlatformValue } from "@/config/platform";
+const columns = pickPlatformValue({ iot: iotCols, esino: esinoCols });
+
+// ✅ 响应式
+import { usePlatformValue } from "@/hooks/usePlatformValue";
+const searchItems = usePlatformValue({ iot: iotSearch, esino: esinoSearch });
+
+// ✅ 新 API（前缀随当前 URL 自动为 sw 或 esino）
+import { businessApiPath } from "@/api/utils";
+const Api = { list: "/billlist/list" };
+export const getListReq = () => http.request("get", baseUrlApi(businessApiPath(Api.list)));
+
+// ❌
+const name = import.meta.env.VITE_NAME;
+if (name === "iot") { ... }
+```
+
+## API 前缀（仅 URL 推断，与 VITE_NAME 无关）
+
+| 访问路径特征 | 业务 API 前缀 |
+|--------------|---------------|
+| URL 含 `/sw` | `sw` |
+| URL 含 `/esino` | `esino` |
+| 都不含 | 默认 `esino` |
+
+- 优先读**同域顶层** `window.top.location`（嵌入场景），其次当前页、referrer
+- `proxyUrl.esino` 为**历史字段名**，值为上述推断结果
+- 推荐：`businessApiPath("/xxx")` 或 `getBusinessApiPrefix()`
+- `PLATFORM_API_PREFIX`（`platform.ts`）仅为对照表，**不参与**前缀解析
+
+## 路由平台限制
+
+- 仅某平台可用的路由，在 `meta.platforms` 声明（类型 `KnownPlatformId[]`，见 `types/router.d.ts`）
+- 静态路由会在 `setupStaticRouter` 时按平台裁剪；登录后仍有 `isRouteAllowedForPlatform` 守卫
+- 本地 `dev`（`VITE_NAME` 为空）**保留全部路由**，便于联调
+
+```typescript
+meta: {
+  title: "BMS升级",
+  showLink: false,
+  platforms: ["iot"] // 仅 iot 包注册
+}
+```
+
+## 新增一套线上环境（ checklist ）
+
+1. 新建 `.env.prod.<id>`，设置 `VITE_NAME = "<id>"`（小写，与登记表一致）
+2. `src/config/platform.ts`：
+   - 扩展 `KnownPlatformId`
+   - `PLATFORM_REGISTRY` 追加一项
+   - `PLATFORM_FEATURE_MATRIX` 为新平台配置各能力 `true/false`（`dev` 通常全开）
+   - 若新平台 URL 路径与网关前缀有新规则，改 `src/api/utils.ts` 的 `getBusinessApiPrefix()`
+3. 有差异的路由加 `meta.platforms: ["<id>"]`
+4. `package.json` 增加 `dev:<id>`、`build:<id>`；可选 `.env.development.<id>`
+5. `build/utils.ts` 的 `wrapperEnv` 默认值已含 `VITE_NAME`，一般无需改
+
+## 新增一项平台差异能力
+
+1. 在 `PlatformFeatures` 增加字段名（语义化，如 `bmsUpgradeSw`）
+2. 为 `iot` / `esino` / `dev` 各填 `true/false`
+3. 页面/路由引用 `hasPlatformFeature('新字段')`
+
+## 新增「同页不同接口/参数」
+
+1. 在对应 `src/api/*.ts` 增加请求方法
+2. 平台分支写在 API 内：`pickPlatformValue({ iot: urlA, esino: urlB })` 或 `isPlatform('iot')` 选参
+3. 页面只 `import` API 方法，禁止 `http.request` + 拼路径
+
+## 本地 / 打包命令
+
+| 命令 | 说明 |
+|------|------|
+| `pnpm dev` | dev 平台，能力全开 |
+| `pnpm dev:iot` / `dev:esino` | 模拟单平台路由/能力（API 前缀仍看访问 URL） |
+| `pnpm build:iot` / `build:esino` | 生产包 |
+
+## 与 `VITE_ENABLED_MENU_MODULES` 的区别
+
+- `VITE_ENABLED_MENU_MODULES`：按**模块文件**裁剪大块菜单（减体积）
+- `platform` + `VITE_NAME`：同一模块内的**平台小差异**（入口、路由、字段）
+
+## 相关文件
+
+- `src/config/platform.ts` — 登记表 + 能力矩阵 + `pickPlatformValue`
+- `src/api/utils.ts` — `getBusinessApiPrefix`（URL） / `businessApiPath` / `proxyUrl`
+- `src/hooks/usePlatformValue.ts` — 响应式平台配置
+- `src/router/platformRoute.ts` — 静态路由裁剪
+- `src/router/index.ts` — 路由守卫
+- `.env.prod.iot` / `.env.prod.esino`

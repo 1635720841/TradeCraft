@@ -1,0 +1,46 @@
+---
+description: 性能架构 — 数据库、缓存、队列、并发与资源预算
+alwaysApply: true
+---
+
+# 性能架构
+
+## 数据库
+
+- 所有含 `organizationId` / `projectId` / `status` / `createdAt` 的表**必须建索引**
+- 列表 API **强制分页**（`cursor` 优于大 `offset`），默认 `limit ≤ 20`，上限 100
+- 禁止 N+1：用 Prisma `include`/`select` 或批量查询，列表页不加载 `outputHtml` 等大字段
+- 慢查询 >200ms 记 warn 日志；JSONB 查询字段后期可加 GIN 索引
+
+## 缓存策略
+
+| 数据类型 | 策略 | TTL |
+|---------|------|-----|
+| SERP 查询结果 | Redis 防御性缓存 | 24h |
+| Prompt 模板 | 内存 + Redis | 1h，变更时主动失效 |
+| 用户 Session/权限 | Redis | 按 Auth 提供商 |
+| 项目配置 | Redis | 5min，更新时失效 |
+
+- 缓存 Key 格式：`{service}:{orgId}:{projectId}:{fingerprint}`
+- 必须处理缓存穿透：空结果短 TTL 缓存；热点 Key 加互斥锁
+
+## 队列与并发
+
+- BullMQ 按 `projectType` 设独立队列，配置 `concurrency` 上限
+- Playwright 用浏览器池（最大实例数可配置），用完即关，防内存泄漏
+- 外部 API 适配器内置并发限制（如 SERP 5 req/s，LLM 按 provider 配额）
+- 单任务超时时长可配置，默认：API 30s、Playwright 120s、LLM 180s
+
+## 响应体与传输
+
+- 大字段（`outputHtml`, `briefData`）走详情接口，列表只返回摘要
+- 文件走 S3 预签名 URL，API 只返回 `outputUrl`
+- 前端路由懒加载；按 `projectType` 动态 import 插件页面
+
+## 性能预算（后期 SLA 基线）
+
+| 场景 | 目标 |
+|------|------|
+| 控制台 API（列表/切换） | P95 < 300ms |
+| 创建任务（入队） | P95 < 500ms |
+| 单篇文章全流程 | 异步，15-30min 内完成 |

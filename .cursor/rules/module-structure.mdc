@@ -1,0 +1,57 @@
+---
+description: 前端页面与组件目录边界（WM + pure-admin）
+globs: "apps/**/web/src/{views,components,api,constants}/**"
+alwaysApply: false
+---
+
+# 前端目录与边界（WM）
+
+## 顶层划分
+
+```
+apps/platform/web/src/
+├── views/platform/              # 平台层页面（项目、计费、设置）
+├── views/projects/<type>/       # 项目类型插件页面（如 seo-factory）
+├── views/<module>/components/   # 模块内跨页面复用组件
+├── components/                  # 跨模块通用组件（慎用，优先 pure-admin 自带）
+├── api/platform/                # 平台 API
+├── api/<project-type>/          # 插件 API（如 seo-factory/）
+├── router/modules/              # 静态路由模块
+├── constants/dicts/             # 枚举字典（platform.ts、seo-factory.ts）
+├── utils/dict.ts                # dictLabel / dictTagType / dictOptions
+└── composables/                 # 可复用组合式逻辑
+```
+
+## 落位决策
+
+| 文件类型 | 位置 | 示例 |
+|----------|------|------|
+| 平台路由页 | `views/platform/*View.vue` | `ProjectListView.vue` |
+| 插件路由页 | `views/projects/seo-factory/*View.vue` | `JobListView.vue` |
+| 仅单页使用的子块 | 同目录 `components/` | `JobStatusTag.vue` |
+| 模块内 ≥2 页复用 | `views/<module>/components/` | 平台共用表格区 |
+| 跨模块复用 | `src/components/` | 确认无 pure-admin 等价物再用 |
+| HTTP 请求 | `src/api/**/*.ts` | `api/platform/project.ts` |
+
+## 上提规则
+
+- 仅被 1 个页面使用 → 放页面旁 `components/`
+- 同模块 2+ 页面复用 → `views/<module>/components/`
+- 禁止为「以后可能复用」提前上提（YAGNI）
+
+## 引用边界
+
+- 禁止 `projects/seo-factory` 与 `projects/xxx` 互引页面私有组件
+- 禁止 `../../../../` 深层相对路径；用 `@/` 别名
+- 禁止页面内拼 URL / 直接 `http.request`
+
+## pure-admin 壳子（少改）
+
+- `layout/`、`store/modules/user|permission`、登录页：Auth 接入前勿大改
+- 业务只增 `views/` + `api/` + `router/modules/`
+
+## 命名
+
+- 页面：`*View.vue` 或 `*Page.vue`，与 `defineOptions({ name })` 一致
+- 弹窗：`*Dialog.vue`
+- 禁止 `Temp`、`NewComponent` 占位名

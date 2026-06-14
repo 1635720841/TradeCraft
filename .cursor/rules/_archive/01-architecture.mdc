@@ -1,0 +1,73 @@
+---
+description: 平台层 + 项目插件 + 五大原则架构落地
+alwaysApply: true
+---
+
+# 架构落地：平台 · 项目 · 插件
+
+## 0. 平台三层模型
+
+```
+Platform（平台层）  → auth, project-mgmt, billing, console
+    ↓ 1:N
+Project（项目层）   → 企业内的独立工作空间，含 projectType
+    ↓ 按类型路由
+ProjectType Plugin  → seo-factory, [future-type]
+```
+
+- 用户登录 → 选择/切换 Project → 平台路由到对应 `projectType` 插件
+- 计费、鉴权、日志在平台层统一处理，按 `projectId` 归集
+
+## 1. 拓展性
+
+**平台级：**
+- 新项目类型 = 在 `project-types/` 新建插件 + 实现 `IProjectTypePlugin` + 注册
+- 平台层 auth/billing/project 模块**不因新类型而改动核心逻辑**
+
+**插件级（seo-factory）：**
+- 工作流编排只定义步骤接口，各步骤由独立 Module 实现
+- 新增 M 模块 = 新建 Module + 注册到编排器，不改已有模块
+- 过程数据用 `Json?`，避免频繁改表
+
+## 2. 解耦性
+
+```typescript
+// 项目类型插件注册接口（平台层定义，插件实现）
+interface IProjectTypePlugin {
+  readonly type: string;           // 'seo-factory'
+  registerRoutes(router): void;     // 注册 API 路由
+  registerMenu(): MenuItem[];      // 注册控制台菜单
+}
+
+// 外部服务防腐层（插件内部使用）
+interface ILLMProvider { ... }
+interface ISerpProvider { ... }
+```
+
+- 插件之间**禁止**互相 import
+- 主流程完成 → 抛事件，计费/通知由平台层监听器处理
+- 跨模块只通过 `event-bus` 或共享 Interface
+
+## 3. 低价平台可替代性
+
+| 能力 | 当前实现 | 替换方式 |
+|------|---------|---------|
+| SERP | `providers/serper/` | 新建适配器，改 DI 注入 |
+| LLM | `providers/deepseek/` | 同上 |
+| 配图 | `providers/flux/` | 同上 |
+| SEO 查分 | `seo-checker/` 模块 | 接口 `ISeoCheckerProvider` 不变 |
+
+## 4. 模块化
+
+```
+apps/platform/api/src/
+  modules/           → 平台层（auth, project, billing）
+  project-types/     → 项目类型插件（seo-factory, ...）
+packages/            → 跨层共享基建
+```
+
+## 5. 可维护性
+
+- 日志携带 `traceId` + `organizationId` + `projectId`
+- 禁止 `console.log()`
+- 防御性缓存：SERP 24h Redis 复用

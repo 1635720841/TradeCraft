@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: API unit tests
+        working-directory: apps/platform/api
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wm_platform?schema=public
+          REDIS_URL: redis://localhost:6379
+          AUTH_JWT_SECRET: ci-test-secret-min-16-chars
+        run: pnpm test

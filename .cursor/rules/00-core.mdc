@@ -1,0 +1,58 @@
+---
+description: 项目核心原则、技术栈、Skill 导航（每次必读）
+alwaysApply: true
+---
+
+# 核心约束
+
+B2B SaaS 企业平台：企业内管理多个项目，SEO（`seo-factory`）是第一个项目类型插件。
+
+## 五大原则（冲突时以此为准）
+
+1. **拓展性** — 新 project-type = 新插件注册，不改平台核心
+2. **解耦性** — 插件互不可见；外部 API 走 Interface；副作用走 EventBus
+3. **可替代性** — 换供应商只改 `providers/` + 配置
+4. **模块化** — 平台层 `modules/` · 插件 `project-types/` · 共享 `packages/`
+5. **可维护性** — TraceId 全链路；Prompt 外置；禁止 `any` 与空 catch
+
+## 硬性红线
+
+- 业务表含 `organizationId` + `projectId`，查询强制双重校验（禁止信任客户端 tenant ID）
+- 外部服务禁止在 Service 中直接 axios，必须走 Provider 适配器
+- 热路径 API 禁止调 LLM/SERP/Playwright；耗时 >3s 进 BullMQ
+- 插件互不 import；跨表写用事务；事件在事务提交后发布
+- API 前缀 `/api/v1/`；响应 `{ data, meta }` 或 `{ error: { code, message } }`
+- 每个文件顶部必须有 docstring；临时 hack 必须 TODO(日期,#issue)
+- 前端 template 直接写中文；错误展示 `error.message`
+
+## 技术栈
+
+Node 20+ · TS strict · NestJS · Vue3+Vite+Pinia · PostgreSQL+Prisma · Redis+BullMQ · Playwright · Logto/Supabase Auth · pino/winston
+
+## Rules 导航
+
+| 场景 | Rule 文件 |
+|------|-----------|
+| 编码前审查 | `01-checklist.mdc` |
+| AI 防漂移 | `02-ai-guardrails.mdc` |
+| 后端速查 | `02-backend.mdc`（`api/**`） |
+| 前端速查 | `03-frontend.mdc`（`web/**`） |
+| Vue SFC 细节 | `vue.mdc`（`web/**/*.vue`） |
+| 前端目录边界 | `module-structure.mdc` |
+| 写文档 | `document.mdc` |
+
+## 详细规范 → Skill
+
+写代码前读取 `.cursor/skills/seo-saas-platform/SKILL.md`，按任务类型查阅 reference：
+
+| 任务 | 读哪个 reference |
+|------|-----------------|
+| 新建后端模块/API | `backend.md` |
+| 新建前端页面/组件 | `frontend.md` + `vue.mdc` |
+| 新建项目类型插件 | `architecture.md` |
+| SEO 工作流 M1-M12 | `architecture.md` §工作流 |
+| 安全/性能/队列/测试 | `ops.md` |
+| 防屎山/长期可维护 | `maintainability.md` |
+| **AI 防漂移** | `ai-guardrails.md` |
+
+> 已归档他项目规则：`_archive/projectRules-other-project.mdc`、`_archive/platform-env-other-project.mdc`（勿用于本仓库）

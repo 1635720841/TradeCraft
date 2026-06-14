@@ -1,0 +1,74 @@
+---
+description: 平台多项目数据模型 — Organization → Project → 业务实体
+globs: "apps/**/prisma/**,**/*.prisma"
+alwaysApply: false
+---
+
+# Prisma Schema 规范
+
+统一 Schema 在 `apps/platform/prisma/schema.prisma`，平台表与业务表共存，通过 `projectId` 关联。
+
+## 数据层级
+
+```
+Organization → Project → (按 projectType 关联业务实体)
+```
+
+- 所有业务表含 `organizationId` + `projectId`（双重隔离）
+- 过程数据用 `Json?`，新字段优先加 Json 内
+- 每个 model/field 添加注释
+
+## 平台核心模型
+
+```prisma
+model Organization {
+  id        String    @id @default(uuid())
+  name      String
+  users     User[]
+  projects  Project[]
+  usageLogs CreditUsage[]
+}
+
+model Project {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  projectType    String       // 'seo-factory' | 'future-xxx'
+  config         Json?        // 项目级配置
+  status         ProjectStatus @default(ACTIVE)
+  // seo-factory 关联
+  sites          Site[]
+  jobs           ArticleJob[]
+  createdAt      DateTime     @default(now())
+}
+
+enum ProjectStatus { ACTIVE ARCHIVED }
+```
+
+## seo-factory 业务模型
+
+```prisma
+model ArticleJob {
+  id             String   @id @default(uuid())
+  traceId        String   @unique
+  organizationId String
+  projectId      String   // 归属项目
+  project        Project  @relation(fields: [projectId], references: [id])
+  siteId         String
+  targetKeyword  String
+  status         JobStatus @default(QUEUED)
+  briefData      Json?
+  serpData       Json?
+  semrushScore   Float?
+  outputUrl      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+```
+
+## CreditUsage（平台统一计费）
+
+记录 `organizationId` + `projectId` + `projectType` + `serviceType` + `provider` + `traceId`。
+
+新增项目类型时：在 Schema 中新增该类型的业务表，均挂 `projectId`，**不改动平台核心表结构**。

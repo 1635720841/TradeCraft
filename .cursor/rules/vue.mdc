@@ -1,0 +1,157 @@
+---
+description: Vue SFC 写法 — 编辑 web 下 .vue 时加载
+globs: "apps/**/web/**/*.vue"
+alwaysApply: false
+---
+
+# Vue 开发规范（WM）
+
+> 业务目录与 API 边界见 `03-frontend.mdc`；完整规范见 `frontend.md` Skill
+
+## 组件命名
+
+- 多词 PascalCase：`ProjectListView.vue`
+- `defineOptions({ name: 'ProjectListView' })` 与路由 `name` 一致（便于 keep-alive）
+
+## SFC 标签顺序（强制）
+
+**固定顺序，禁止颠倒：**
+
+```
+1. <!-- 文件头 docstring（可选但推荐） -->
+2. <template>
+3. <script setup lang="ts">
+4. <style scoped>   （无样式可省略）
+```
+
+| 位置 | 块 | 说明 |
+|------|-----|------|
+| 最前 | `<!-- docstring -->` | 页面职责与边界，1～3 行 |
+| 第 1 | `<template>` | 先看 UI 结构 |
+| 第 2 | `<script setup lang="ts">` | 逻辑与数据 |
+| 最后 | `<style scoped>` | 样式；无样式不写 |
+
+```vue
+<!--
+  项目列表页：展示企业下所有项目。
+-->
+<template>
+  <div class="p-4">...</div>
+</template>
+
+<script setup lang="ts">
+defineOptions({ name: "ProjectListView" });
+// ...
+</script>
+
+<style scoped>
+.p-4 { padding: 16px; }
+</style>
+```
+
+- ❌ 禁止 `<script setup>` 写在 `<template>` 前面
+- ❌ 禁止 `<style>` 插在 template 与 script 之间
+- 仅用 Composition API + `<script setup lang="ts">`
+
+## script 内部顺序
+
+`defineOptions` → `defineProps` / `defineEmits` → 业务代码块 → `defineExpose`
+
+## script 按业务分块
+
+同一业务的 ref、computed、方法、watch 写在一起，用 `// -------- 业务名 --------` 分隔；禁止先堆满所有变量再堆满所有方法。
+
+```typescript
+// -------- 列表查询 --------
+const loading = ref(false)
+const list = ref<ProjectItem[]>([])
+async function fetchList() { ... }
+
+onMounted(() => { void fetchList() })
+```
+
+## Props / 事件
+
+- Props：camelCase + 类型 + `withDefaults` 工厂默认值
+- 事件：kebab-case（`item-click`）
+
+## 模板
+
+- 模板只写展示；格式化/过滤放 `computed` 或方法
+- `v-for` 必须有 `:key`；避免同元素 `v-if` + `v-for`
+- 文案直接写中文（MVP 不做 i18n）
+
+## 字典与枚举展示（强制）
+
+### 放哪
+
+| 内容 | 路径 |
+|------|------|
+| 字典数据（唯一数据源） | `src/constants/dicts/<域>.ts` |
+| 通用读取函数 | `src/utils/dict.ts` |
+
+### 字典长什么样
+
+每条字典就是一个普通数组，**一项里带齐 value / label / type**：
+
+```typescript
+// src/constants/dicts/platform.ts
+import type { DictItem } from "@/utils/dict";
+
+export const projectStatusDict: DictItem[] = [
+  { value: "ACTIVE", label: "进行中", type: "success" },
+  { value: "ARCHIVED", label: "已归档", type: "info" }
+];
+```
+
+工具函数以仓库实现为准：`src/utils/dict.ts`
+
+| 函数 | 作用 |
+|------|------|
+| `dictLabel(dict, value)` | 表格/详情展示文案 |
+| `dictTagType(dict, value)` | `el-tag` 的 `type` |
+| `dictOptions(dict)` | `el-select` 的 options |
+
+### 页面用法
+
+```vue
+<template>
+  <el-tag :type="dictTagType(projectStatusDict, row.status)">
+    {{ dictLabel(projectStatusDict, row.status) }}
+  </el-tag>
+</template>
+
+<script setup lang="ts">
+import { projectStatusDict } from "@/constants/dicts/platform";
+import { dictLabel, dictTagType } from "@/utils/dict";
+</script>
+```
+
+参考实现：`views/platform/ProjectListView.vue`
+
+### 规则
+
+- ✅ `value` 与 API / Prisma enum **字符串完全一致**
+- ✅ 下拉、表格、详情共用同一份 `*Dict`
+- ✅ 仅当前页用且仅 2～3 项、不会复用 → 可放页面内 `const`，但仍用 `[{ value, label, type }]` 单数组
+- ❌ 禁止 `status === 'ACTIVE' ? '进行中' : '...'` 写在 template
+- ❌ 禁止同一枚举维护 `XXX_TEXT`、`XXX_OPTIONS`、`XXX_TAG` 多份映射
+- ❌ 禁止魔法数字状态码（后端是字符串 enum 时前端不得用 `0/1/2`）
+
+## 样式
+
+- 优先 `scoped`；避免 `!important`
+
+## 路由（pure-admin）
+
+- path 以 `/` 开头；懒加载 `() => import('@/views/...')`
+- 静态业务路由加 `router/modules/*.ts`；业务模块父级勿重复挂 `Layout`（根路由已挂）
+- 传参优先 `query`
+
+## 禁止
+
+- Options API
+- 组件内直接 `fetch` / `axios`（走 `src/api/`）
+- 页面/template 硬编码枚举文案或 `switch (status)` 映射
+- `any` 类型
+- 单文件超过约 250 行不拆分

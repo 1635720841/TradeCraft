@@ -1,0 +1,150 @@
+---
+description: 前端目录与文件组织 — 路由、组件、语言包、插件页面
+globs: "apps/**/web/**"
+alwaysApply: false
+---
+
+# 前端目录与文件组织
+
+## 完整目录树
+
+```
+apps/platform/web/
+├── index.html
+├── vite.config.ts
+├── tsconfig.json
+├── uno.config.ts                 # 或 tailwind.config
+├── public/
+│   └── favicon.ico
+└── src/
+    ├── main.ts                   # 应用入口
+    ├── App.vue
+    ├── locales/                  # i18n 语言包（见 18-i18n）
+    │   ├── index.ts
+    │   ├── zh-CN/
+    │   └── en-US/
+    ├── router/
+    │   ├── index.ts              # 路由实例
+    │   ├── guards.ts             # 鉴权、项目上下文守卫
+    │   └── routes/
+    │       ├── platform.routes.ts    # 平台路由
+    │       └── project.routes.ts     # 项目路由（动态加载插件）
+    ├── stores/
+    │   ├── auth.store.ts
+    │   ├── project.store.ts
+    │   ├── locale.store.ts
+    │   └── project-context.store.ts
+    ├── api/
+    │   ├── client.ts             # 统一 HTTP 客户端
+    │   ├── project.api.ts
+    │   └── seo-factory/
+    │       └── article-job.api.ts
+    ├── composables/
+    │   ├── use-api-error.ts
+    │   ├── use-pagination.ts
+    │   └── seo-factory/
+    ├── components/
+    │   ├── common/               # 平台通用 UI 组件
+    │   │   ├── AppLayout.vue
+    │   │   ├── AppHeader.vue
+    │   │   ├── AppSidebar.vue
+    │   │   ├── AppPagination.vue
+    │   │   └── LocaleSwitcher.vue
+    │   └── seo-factory/          # SEO 插件专属组件
+    ├── views/
+    │   ├── platform/             # 平台页面
+    │   │   ├── ProjectListView.vue
+    │   │   ├── ProjectCreateView.vue
+    │   │   ├── BillingView.vue
+    │   │   └── SettingsView.vue
+    │   └── projects/             # 项目内页面（按类型懒加载）
+    │       └── seo-factory/
+    │           ├── JobListView.vue
+    │           ├── JobCreateView.vue
+    │           └── JobDetailView.vue
+    ├── types/
+    │   ├── api.types.ts          # API 响应类型
+    │   └── platform.types.ts
+    ├── styles/
+    │   ├── variables.css         # 设计 token
+    │   └── global.css
+    └── plugins/
+        ├── i18n.ts
+        └── pinia.ts
+```
+
+## 路由组织
+
+```typescript
+// 平台路由
+/platform/projects              → ProjectListView
+/platform/projects/create       → ProjectCreateView
+/platform/billing               → BillingView
+/platform/settings              → SettingsView
+
+// 项目路由（进入某个 project 后）
+/projects/:projectId/seo-factory/jobs          → JobListView
+/projects/:projectId/seo-factory/jobs/create   → JobCreateView
+/projects/:projectId/seo-factory/jobs/:id     → JobDetailView
+```
+
+- 平台路由前缀 `/platform/`
+- 项目路由前缀 `/projects/:projectId/{projectType}/`
+- 新增 project-type 时只加 `routes/` + `views/projects/{type}/`，不改平台路由
+
+## 文件命名
+
+| 类型 | 命名 | 示例 |
+|------|------|------|
+| 页面 | PascalCase + View | `JobListView.vue` |
+| 组件 | PascalCase | `ArticleJobCard.vue` |
+| Composable | kebab-case `use-*.ts` | `use-article-job-poll.ts` |
+| Store | kebab-case `*.store.ts` | `project-context.store.ts` |
+| API | kebab-case `*.api.ts` | `article-job.api.ts` |
+| 类型 | kebab-case `*.types.ts` | `api.types.ts` |
+| 语言包 | kebab-case `*.json` | `seo-factory.json` |
+| 路由 | kebab-case `*.routes.ts` | `platform.routes.ts` |
+
+## Import 别名
+
+```typescript
+// vite.config.ts
+'@': '/src'
+'@components': '/src/components'
+'@api': '/src/api'
+'@stores': '/src/stores'
+```
+
+## Import 顺序
+
+```typescript
+// 1. Vue 核心
+import { ref, computed } from 'vue';
+// 2. 第三方
+import { useI18n } from 'vue-i18n';
+// 3. stores / composables / api
+import { useProjectContextStore } from '@stores/project-context.store';
+import { createArticleJob } from '@api/seo-factory/article-job.api';
+// 4. 组件
+import ArticleJobCard from '@components/seo-factory/ArticleJobCard.vue';
+// 5. 类型
+import type { ArticleJobResponse } from '@/types/api.types';
+```
+
+## 禁止事项
+
+| 禁止 | 替代 |
+|------|------|
+| `views/` 下放非页面组件 | 移到 `components/` |
+| 跨 project-type import 组件 | 抽到 `components/common/` |
+| 在组件内直接 `fetch()` | 走 `api/` 层 |
+| 硬编码中文/英文文案 | `t('key')` |
+| `components/` 下放页面级逻辑 | 逻辑放 composable 或 store |
+| 全局 `window.xxx` 挂载 | 用 provide/inject 或 Pinia |
+
+## 新增 project-type 前端检查
+
+1. 新建 `views/projects/{type}/` + `components/{type}/` + `api/{type}/`
+2. 新建 `locales/*/​{type}.json`（zh-CN + en-US）
+3. 在 `project.routes.ts` 注册懒加载路由
+4. 在插件菜单注册（后端 `IProjectTypePlugin.registerMenu()` 对应前端路由）

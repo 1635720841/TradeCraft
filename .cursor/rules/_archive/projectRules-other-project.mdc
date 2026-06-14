@@ -1,0 +1,203 @@
+---
+alwaysApply: true
+---
+# 项目开发规范
+本项目是重构，门店管理参考siteinfo.html
+## 1. 项目封装组件（强制使用）
+```vue
+<!-- 表格 -->
+<pageTable :page="page" :data="list" :columns="columns" @GetData="handleGetData" />
+const columns = reactive([
+  { label: '状态', prop: 'sitename',selectData:[字典] },//需要匹配状态的写法
+])
+
+<!-- 对话框 -->
+<ReDialog v-model="visible" title="标题">内容</ReDialog>
+
+<!-- 搜索表单 -->
+<TableSearch :form-items="searchItems" @search="handleSearch" />
+
+<!-- 提交表单 -->
+<FormSubmitData/>
+
+<!-- 无数据空状态（禁止直接使用 el-empty） -->
+<EmptyState description="暂无数据" />
+```
+- 业务页面/组件展示「暂无数据」等空状态时，**统一使用** `@/components/EmptyState.vue`，禁止直接使用 `el-empty`
+- `description` 按场景传入具体文案，默认值为「暂无数据」
+- 引入：`import EmptyState from "@/components/EmptyState.vue";`
+
+主要以element-plus开发为主
+
+## 2. API 集中管理
+```typescript
+//src/api/types/xxx.ts
+export interface QueryParams {
+  params: {
+    /**备注 */
+    current: number;
+    /**备注 */
+    size: number
+  }
+}
+
+// src/api/xxx.ts
+import { http } from "@/utils/http";
+import { baseUrlApi, businessApiPath } from "@/api/utils";
+
+const Api = {
+  getList: "/get/list" // 只写 path，不拼前缀
+};
+
+/**
+ * 名字（中文注释：说明用途/场景）
+ * @description POST /get/list
+ */
+export const getListReq = (data: QueryParams) => {
+  return http.request<ApiResponse>("post", baseUrlApi(businessApiPath(Api.getList)), { data });
+}
+```
+- 页面/组件（如 `src/views/**`、`src/components/**`）**禁止直接使用** `http.request`、`baseUrlApi`、`proxyUrl` 拼接请求
+- 所有接口必须收敛到 `src/api/*.ts` 中统一管理，再由页面组件通过 `import` 调用
+- 新增业务模块时，优先按模块新建 API 文件（如 `src/api/workbench.ts`），并在 API 文件内维护请求参数与响应类型
+  - `Api` 常量里只维护相对路径（`/xxx/yyy`），完整 URL 由 `businessApiPath()` 在请求时组装（API 前缀按运行时 URL 推断）
+  - 每个导出请求函数必须写**中文注释**：用途说明 + `@description <METHOD> <PATH>`，便于后期维护与搜索
+
+### 2.1 业务响应成功码（强制，仅 http 层处理）
+后端 JSON 在 **HTTP 200** 下用 `code` 表示业务结果，**成功不限于 `0`**。`src/utils/http/index.ts` 响应拦截器统一认定成功并 reject 失败：
+- `code`：`0`、`200`（数字或字符串）
+- `1000` 等**非通用成功码**：个别接口的业务分支（如续费校验设备归属），页面自行 `if (res.code === 1000)` 处理，或对应该接口配置 `skipBusinessErrorCheck: true`
+- `flag === "00"`；无 `code` 且无 `errno` 错误时视为成功
+- 业务失败自动 `ElMessage.error(msg)` 并 `Promise.reject`
+
+```typescript
+try {
+  await someReq(params);
+  ElMessage.success("操作成功");
+} catch {
+  // 勿再判断 res.code，勿重复弹错误（拦截器已提示）
+}
+```
+
+- **禁止**页面/组件再写 `res.code === 0`、`String(res?.code) === "0"` 等二次校验
+- 少数接口需自行处理业务码时，请求配置 `skipBusinessErrorCheck: true`
+
+## 3. 逻辑复用 Hooks
+```typescript
+// src/hooks/useTableWithForm.ts
+const { loading, list, page, loadData } = useTableWithForm(queryApi)
+```
+
+## 4. 类型定义（API 文件中）
+```typescript
+export interface OrderItem {
+  id: number // 订单ID
+  billId: string // 订单编号
+  status: number // 状态：0=待生效 1=生效中
+}
+```
+
+## 5. 词典管理
+所有枚举值统一放在 `src/utils/dic.ts`，**同一业务字典不要重复定义多个**
+解构函数放在`src/utils/dict.ts`的getDict
+- 页面内若仅做少量状态映射（如告警 id -> 文案/标签类型），优先使用“数组对象单一数据源”写法：`[{ value, label, type }]`
+- 组件内通过函数从该数组读取文案和标签类型，避免维护多份 `switch` / `Record` 分散映射
+```typescript
+// ✅ 正确：一个字典包含所有信息
+export const order_status = [
+  { value: 0, label: '待生效', type: 'warning' },
+  { value: 1, label: '生效中', type: 'success' },
+  { value: 2, label: '已结束', type: 'info' }
+]
+
+// ❌ 错误：重复定义多个字典
+const ORDER_STATUS_OPTIONS = [{ value: 0, label: '待生效' }]
+const ORDER_STATUS_TEXT = { 0: '待生效' }
+const ORDER_STATUS_TAG_TYPE = { 0: 'warning' }
+```
+
+## 6.所有数据结构格式
+- 数组包对象：
+```typescript
+// ✅ 正确：对象里面的一行显示
+const formItem = [
+  {},
+  {},
+]
+// ❌ 错误：对象换行
+```
+
+
+## 6. 项目约定
+- 路径别名：`@/` → `src/`
+- 组件命名：`defineOptions({ name: 'ComponentName' })`
+- 状态管理：`useXxxStoreHook()`
+- 样式穿透：`:deep(.class-name)`
+
+## 7. SVG 图标管理
+- 所有可复用的 SVG 几何配置统一维护在 `src/assets/svg/staticIcons.ts` 中
+- 组件内只写最小的 `<svg>` 结构与业务相关的动态样式（如颜色、状态），几何数据通过静态配置导入使用
+- 新增图标时优先抽象为配置（如坐标、宽高等），避免在各个组件中重复硬编码
+
+##8.组件使用规范
+-以一行的形式来展示不要分行
+<el-input-number v-model="row.freeDay" :min="0" :max="9999" :step="1" controls-position="right"/>
+- 页面中的弹框（`el-dialog` / `ReDialog`）默认拆分为独立组件，父组件只负责开关状态、数据传参与事件处理
+- 弹框组件命名建议：`业务名 + Dialog`（如 `WorkbenchCabinetAlertDetailDialog.vue`），放在同级 `components` 目录
+
+## 9. 组件分文件模块（强制）
+- 页面级 `components` 目录禁止长期扁平堆放；组件必须按业务域拆分子目录（如 `battery/`、`order/`、`user/`、`cabinet/`）
+- 当某一业务域组件数量 >= 3（或同一流程存在“面板 + section + dialog”组合）时，必须新建该业务子目录，不再直接放在 `components` 根目录
+- 页面入口文件按业务子目录引用组件，例如：`./components/order/OrderActionEmbeddedPanel.vue`
+- 同业务域组件优先在子目录内相互引用（`./Xxx.vue`），减少跨域依赖；跨域复用必须显式说明用途
+- 新增组件时优先判断所属业务域并放到对应子目录，保持“一个模块一组目录”的可维护结构
+## 10. 业务路由模块（`src/router/modules`）
+- 根路由 `/`（`home.ts`）已挂载唯一 `Layout`，**业务模块父级禁止再写 `component: Layout`**
+- 模块父级仅保留 `path`、`redirect`、`meta`（菜单分组）+ `children`（真实页面）
+- 详情/子页用 `meta.showLink: false`，`meta.activePath` 指向列表路由
+- **path 必须以 `/` 开头**（含 `children` 内的 path），便于在路由文件中快速搜索定位页面
+- **route `name` 与页面组件 `defineOptions({ name })` 保持一致**（PascalCase），利于 keep-alive 与问题排查
+- 页面间传参优先 `query`（`router.push({ name: 'XxxPage', query: { id } })`），复杂对象勿塞 query
+
+## 11. 多平台 / 多环境（IOT、ESINO 等）
+- **完整规范见** `docs/guide/multi-platform.md`（人读）与 `.cursor/rules/platform-env.mdc`（AI）
+- 业务：`hasPlatformFeature()` / `pickPlatformValue()`；**禁止**页面读 `VITE_NAME`
+- 接口前缀：**仅 URL**（`/sw`→`sw`，`/esino`→`esino`），用 `getBusinessApiPrefix` / `businessApiPath`
+- 路由：仅某平台可用须 `meta.platforms`；新环境改 `platform.ts` 登记表与能力矩阵
+- 新页面默认**不按平台命名**；整页两套实现再用语义文件名（如 `bmsUpgradeEsino.vue`）
+
+## 12. Vue SFC 与 Composition API 组织（强制）
+### 12.1 单文件标签顺序
+- `.vue` 文件标签顺序固定为：`<template>` → `<script setup lang="ts">` → `<style>`
+- 禁止 `<style>` 写在 `<script>` 之前
+
+### 12.2 模板表达式保持简单
+- 模板只写「展示什么」，复杂计算、格式化、多层三元/链式调用放到 `computed` 或方法
+- 禁止在模板写长表达式（如 `.map().filter().join()`、多层 `??` / 三元嵌套）；已有 `getDict`、格式化函数优先复用
+
+### 12.3 `<script setup>` 按业务分块（禁止「先全部变量、再全部方法」）
+- 相关变量、computed、方法、生命周期写在同一业务块内，块与块之间用行注释分隔
+- 推荐块顺序：`import` → `defineOptions` / `props` / `emit` → 各业务块 → `defineExpose`（如有）
+- 单文件出现「表格 / 搜索 / 弹框 / 提交」等多块业务时，必须分块；块内仍可再分子步骤
+
+```typescript
+// -------- 表格查询 --------
+const { dataList, page, loading, GetData } = useTableWithForm({ ... })
+const handleSearch = () => { ... }
+
+// -------- 批量操作 --------
+const selectedRows = ref([])
+const handleBatchEdit = () => { ... }
+```
+
+- 页面超过约 400 行或单块逻辑过重时，优先拆到 `hooks/`、同级 `components/` 或 `utils/`，而不是继续堆在一个 `<script setup>` 里
+
+## 13. 禁止事项
+- ❌ Options API（必须用 Composition API）
+- ❌ `<script setup>` 内把所有 `ref/reactive` 堆在一起、所有 `function` 再堆在一起（必须按 12.3 业务分块）
+- ❌ 模板内复杂表达式（必须抽 `computed` / 方法，见 12.2）
+- ❌ 路由 `children` 的 `path` 不以 `/` 开头；`name` 与页面组件名不一致（见第 10 节）
+- ❌ 组件内直接写 API 请求
+- ❌ 使用 `any` 类型，非必要不用ts
+- ❌ 重复代码（必须提取复用）
+- ❌ 硬编码状态值（必须用词典）

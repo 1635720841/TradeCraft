@@ -1,0 +1,186 @@
+// SaaS 平台统一 Schema：平台表 + seo-factory 业务表
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── 平台层 ──
+
+model Organization {
+  id        String        @id @default(uuid())
+  name      String
+  users     User[]
+  projects  Project[]
+  usageLogs CreditUsage[]
+  createdAt DateTime      @default(now())
+}
+
+/// Prompt 模板版本库（M12）：平台全局，seo-factory LLM 热更新
+model PromptTemplate {
+  id          String   @id @default(uuid())
+  version     String   @unique /// 如 seo_brief_v1，与 briefData.promptVersion 对齐
+  name        String
+  description String?  @db.Text
+  content     String   @db.Text
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([updatedAt])
+}
+
+/// 功能槽位 → Prompt 版本绑定（运营可在后台切换）
+model PromptRuntimeBinding {
+  slotId        String   @id /// brief | draft | localOptimize | semrushOptimize | rewrite
+  activeVersion String
+  updatedAt     DateTime @updatedAt
+}
+
+model User {
+  id             String       @id @default(uuid())
+  email          String       @unique
+  name           String?
+  passwordHash   String? /// 开发/自建 Auth；Logto 接入后可空
+  authSubject    String?      @unique /// 外部 IdP sub（Logto/Supabase）
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  role           Role         @default(MEMBER)
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+}
+
+model Project {
+  id             String        @id @default(uuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+  name           String
+  projectType    String // 'seo-factory' | future types
+  config         Json?
+  status         ProjectStatus @default(ACTIVE)
+  sites          Site[]
+  jobs           ArticleJob[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+}
+
+model CreditUsage {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  projectId      String?
+  projectType    String?
+  serviceType    String // SERP | LLM | IMAGE | RPA
+  provider       String
+  tokensOrCount  Int          @default(0)
+  estimatedCost  Float        @default(0)
+  traceId        String?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, createdAt])
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+// ── seo-factory 业务表 ──
+
+model Site {
+  id             String       @id @default(uuid())
+  organizationId String
+  projectId      String
+  project        Project      @relation(fields: [projectId], references: [id])
+  domain           String
+  brandVoice       String?      @db.Text
+  targetMarket     String?
+  contentLanguage  String       @default("en")
+  jobs             ArticleJob[]
+  pages            SitePage[]
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, projectId])
+}
+
+/// 站点页面库：供 M8 内链匹配（同站点已索引页面）
+model SitePage {
+  id             String       @id @default(uuid())
+  organizationId String
+  projectId      String
+  siteId         String
+  site           Site         @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  url            String
+  title          String
+  summary        String?      @db.Text
+  keywords       String[]     @default([])
+  pageType       SitePageType @default(PAGE)
+  businessValue  Float        @default(0.5)
+  lastUpdated    DateTime?
+  source         String       @default("sitemap")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([siteId, url])
+  @@index([organizationId, projectId, siteId])
+}
+
+enum SitePageType {
+  PRODUCT
+  SERVICE
+  SOLUTION
+  BLOG
+  PAGE
+}
+
+model ArticleJob {
+  id             String    @id @default(uuid())
+  traceId        String    @unique
+  organizationId String
+  projectId      String
+  project        Project   @relation(fields: [projectId], references: [id])
+  siteId         String
+  site           Site      @relation(fields: [siteId], references: [id])
+  targetKeyword    String
+  contentLanguage  String    @default("en")
+  status           JobStatus @default(QUEUED)
+  briefData      Json?
+  serpData       Json?
+  draftData      Json?
+  localSeoScore  Float?
+  seoCheckData   Json?
+  semrushScore   Float?
+  outputUrl      String?
+  errorMessage   String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([organizationId, projectId, status])
+  @@index([organizationId, projectId, createdAt])
+}
+
+enum JobStatus {
+  QUEUED
+  RESEARCHING
+  DRAFTING
+  LINKING
+  ILLUSTRATING
+  OPTIMIZING
+  REVIEWING
+  COMPLETED
+  FAILED
+}

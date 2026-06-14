@@ -1,0 +1,35 @@
+---
+description: 内容质量、HTML 输出与验收标准
+alwaysApply: true
+---
+
+# 质量与验收底线
+
+质量要求不得牺牲五大核心原则：为追 Semrush 分数不得在业务层硬编码特定 LLM；为省成本不得绕过防腐层直连 API。质量规则作用于**项目类型插件**层，不因新增项目类型而削弱。
+
+## 内容 & 输出
+
+## 内容质量
+
+- M6 Semrush Overall Score 必须循环优化至 **≥9.5**
+- YMYL 敏感话题自动标记 `requires_human_review: true`，禁止直接输出可发布 HTML
+- 内容须具备信息增益 (EEAT)，禁止洗稿
+
+## HTML 输出
+
+- `article.html` 使用语义化标签
+- **禁止**内联 CSS 或可能污染租户站点（WordPress/SaaS）全局样式的 JS
+
+## 稳定性
+
+- 外部 API 超时/失败 → BullMQ 重试，不导致主进程崩溃
+- LLM JSON 返回必须经过正则清洗再 `JSON.parse`
+
+## 开发路线图参考
+
+| Phase | 目标 |
+|-------|------|
+| 1 (W1-2) | NestJS + Prisma SQLite，API 打通 Serper→LLM Brief→正文 |
+| 2 (W3-4) | Playwright Semrush RPA，BullMQ 并发 |
+| 3 (W5-6) | PostgreSQL 多租户，Logto/Supabase Auth，Vue3 控制台 |
+| 4 (W7-8) | Flux 配图，CreditUsage 商业化 |

@@ -1,0 +1,124 @@
+---
+description: 接口规范 — 标准响应、版本化、异步任务、错误码、OpenAPI
+globs: "apps/**/api/**"
+alwaysApply: false
+---
+
+# 接口规范
+
+## 版本化
+
+- 所有路由以 `/api/v1/` 为前缀
+- 破坏性变更升 `/api/v2/`，旧版至少保留 1 个发布周期
+- 响应头可选 `X-API-Version: 1`
+
+## 标准响应格式
+
+```typescript
+// ── 成功（同步，200/201）──
+{
+  "data": { "id": "...", "status": "QUEUED", ... },
+  "meta": { "traceId": "tr_abc123" }
+}
+
+// ── 成功（分页列表）──
+{
+  "data": [ ... ],
+  "meta": {
+    "traceId": "tr_abc123",
+    "pagination": { "cursor": "next_xxx", "hasMore": true, "limit": 20 }
+  }
+}
+
+// ── 成功（异步任务已接受，202）──
+{
+  "data": { "id": "job_xxx", "status": "QUEUED" },
+  "meta": { "traceId": "tr_abc123" }
+}
+
+// ── 失败 ──
+{
+  "error": {
+    "code": "QUOTA_EXCEEDED",
+    "message": "本月配额已用完",
+    "traceId": "tr_abc123"
+  }
+}
+```
+
+- HTTP 状态码表达语义，body 中 `error.code` 供前端 i18n 和程序判断
+- 生产环境 `message` 不暴露堆栈/SQL/内部路径
+- 前端用 `t('errors.' + code)` 展示，`message` 字段仅作 fallback / 开发调试
+- 新增错误码必须同步 `web/src/locales/*/errors.json`（见 `18-i18n`）
+
+## 异步任务接口模式
+
+耗时 >3s 的操作**禁止**同步等待，必须异步入队：
+
+```
+POST   /api/v1/projects/:projectId/article-jobs     → 202 Accepted
+GET    /api/v1/projects/:projectId/article-jobs/:id   → 200 轮询状态
+DELETE /api/v1/projects/:projectId/article-jobs/:id   → 202 取消（如支持）
+```
+
+| status | 含义 | 前端行为 |
+|--------|------|---------|
+| `QUEUED` | 已入队 | 继续轮询 |
+| `RESEARCHING`…`OPTIMIZING` | 执行中 | 展示进度 |
+| `COMPLETED` | 完成 | 展示结果 |
+| `FAILED` | 失败 | 展示 error.code |
+
+- 轮询推荐 3-5s 间隔；后期改 WebSocket/SSE 推送
+- `POST` 支持 `Idempotency-Key` 请求头防重复提交
+
+## HTTP 方法语义
+
+| 方法 | 用途 | 幂等 |
+|------|------|------|
+| GET | 查询 | ✅ |
+| POST | 创建 / 触发异步任务 | ❌（需 Idempotency-Key） |
+| PATCH | 部分更新 | ✅ |
+| PUT | 全量替换（少用） | ✅ |
+| DELETE | 删除/归档 | ✅ |
+
+## 错误码规范
+
+```
+格式：SCREAMING_SNAKE_CASE，模块前缀可选
+
+通用：UNAUTHORIZED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, RATE_LIMITED
+平台：QUOTA_EXCEEDED, PROJECT_ARCHIVED, ORG_SUSPENDED
+SEO：  JOB_NOT_FOUND, JOB_ALREADY_RUNNING, SERP_FETCH_FAILED
+```
+
+- 错误码注册在 `core/exceptions/error-codes.ts` 统一管理，禁止散落字符串
+- 每个码附一行注释说明触发场景
+
+## Controller 编写模板
+
+```typescript
+/**
+ * 文章任务 HTTP 入口：接收创建/查询请求，转发至 ArticleJobService。
+ *
+ * 边界：
+ * - 不负责：业务逻辑、数据库操作、工作流调度
+ *
+ * 入口：
+ * - ArticleJobController
+ */
+@Controller('api/v1/projects/:projectId/article-jobs')
+@UseGuards(AuthGuard, ProjectGuard)
+export class ArticleJobController {
+  @Post()
+  @HttpCode(HttpStatus.ACCEPTED)
+  async create(@Body() dto: CreateArticleJobDto, @Ctx() ctx: RequestContext) {
+    const job = await this.service.create(dto, ctx);
+    return { data: toResponseDto(job), meta: { traceId: ctx.traceId } };
+  }
+}
+```
+
+## OpenAPI（后期）
+
+- 用 `@nestjs/swagger` 装饰器为每个 DTO/Controller 生成文档
+- `/api/docs` 仅 staging 开放，production 关闭或需 ADMIN 权限

@@ -1,0 +1,70 @@
+---
+description: 代码质量与可读性 — 文件头注释、行数、命名、注释、复杂度
+globs: "**/*.ts,**/*.vue"
+alwaysApply: false
+---
+
+# 代码质量与可读性
+
+## 文件头模块注释（强制）
+
+每个 `.ts` / `.vue` 文件顶部必须有 docstring，格式见 `15-backend-engineering.mdc`。
+
+Vue 文件在 `<script setup>` 之前用 `<!-- -->` 注释；`.ts` 用 `/** */`。
+前端详细规范见 `19-frontend-standards.mdc`，目录见 `20-frontend-file-organization.mdc`。
+
+## 命名
+
+| 类型 | 规范 | 示例 |
+|------|------|------|
+| 文件 | kebab-case | `article-job.service.ts` |
+| 类/接口 | PascalCase | `ArticleJobService` |
+| 方法/变量 | camelCase | `createArticleJob` |
+| 常量 | SCREAMING_SNAKE | `MAX_RETRY_COUNT` |
+| 枚举值 | SCREAMING_SNAKE | `JobStatus.QUEUED` |
+| 布尔变量 | is/has/can 前缀 | `isCompleted`, `hasQuota` |
+
+## 代码量与复杂度
+
+| 指标 | 上限 |
+|------|------|
+| 单文件 | 300 行 |
+| 单方法 | 50 行 |
+| Controller 方法 | 15 行 |
+| 嵌套 if/else | 3 层 |
+| 方法参数 | 5 个（超出用对象） |
+
+## 注释原则
+
+```typescript
+// ❌ 废话注释
+// 获取用户
+const user = await this.getUser(id);
+
+// ✅ 解释为什么
+// Semrush 凌晨限速：共享子账号 02:00-06:00 只允许 2 并发
+await this.rateLimiter.acquire('semrush', { max: 2 });
+
+// ✅ 临时方案
+// TODO(2026-07): 改用 WebSocket 推送替代轮询 — issue #42
+```
+
+- 注释解释 **为什么**，不解释 **是什么**
+- 禁止注释掉的废代码
+- 公共 Service 方法用 JSDoc 标注 `@param` `@returns` `@throws`
+
+## 依赖方向
+
+```
+Controller → Service → Prisma / Provider(Adapter)
+                ↓
+           EventBus（副作用）
+```
+
+- 共享类型 → `interfaces/` 或 `packages/shared-types/`
+- 禁止循环依赖；检测到循环 → 抽接口到 `packages/`
+
+## 配置
+
+- 魔法数字/字符串 → `constants/` 或环境变量
+- 环境变量启动时用 zod 校验，缺配 fail-fast

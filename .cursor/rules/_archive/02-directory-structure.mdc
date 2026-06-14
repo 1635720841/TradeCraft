@@ -1,0 +1,50 @@
+---
+description: SaaS 平台目录结构（概要）— 详见 17-file-organization
+globs: "apps/**,packages/**"
+alwaysApply: false
+---
+
+# 目录结构（概要）
+
+> 完整文件组织、命名、禁止事项见 `17-file-organization.mdc`
+
+## 平台 + 插件
+
+```
+apps/platform/
+├── api/src/
+│   ├── core/                       # 或引用 packages/shared-core
+│   ├── modules/                    # 平台层（所有项目类型共用）
+│   │   ├── auth/                   # 企业、用户、角色
+│   │   ├── project/              # 项目 CRUD、类型注册表、切换
+│   │   └── billing/              # 统一计费
+│   ├── project-types/              # 项目类型插件（彼此隔离）
+│   │   ├── seo-factory/
+│   │   │   ├── modules/          # workflow, scraper, llm, seo-checker, export
+│   │   │   ├── providers/        # serper, deepseek, flux
+│   │   │   └── seo-factory.plugin.ts  # 实现 IProjectTypePlugin
+│   │   └── _template/            # 新项目类型脚手架
+│   └── app.module.ts
+├── web/                            # 企业控制台
+│   ├── views/platform/             # 项目列表、切换、企业设置
+│   └── views/projects/             # 按 projectType 动态加载
+└── prisma/schema.prisma            # 统一 Schema（平台表 + 各类型业务表）
+```
+
+## 路径约定
+
+| 代码类型 | 位置 |
+|---------|------|
+| 平台通用（鉴权/项目/计费） | `modules/auth|project|billing/` |
+| SEO 专属业务 | `project-types/seo-factory/modules/` |
+| 未来项目类型 | `project-types/[新类型]/` |
+| 跨层共享基建 | `packages/shared-core/` |
+| 插件注册接口 | `packages/platform-sdk/` |
+
+## 新增代码检查
+
+1. 是**平台层**还是**项目类型插件**？（放对目录）
+2. 是否 import 了其它 `project-types/` 的代码？（**禁止**）
+3. 业务表是否含 `organizationId` + `projectId`？
+4. 新项目类型是否实现了 `IProjectTypePlugin` 并注册？
+5. 外部调用是否经过 Interface 防腐层？

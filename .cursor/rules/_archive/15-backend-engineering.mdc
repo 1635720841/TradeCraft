@@ -1,0 +1,171 @@
+---
+description: 后端工程规范 — 模块结构、文件头注释、依赖、数据库、错误与日志
+globs: "apps/**/api/**,packages/**"
+alwaysApply: false
+---
+
+# 后端工程规范
+
+## 文件头模块注释（强制）
+
+**每个 `.ts` 文件顶部必须有模块 docstring**（`/** */` 块注释），至少包含用途与边界两行。
+
+```typescript
+/**
+ * 文章任务服务：负责 ArticleJob 的创建、状态流转与查询。
+ *
+ * 边界：
+ * - 不负责：工作流编排（由 WorkflowService 处理）、外部 API 调用（由 Provider 处理）
+ *
+ * 入口：
+ * - ArticleJobService
+ */
+```
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| 第一行 | ✅ | 一句话用途 |
+| 边界 · 不负责 | ✅ | 至少 1 条，明确职责上限 |
+| 入口 | 可选 | 导出的主类/函数名 |
+| 依赖 | 可选 | 关键外部依赖说明 |
+
+**禁止**无头文件；**禁止**只有 `//` 单行注释代替 docstring。
+
+## 单模块目录结构（标准模板）
+
+```
+modules/article-job/
+├── article-job.module.ts       # 模块注册与 DI 绑定
+├── article-job.controller.ts   # HTTP 入口，只做校验+转发
+├── article-job.service.ts        # 业务逻辑
+├── dto/
+│   ├── create-article-job.dto.ts
+│   ├── query-article-job.dto.ts
+│   └── article-job-response.dto.ts
+├── interfaces/                   # 本模块内部接口（可选）
+├── constants/                    # 本模块常量/枚举（可选）
+└── __tests__/
+    └── article-job.service.spec.ts
+```
+
+```
+project-types/seo-factory/providers/serper/
+├── serper.adapter.ts             # 实现 ISerpProvider
+├── serper.types.ts               # 请求/响应类型
+└── serper.config.ts              # 配置项映射
+```
+
+## 代码量上限
+
+| 类型 | 上限 | 超出处理 |
+|------|------|---------|
+| `.ts` 文件 | 300 行 | 按职责拆分新文件 |
+| 方法/函数 | 50 行 | 提取私有方法或 Helper |
+| Controller 方法 | 15 行 | 逻辑下沉到 Service |
+| DTO 文件 | 1 个 DTO 1 文件 | 不混写 Create/Update |
+
+## 依赖注入规范
+
+```typescript
+// ✅ 构造函数注入，接口绑定实现
+constructor(
+  private readonly prisma: PrismaService,
+  @Inject(SERP_PROVIDER) private readonly serp: ISerpProvider,
+  private readonly logger: LoggerService,
+) {}
+
+// ❌ 禁止：直接 new 外部服务、全局可变单例、在 Service 内 import 具体 Adapter
+```
+
+- Provider 绑定在 `*.module.ts` 的 `providers` 数组
+- 跨模块依赖只注入对方 **Service 接口** 或通过 **EventBus**，禁止跨模块直接访问 Repository
+
+## 数据库访问规范
+
+- **唯一入口**：Service 层通过 `PrismaService` 访问，Controller/Provider 禁止直接操作 DB
+- **双重隔离**：所有 `find/update/delete` 必须带 `organizationId` + `projectId`
+- **事务**：跨表写操作用 `prisma.$transaction()`；事件发布在事务提交**之后**
+- **查询**：列表必分页；`select` 指定字段，禁止 `SELECT *` 式全字段
+- **Migration**：只增不删（Expand-Contract），见 `12-data-governance`
+
+## 错误处理规范
+
+```typescript
+// 分层异常体系（放 core/exceptions/）
+AppException            // 基类
+├── BusinessException   // 可预期业务错误（4xx）
+├── NotFoundException   // 资源不存在（404，不暴露是否存在）
+├── ForbiddenException  // 权限不足（403）
+└── ExternalApiException // 外部服务失败（502，附带 provider 名）
+
+// Service 层：抛 BusinessException，附带 code + context
+throw new BusinessException('QUOTA_EXCEEDED', '本月配额已用完', { orgId, projectId });
+
+// Controller 层：不 catch 业务异常，由全局 ExceptionFilter 统一格式化
+// Provider 层：catch 外部错误 → 包装为 ExternalApiException 抛出
+```
+
+- **禁止**空 `catch {}`；**禁止**吞掉错误只 `console.log`
+- 未预期异常由全局 Filter 捕获 → 返回 500 + 通用 message，详细堆栈只写日志
+
+## 日志规范
+
+```typescript
+// 结构化日志，禁止 console.log
+this.logger.info('Article job created', {
+  traceId: ctx.traceId,
+  organizationId: ctx.orgId,
+  projectId: ctx.projectId,
+  jobId: job.id,
+  action: 'article_job.create',
+});
+
+// 错误日志
+this.logger.error('SERP fetch failed', {
+  traceId, organizationId, projectId,
+  provider: 'serper',
+  duration_ms: 1234,
+  error: err.message,  // 不记完整堆栈到生产 info 级
+});
+```
+
+| 级别 | 场景 |
+|------|------|
+| `error` | 未恢复失败、DLQ 入队 |
+| `warn` | 重试、降级、慢查询 >200ms |
+| `info` | 关键业务节点（创建/完成/状态变更） |
+| `debug` | 开发调试，生产关闭 |
+
+- 用 `AsyncLocalStorage` 或 NestJS CLS 在中间件注入 `traceId`，下游自动携带
+- 敏感字段脱敏：token、email、cookie、完整 prompt
+
+## 请求上下文（RequestContext）
+
+```typescript
+// core/context/request-context.ts — 每个请求在中间件中构建
+interface RequestContext {
+  traceId: string;
+  userId: string;
+  organizationId: string;
+  projectId?: string;    // 项目级 API 必填
+  role: Role;
+}
+```
+
+- Guard 校验身份 → 中间件填充 Context → Service 通过参数或 CLS 获取
+- **禁止**从 DTO/body/query 读取 `organizationId` 作为权限依据
+
+## 请求管道顺序
+
+```
+Middleware（TraceId 注入）
+  → Guard（AuthGuard → ProjectGuard → RoleGuard）
+    → Interceptor（日志、耗时）
+      → Pipe（ValidationPipe 校验 DTO）
+        → Controller
+          → Service
+            → ExceptionFilter（全局捕获格式化）
+```
+
+- `ValidationPipe` 全局启用 `whitelist: true, forbidNonWhitelisted: true`
+- 所有 Guard/Interceptor/Filter 放 `core/`，不在业务模块内重复造

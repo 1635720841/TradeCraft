@@ -1,0 +1,38 @@
+---
+description: 数据治理 — 生命周期、迁移、合规、软删除
+globs: "apps/**/prisma/**,**/*.prisma,apps/**/api/**"
+alwaysApply: false
+---
+
+# 数据治理
+
+## 生命周期
+
+| 操作 | 策略 |
+|------|------|
+| 删除项目 | **软删除** `status: ARCHIVED`，30 天后定时硬删 |
+| 删除企业 | 软删除 + 冷却期，期间可恢复 |
+| ArticleJob | 完成后保留 90 天，超期归档到冷存储 |
+| 审计日志 | 保留 1 年 |
+| CreditUsage | 永久保留（计费凭证） |
+
+## Schema 迁移（Expand-Contract）
+
+1. **Expand**：加新字段（可选），部署新代码
+2. **Migrate**：双写/回填数据
+3. **Contract**：下版本删旧字段
+
+- 禁止一次性破坏性迁移（删列、改类型）而不分阶段
+- 每个 migration 文件附注释说明意图
+
+## 合规预留
+
+- 用户数据导出 API（GDPR Right to Access）— 后期实现，表设计时避免数据孤岛
+- 用户注销时：匿名化 `email`，保留 `CreditUsage` 脱敏记录
+- YMYL 内容标记 `requiresHumanReview`，审计留痕
+
+## 数据一致性
+
+- 跨表操作（创建 Job + 扣配额）用 Prisma `$transaction`
+- 事件驱动的最终一致性操作（计费）允许短暂延迟，但必须有对账任务
+- 后期可加定时 `reconciliation` 任务核对 CreditUsage 与供应商账单

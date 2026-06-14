@@ -1,0 +1,97 @@
+---
+description: 工程化工具链 — ESLint、Prettier、Git Hooks、BullMQ Processor 模板
+alwaysApply: true
+---
+
+# 工程化工具链
+
+## ESLint + Prettier
+
+```
+wm/
+├── .eslintrc.cjs              # 或 eslint.config.js (flat)
+├── .prettierrc
+├── .eslintignore
+└── tsconfig.base.json           # 工作区共享 TS 配置
+```
+
+| 包 | 用途 |
+|----|------|
+| `@typescript-eslint/eslint-plugin` | TS 规则 |
+| `eslint-plugin-vue` | Vue 模板检查 |
+| `eslint-config-prettier` | 与 Prettier 不冲突 |
+| `prettier` | 统一格式化 |
+
+**强制规则（ESLint error 级）：**
+- 禁止 `any`（`@typescript-eslint/no-explicit-any`）
+- 禁止 `console.log`（`no-console`，允许 `console.warn/error` 仅调试）
+- 禁止未使用变量（`@typescript-eslint/no-unused-vars`）
+- Vue 组件名多词（`vue/multi-word-component-names`）
+
+## Husky + lint-staged
+
+```json
+// package.json
+"lint-staged": {
+  "apps/**/api/**/*.ts": ["eslint --fix", "prettier --write"],
+  "apps/**/web/**/*.{ts,vue}": ["eslint --fix", "prettier --write"],
+  "**/*.prisma": ["prettier --write"]
+}
+```
+
+- `pre-commit`：lint-staged 检查变更文件
+- `commit-msg`：可选 conventional commits（`feat:` `fix:` `chore:`）
+
+## BullMQ Processor 标准模板
+
+```typescript
+/**
+ * 文章生成任务处理器：消费 BullMQ 队列，驱动 M1-M10 工作流。
+ *
+ * 边界：
+ * - 不负责：任务创建与入队（由 ArticleJobService 处理）
+ * - 不负责：各步骤具体实现（由 WorkflowService 调度）
+ *
+ * 入口：
+ * - ArticleJobProcessor
+ */
+@Processor('seo-factory:article-job')
+export class ArticleJobProcessor {
+  @Process()
+  async handle(job: Job<ArticleJobPayload>) {
+    const { traceId, organizationId, projectId, jobId } = job.data;
+    // 1. 幂等检查  2. 更新状态  3. 调用 WorkflowService  4. 捕获异常进 DLQ
+  }
+}
+```
+
+- 队列名格式：`{projectType}:{taskName}`
+- Processor 放 `project-types/{type}/processors/`
+- 每个 Processor 文件头必须有 docstring
+
+## 共享 TS 配置
+
+```json
+// tsconfig.base.json
+{
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
+  }
+}
+```
+
+- 各 app 的 `tsconfig.json` extends `tsconfig.base.json`
+- 路径别名在各 app 独立配置
+
+## CI 检查（后期 .github/workflows）
+
+```yaml
+# PR 必过：typecheck → lint → test → build
+```
+
+- 任一失败禁止合并
+- 前端 build 检查 i18n key 缺失（可用 `vue-i18n-extract` 或自定义脚本）

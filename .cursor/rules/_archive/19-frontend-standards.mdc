@@ -1,0 +1,174 @@
+---
+description: 前端代码规范 — Vue3、组件、状态、API、样式、性能
+globs: "apps/**/web/**"
+alwaysApply: false
+---
+
+# 前端代码规范
+
+## 技术栈
+
+| 领域 | 选型 |
+|------|------|
+| 框架 | Vue 3 + `<script setup lang="ts">` |
+| 构建 | Vite |
+| 状态 | Pinia |
+| 路由 | Vue Router 4 |
+| UI 库 | Element Plus（或 Naive UI，项目内统一） |
+| CSS | UnoCSS / Tailwind（原子化） |
+| HTTP | ofetch / axios 封装 |
+| i18n | vue-i18n（见 `18-i18n`） |
+
+## 文件头注释（强制）
+
+每个 `.vue` / `.ts` 文件顶部必须有模块注释：
+
+```vue
+<!--
+  项目切换器：顶栏下拉组件，切换当前活跃项目并刷新路由。
+
+  边界：
+  - 不负责：项目内部页面渲染（由 router 懒加载到 project-type 插件）
+-->
+<script setup lang="ts">
+```
+
+```typescript
+/**
+ * 文章任务 API 客户端：封装 article-jobs 相关 HTTP 请求。
+ *
+ * 边界：
+ * - 不负责：响应数据转换（由 composable 处理）、错误 UI 展示（由 useApiError）
+ */
+```
+
+## 组件规范
+
+```vue
+<script setup lang="ts">
+// 1. import
+// 2. defineProps / defineEmits（用 type 声明）
+// 3. composables（useI18n, useRouter, stores）
+// 4. 响应式状态
+// 5. computed
+// 6. methods / handlers
+// 7. lifecycle hooks
+// 8. defineExpose（如需）
+
+interface Props {
+  projectId: string;
+  readonly?: boolean;
+}
+const props withDefaults(defineProps<Props>(), { readonly: false });
+const emit = defineEmits<{ submit: [id: string] }>();
+</script>
+```
+
+| 规则 | 说明 |
+|------|------|
+| 一律 `<script setup>` | 禁止 Options API |
+| Props/Emits 必须类型化 | 用 `interface` + `defineProps<T>()` |
+| 组件 ≤ 200 行 | 超出拆子组件或 composable |
+| 模板 ≤ 80 行 | 复杂区块提取子组件 |
+| 业务逻辑不放 template | 模板只做绑定和简单条件 |
+| 禁止 `v-html` | 除非经 DOMPurify 消毒 |
+
+## 组件分类与命名
+
+| 类型 | 文件命名 | 示例 |
+|------|---------|------|
+| 页面 | `views/` 下 PascalCase | `ProjectListView.vue` |
+| 业务组件 | PascalCase | `ArticleJobCard.vue` |
+| 通用组件 | `components/common/` | `AppButton.vue`, `AppPagination.vue` |
+| 插件组件 | `components/seo-factory/` | `SeoJobForm.vue` |
+
+- 组件名至少两个单词（避免 `Item.vue`）
+- 基础组件加 `App` 前缀：`AppModal`, `AppTable`
+
+## Composables 规范
+
+```
+composables/
+├── use-api-error.ts          # 错误码 → i18n message
+├── use-pagination.ts         # 通用分页逻辑
+├── use-project-context.ts    # 当前 projectId/projectType
+└── seo-factory/
+    └── use-article-job-poll.ts  # SEO 插件专属
+```
+
+```typescript
+/**
+ * 文章任务轮询：创建任务后自动轮询状态直到完成/失败。
+ *
+ * 边界：
+ * - 不负责：任务创建 API 调用（由 api/ 层处理）
+ */
+export function useArticleJobPoll(jobId: Ref<string>) {
+  // ...
+  return { status, isPolling, start, stop };
+}
+```
+
+- 以 `use` 开头；一个 composable 一个职责
+- 平台通用放 `composables/`，插件专属放 `composables/{type}/`
+
+## Pinia Store 规范
+
+```typescript
+/**
+ * 项目上下文 Store：管理当前选中的 projectId 和 projectType。
+ *
+ * 边界：
+ * - 不负责：项目列表获取（由 ProjectStore 处理）
+ */
+export const useProjectContextStore = defineStore('project-context', () => {
+  const projectId = ref<string | null>(null);
+  // actions 用 function 声明
+  return { projectId, setProject };
+});
+```
+
+- 一律 Setup Store（`defineStore(id, () => {})`）
+- Store 只管状态 + 简单同步逻辑；异步 API 调用放 composable 或 api 层
+- 按领域拆分：`useAuthStore`, `useProjectStore`, `useLocaleStore`
+
+## API 层规范
+
+```typescript
+// api/article-job.api.ts
+export async function createArticleJob(projectId: string, dto: CreateArticleJobDto) {
+  return apiClient<ArticleJobResponse>(`/api/v1/projects/${projectId}/article-jobs`, {
+    method: 'POST',
+    body: dto,
+    headers: { 'Idempotency-Key': crypto.randomUUID() },
+  });
+}
+```
+
+- 按资源分文件：`project.api.ts`, `article-job.api.ts`
+- 统一 `api/client.ts` 处理：baseURL、Token、traceId、错误拦截
+- 错误拦截器用 `error.code` → `useApiError()` → i18n，**不硬编码错误文案**
+
+## 样式规范
+
+- 优先 UnoCSS/Tailwind 原子类；复杂样式用 `<style scoped>`
+- 禁止 `!important`（除非覆盖第三方库）
+- 颜色/间距用设计 token（CSS 变量或 tailwind config），禁止散落魔法值
+- 组件内不写全局样式；全局样式只放 `styles/`
+
+## 性能
+
+- 路由懒加载：`() => import('./views/...')`
+- project-type 页面动态 import，不全量打包
+- 列表用虚拟滚动（大数据量时）
+- 图片用懒加载；轮询用 `useIntervalFn` 并在 `onUnmounted` 清理
+- `computed` 优先于 `watch`；`watch` 必须明确依赖和清理
+
+## 代码量上限
+
+| 类型 | 上限 |
+|------|------|
+| `.vue` 文件 | 250 行 |
+| `.ts` 文件 | 300 行 |
+| composable | 150 行 |
+| 单个 method | 40 行 |

@@ -1,0 +1,53 @@
+---
+description: 安全架构 — 鉴权、隔离、输入校验、密钥与审计
+alwaysApply: true
+---
+
+# 安全架构
+
+## 身份与授权（AuthN / AuthZ）
+
+- 鉴权交给 Logto/Supabase Auth，**禁止自研密码存储**
+- RBAC：`ADMIN` 可管理企业成员/计费；`MEMBER` 只能操作被授权的项目
+- 每个 API 必须校验：用户身份 → `organizationId` → `projectId` → 操作权限
+- **禁止信任客户端传来的 tenant ID**：从 JWT/Session 取值，与请求资源比对
+
+## 防越权（IDOR）
+
+```typescript
+// ❌ 禁止：直接用客户端 projectId 查数据
+const job = await prisma.articleJob.findUnique({ where: { id: jobId } });
+
+// ✅ 正确：强制双重归属校验
+const job = await prisma.articleJob.findFirst({
+  where: { id: jobId, organizationId: ctx.orgId, projectId: ctx.projectId },
+});
+if (!job) throw new NotFoundException(); // 不暴露"是否存在"
+```
+
+## 输入与输出安全
+
+- 所有 Controller 入参用 `class-validator` DTO 校验，禁止裸 `any` body
+- Prisma 优先参数化查询；`$queryRaw` 必须参数绑定，禁止字符串拼接
+- LLM 生成的 HTML 须经消毒（DOMPurify 或白名单标签过滤）再存储/输出
+- 用户上传/爬取的外部内容视为不可信，解析前做长度与格式限制
+
+## 密钥与敏感数据
+
+- API Key、数据库密码、第三方 Token **只放环境变量**，禁止入库/入代码/入日志
+- 日志中屏蔽：邮箱、Token、Cookie、信用卡、完整 Prompt 原文
+- `.env` 不入 Git；生产密钥支持轮换，适配器从配置读取而非硬编码
+
+## 限流与防滥用
+
+- 平台层按 `organizationId` 限流；项目层按 `projectId` 限流
+- 昂贵操作（创建 ArticleJob、调用 LLM）需检查余额/配额
+- 登录、Webhook、公开 API 加 rate limit + 可选 CAPTCHA
+
+## 审计日志
+
+以下操作必须写审计记录（谁、何时、做了什么、traceId）：
+- 成员邀请/移除、角色变更
+- 项目创建/删除/归档
+- 计费变更、API Key 操作
+- 批量导出/删除数据

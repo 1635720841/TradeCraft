@@ -1,0 +1,40 @@
+---
+description: M1-M12 工作流编排与可替换 Provider 规范
+globs: "apps/platform/**/project-types/seo-factory/**"
+alwaysApply: false
+---
+
+# 工作流管线 (M1-M12)
+
+编排器（`workflow/`）**只负责调度**，各步骤由独立 Module 实现，通过接口调用。
+
+```
+前端触发 → BullMQ 入队
+  → M1-M3: ISerpProvider     → 竞品缺口
+  → M4-M5: ILLMProvider      → Brief & 初稿
+  → M6:   ISeoCheckerProvider → 循环优化 ≥9.5
+  → M8:   内链模块            → 向量匹配植入
+  → M9:   IImageProvider     → 封面/插图
+  → M10:  export 模块         → S3 归档
+  → 事件 → M11 计费 → 状态更新
+```
+
+## Provider 可替换原则
+
+- 工作流代码中**只出现接口名**，不出现 `serper`/`deepseek`/`flux` 等具体厂商
+- 厂商选择通过 DI 配置或环境变量 `PROVIDER_LLM=deepseek`
+- 切换供应商 = 新增 `providers/xxx/` + 改配置，**workflow 零改动**
+
+## 当前 MVP 默认实现（可随时替换）
+
+| 接口 | 默认适配器 | 备选 |
+|------|-----------|------|
+| ISerpProvider | serper | dataforseo |
+| ILLMProvider | deepseek | openai, claude |
+| IImageProvider | flux (硅基流动) | fireworks |
+| ISeoCheckerProvider | playwright-semrush | 未来 API 版 |
+
+## 队列规则
+
+- >3s 任务进 BullMQ；失败进重试队列，主进程不崩溃
+- 批量任务用 `p-limit` 或 BullMQ 限流

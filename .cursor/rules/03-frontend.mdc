@@ -1,0 +1,97 @@
+---
+description: 前端速查 — 编辑 web 时自动加载
+globs: "apps/**/web/**"
+alwaysApply: false
+---
+
+# 前端速查
+
+> 完整规范：`.cursor/skills/seo-saas-platform/frontend.md`
+
+## 目录
+
+```
+web/src/views/platform/
+web/src/views/projects/seo-factory/
+web/src/api/platform/          # 平台业务 API（对接 NestJS）
+web/src/utils/http/            # axios 封装（勿改核心逻辑）
+web/src/router/modules/        # 静态路由模块
+web/src/constants/dicts/       # 枚举/状态字典（单一数据源）
+web/src/utils/dict.ts          # dictLabel / dictTagType / dictOptions
+web/src/store/
+```
+
+## pure-admin 约定
+
+- 壳子（layout、login、permission store）少改；业务放 `views/` + `api/platform/`
+- 登录暂用 Mock；业务 API 走 `/api/v1/*` 代理
+- 新路由：加 `router/modules/xxx.ts`，meta.title 直接写中文
+
+## 文案
+
+- template **直接写中文**，不做国际化
+- 同一文案复用 ≥3 次可抽 `constants/`，非必须
+
+## 字典 / 枚举（强制）
+
+- **定义**：`src/constants/dicts/<域>.ts`（如 `platform.ts`、`seo-factory.ts`）
+- **读取**：`src/utils/dict.ts` 的 `dictLabel` / `dictTagType` / `dictOptions`
+- **value 与后端 Prisma enum 一致**（如 `ACTIVE`、`QUEUED`，禁止前端自造数字码）
+- **同一字典只维护一份** `[{ value, label, type? }]`，禁止拆成 TEXT 表 + OPTIONS 表 + TAG 表
+
+```typescript
+// constants/dicts/platform.ts
+export const projectStatusDict = [
+  { value: "ACTIVE", label: "进行中", type: "success" },
+  { value: "ARCHIVED", label: "已归档", type: "info" }
+] as const;
+
+// 页面
+dictLabel(projectStatusDict, row.status);
+```
+
+详见 `vue.mdc` §字典与枚举展示
+
+## 错误提示
+
+```typescript
+// API 拦截器或 composable
+ElMessage.error(error.message ?? '操作失败，请稍后重试');
+```
+
+## API 层
+
+```typescript
+// src/api/platform/project.ts
+import { http } from "@/utils/http";
+
+export async function listProjects() {
+  const res = await http.request<WmApiResponse<ProjectItem[]>>(
+    "get",
+    "/api/v1/platform/projects"
+  );
+  return res.data ?? [];
+}
+```
+
+- 响应格式：`{ data, meta }`；错误 `{ error: { message } }`（拦截器已弹窗）
+- 禁止页面内 `http.request` / 拼 URL
+
+## SFC 标签顺序（强制）
+
+`template` → `script setup` → `style`（详见 `vue.mdc`）
+
+```
+<!-- docstring -->
+<template>...</template>
+<script setup lang="ts">...</script>
+<style scoped>...</style>
+```
+
+## 其它硬性规则
+
+- `<script setup lang="ts">`  only
+- Props 类型化；script 按业务分块（见 `vue.mdc`）
+- 组件 ≤250行；API 走 `api/`；禁止组件内 fetch
+- 路由懒加载；`onUnmounted` 清理定时器
+- 目录落位见 `module-structure.mdc`

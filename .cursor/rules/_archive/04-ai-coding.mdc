@@ -1,0 +1,55 @@
+---
+description: AI 编码前全维度审查清单（后端 + 前端 + i18n）
+alwaysApply: true
+---
+
+# 编码前强制审查
+
+## 一、五大核心原则
+
+| # | 原则 | 自检问题 |
+|---|------|---------|
+| 1 | **拓展性** | 平台层还是项目插件？新项目类型能否只加插件？ |
+| 2 | **解耦性** | 是否直接调了外部 SDK？主流程是否堆了副作用？ |
+| 3 | **低价可替代** | 外部调用是否经过 Interface？ |
+| 4 | **模块化** | 目录是否正确？是否 import 了其它 project-type？ |
+| 5 | **可维护性** | TraceId？Prompt 外置？类型完整？ |
+
+## 二、文件与代码质量（后端 + 前端通用）
+
+- [ ] 文件顶部有模块 docstring（用途 + 边界，至少两行）
+- [ ] 后端文件 <300 行，前端 `.vue` <250 行，方法 <50 行
+- [ ] 文件名规范（后端 kebab-case，前端组件 PascalCase）
+- [ ] 无 `any`；后端 Prisma Model 映射 DTO，前端 Props 类型化
+- [ ] 注释解释"为什么"，无废代码
+
+## 三、后端工程
+
+- [ ] 目录符合 module/controller/service/dto 结构
+- [ ] 构造函数 DI 注入；DB 查询带 `organizationId` + `projectId`
+- [ ] 异常用 `BusinessException`；结构化日志含 traceId/orgId/projectId
+- [ ] 路由 `/api/v1/`；响应 `{ data, meta }` 或 `{ error }`；耗时操作 202 异步入队
+- [ ] 错误码来自 `error-codes.ts`
+
+## 四、前端工程
+
+- [ ] 使用 `<script setup lang="ts">`，禁止 Options API
+- [ ] 用户可见文案全部 `t('key')`，无硬编码中文/英文
+- [ ] 新增文案已同步 `zh-CN` 和 `en-US` 语言包
+- [ ] API 调用走 `api/` 层，组件内无直接 `fetch()`
+- [ ] 错误展示用 `error.code` → `errors.{code}` i18n 映射
+- [ ] 路由懒加载；`onUnmounted` 清理轮询/定时器
+- [ ] 组件 ≤200 行，业务逻辑在 composable/store
+
+## 五、多语言 (i18n)
+
+- [ ] 翻译 Key 格式 `{namespace}.{module}.{label}`
+- [ ] 新增后端错误码已同步两个语言的 `errors.json`
+- [ ] 无拼接翻译字符串，用 `t('key', { var })` 插值
+- [ ] UI 语言与 SEO 内容生成语言（targetLocale）未混用
+
+## 六、性能与可靠性
+
+- [ ] 列表 API 分页；外部 API 有超时；任务幂等
+- [ ] 批量任务有并发上限；SERP 走 Redis 缓存
+- [ ] LLM JSON 经清洗再 parse

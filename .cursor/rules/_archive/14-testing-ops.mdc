@@ -1,0 +1,44 @@
+---
+description: 测试策略与运维配置 — 分层测试、Feature Flag、环境隔离
+alwaysApply: true
+---
+
+# 测试与运维
+
+## 测试金字塔
+
+| 层级 | 范围 | 要求 |
+|------|------|------|
+| 单元测试 | Service、工具函数、JSON 清洗 | 覆盖核心逻辑，Mock Provider |
+| 集成测试 | API + DB（测试库） | 租户隔离必测：A 企业不能访问 B 企业数据 |
+| E2E | 关键路径（创建项目→提交任务→查状态） | CI 可选，本地 Playwright 测控制台 |
+
+- Provider 适配器用 **Interface Mock**，不依赖真实 API Key 跑单元测试
+- 每个 `project-type` 插件自带 `__tests__/`，不交叉依赖
+
+## Feature Flag（后期预留）
+
+```typescript
+// 新功能先走 flag，出问题可秒级关闭
+if (await featureFlags.isEnabled('seo-m8-internal-linking', { orgId })) { ... }
+```
+
+- 新项目类型上线、高风险功能（Semrush RPA）先灰度
+- Flag 配置存 Redis/DB，支持按 `organizationId` 灰度
+
+## 环境隔离
+
+| 环境 | 用途 | 数据 |
+|------|------|------|
+| local | 开发 | SQLite 或本地 PG，假 Provider |
+| staging | 预发验证 | 独立 DB/Redis，真实 Provider 沙箱 |
+| production | 生产 | 独立 DB/Redis，真实 Provider |
+
+- 三个环境 API Key 完全隔离，禁止 staging 连生产库
+- `.env.example` 列出所有必需变量及说明，随代码更新
+
+## 监控告警（后期）
+
+- 队列积压 >100 → 告警
+- 外部 API 错误率 >10%（5min 窗口）→ 告警
+- DLQ 有新增消息 → 立即告警

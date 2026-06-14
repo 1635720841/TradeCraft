@@ -1,0 +1,128 @@
+---
+description: 多语言适配 — 前后端 i18n 架构、语言包组织、错误码映射
+alwaysApply: true
+---
+
+# 多语言适配 (i18n)
+
+## 核心原则
+
+- **UI 语言** 与 **内容生成语言**（SEO 文章目标语种）是两套独立概念，禁止混用
+- 后端 API 只返回 `error.code`（机器码），**禁止**返回硬编码中文/英文 message 给前端展示
+- 前端所有用户可见文案**禁止硬编码**，必须通过 `t()` 函数
+- 新增页面/功能必须**同时**提供 `zh-CN` 和 `en-US` 翻译
+
+## 技术选型
+
+| 层 | 方案 |
+|----|------|
+| 前端 | `vue-i18n` v9（Composition API 模式） |
+| 后端 | 错误码 + 可选 `Accept-Language` 头返回本地化 message（后期） |
+| 日期/数字 | `Intl.DateTimeFormat` / `Intl.NumberFormat` |
+| 内容生成 | `ArticleJob.targetLocale` 字段，与 UI locale 无关 |
+
+## 前端语言包目录
+
+```
+web/src/locales/
+├── index.ts                    # i18n 实例创建与注册
+├── types.ts                    # 翻译 Key 类型（后期自动生成）
+├── zh-CN/
+│   ├── common.json             # 通用：按钮、状态、分页
+│   ├── platform.json           # 平台层：项目列表、设置、计费
+│   ├── errors.json             # 错误码 → 用户友好文案
+│   └── seo-factory.json        # SEO 插件专属文案
+└── en-US/
+    ├── common.json
+    ├── platform.json
+    ├── errors.json
+    └── seo-factory.json
+```
+
+## 翻译 Key 命名规范
+
+```
+格式：{namespace}.{module}.{action/label}
+
+common.button.submit          → "提交" / "Submit"
+common.status.completed       → "已完成" / "Completed"
+platform.project.create       → "创建项目" / "Create Project"
+errors.QUOTA_EXCEEDED         → "本月配额已用完" / "Monthly quota exceeded"
+seo-factory.job.create_title  → "新建文章任务" / "New Article Job"
+```
+
+- 用 `.` 分隔，全小写 + 下划线（key 末段可用 SCREAMING_SNAKE 对应错误码）
+- 每个 `project-type` 插件独立 namespace JSON 文件
+- 禁止在 JSON 中嵌套超过 3 层
+
+## 前端使用规范
+
+```vue
+<script setup lang="ts">
+/**
+ * 项目列表页：展示当前企业下所有项目，支持创建与切换。
+ *
+ * 边界：
+ * - 不负责：项目内部业务（由各 project-type 插件页面处理）
+ */
+import { useI18n } from 'vue-i18n';
+
+const { t, locale } = useI18n();
+</script>
+
+<template>
+  <h1>{{ t('platform.project.list_title') }}</h1>
+  <button>{{ t('common.button.create') }}</button>
+</template>
+```
+
+```typescript
+// ❌ 禁止
+ElMessage.error('配额已用完');
+const title = '创建项目';
+
+// ✅ 正确
+ElMessage.error(t('errors.QUOTA_EXCEEDED'));
+const title = t('platform.project.create');
+```
+
+## 语言切换与持久化
+
+```typescript
+// stores/locale.store.ts
+// 优先级：用户设置（DB） > localStorage > 浏览器 Accept-Language > 默认 zh-CN
+```
+
+- 语言切换组件放平台顶栏，全局生效
+- 切换后写入 `localStorage('locale')` + 调 API 更新用户偏好
+- 路由、API 请求不随语言变化（资源 ID 与 locale 无关）
+
+## 后端错误码 → 前端 i18n 映射
+
+```typescript
+// composables/use-api-error.ts
+function resolveErrorMessage(code: string): string {
+  const key = `errors.${code}`;
+  return te(key) ? t(key) : t('errors.UNKNOWN');
+}
+```
+
+- `errors.json` 的 key 与 `error-codes.ts` 一一对应
+- 新增后端错误码时，**必须同步**在两个语言的 `errors.json` 中添加翻译
+
+## 后期扩展预留
+
+| 场景 | 策略 |
+|------|------|
+| 新增语言（ja-JP 等） | 复制 `en-US/` 目录，翻译后注册到 `locales/index.ts` |
+| 新增 project-type | 新增 `{type}.json` 到各语言目录 |
+| 后端本地化 message | `Accept-Language` → 服务端渲染邮件/通知模板 |
+| SEO 内容多语言 | `ArticleJob.targetLocale` + Prompt 模板按语种分版本 |
+| 翻译自动化 | 后期可接 Crowdin/Lokalise，Key 结构保持不变 |
+
+## 禁止事项
+
+- 禁止用中文/英文做 `if/else` 分支判断逻辑
+- 禁止拼接翻译字符串（`t('a') + value + t('b')`）→ 用插值 `t('key', { name: value })`
+- 禁止在 CSS `content:` 中写文案
+- 禁止图片中 baked-in 文字（用 SVG + i18n 或纯 CSS）

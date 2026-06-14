@@ -1,0 +1,60 @@
+{
+  "name": "@wm/platform-api",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "predev": "pnpm exec tsc -p ../../../packages/provider-interfaces/tsconfig.json && pnpm exec tsc -p ../../../packages/shared-core/tsconfig.json && pnpm exec tsc -p ../../../packages/platform-sdk/tsconfig.json",
+    "dev": "node scripts/dev.mjs",
+    "build": "nest build",
+    "start": "node --env-file=.env dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint \"src/**/*.ts\"",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "node prisma/seed.mjs",
+    "test:parser": "pnpm run build && node --test scripts/semrush-recommendations-parser.test.mjs",
+    "test:linking": "pnpm run build && node --test scripts/link-match.util.test.mjs",
+    "test:images": "pnpm run build && node --test scripts/article-image.util.test.mjs scripts/article-image-prompt.util.test.mjs",
+    "test:bfl": "pnpm run build && node --test scripts/bfl-poll.util.test.mjs",
+    "test:workflow": "pnpm run build && node --test scripts/workflow-resume.test.mjs",
+    "test:local-seo": "pnpm run build && node --test scripts/local-seo-score.test.mjs scripts/local-seo-round-cap.test.mjs scripts/semrush-round-cap.test.mjs scripts/seo-pipeline.test.mjs scripts/llm-config.test.mjs",
+    "test:seo": "pnpm run test:local-seo",
+    "test:ymyl": "pnpm run build && node --test scripts/ymyl-detect.util.test.mjs",
+    "test": "pnpm run build && node --test scripts/semrush-recommendations-parser.test.mjs scripts/link-match.util.test.mjs scripts/article-image.util.test.mjs scripts/article-image-prompt.util.test.mjs scripts/draft-enrichment.util.test.mjs scripts/semrush-content.util.test.mjs scripts/bfl-poll.util.test.mjs scripts/workflow-resume.test.mjs scripts/local-seo-score.test.mjs scripts/local-seo-round-cap.test.mjs scripts/ymyl-detect.util.test.mjs scripts/export-html.util.test.mjs scripts/article-json-ld.util.test.mjs scripts/prompt-cache.util.test.mjs scripts/tenant-isolation.test.mjs scripts/billing-event.test.mjs",
+    "semrush:smoke": "pnpm build && node scripts/semrush-rpa-smoke.mjs",
+    "postinstall": "playwright install chromium || true"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.mjs"
+  },
+  "dependencies": {
+    "@nestjs/bullmq": "^11.0.4",
+    "@nestjs/common": "^10.4.15",
+    "@nestjs/core": "^10.4.15",
+    "@nestjs/event-emitter": "^2.1.1",
+    "@nestjs/platform-express": "^10.4.15",
+    "@prisma/client": "^6.1.0",
+    "@wm/platform-sdk": "workspace:*",
+    "@wm/provider-interfaces": "workspace:*",
+    "@wm/shared-core": "workspace:*",
+    "bullmq": "^5.78.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "dotenv": "^17.4.2",
+    "ioredis": "^5.11.1",
+    "playwright": "^1.60.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "undici": "^7.27.2",
+    "uuid": "^11.0.3"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^10.4.9",
+    "@nestjs/schematics": "^10.2.3",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.2",
+    "@types/uuid": "^10.0.0",
+    "prisma": "^6.1.0",
+    "typescript": "^5.7.2"
+  }
+}

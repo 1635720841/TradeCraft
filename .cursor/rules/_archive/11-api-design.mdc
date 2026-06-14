@@ -1,0 +1,24 @@
+---
+description: API 设计规范（概要）— 详见 16-api-standards
+globs: "apps/platform/**/api/**,packages/**"
+alwaysApply: false
+---
+
+# API 设计规范（概要）
+
+> 完整规范见 `16-api-standards.mdc`（标准响应、异步、错误码、Controller 模板）
+
+## 路由约定
+
+```
+/api/v1/platform/...              # 平台层
+/api/v1/projects/:projectId/... # 项目层（插件路由）
+```
+
+## 核心要点
+
+- 统一 `{ data, meta }` / `{ error }` 响应格式
+- 耗时 >3s → `202 Accepted` 异步入队，客户端轮询状态
+- DTO 分层：`dto/` 入参出参 · `interfaces/` Service 契约 · 禁止暴露 Prisma Model
+- 错误码统一注册在 `core/exceptions/error-codes.ts`
+- Webhook 必须 HMAC 验签 + 幂等处理

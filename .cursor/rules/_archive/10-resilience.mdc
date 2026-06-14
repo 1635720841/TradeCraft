@@ -1,0 +1,43 @@
+---
+description: 可靠性与容错 — 重试、熔断、降级、优雅停机
+alwaysApply: true
+---
+
+# 可靠性与容错
+
+## 外部调用三件套
+
+每个 Provider 适配器必须实现：
+
+1. **超时**：`AbortController` 或 axios `timeout`，禁止无限等待
+2. **重试**：幂等读操作最多 3 次，指数退避（1s → 2s → 4s）
+3. **熔断**：连续失败 5 次后熔断 60s，期间快速失败并记日志
+
+```typescript
+// 非幂等写操作（如 LLM 生成）不自动重试，由 BullMQ 任务级重试
+```
+
+## 队列容错
+
+- BullMQ 任务配置：`attempts: 3`，`backoff: exponential`
+- 超过最大重试 → 移入 **Dead Letter Queue**，标记 `FAILED`，通知平台层
+- 任务处理必须**幂等**：同一 `traceId` 重复执行不产生重复扣费/重复文章
+- 创建任务 API 支持 `Idempotency-Key` 请求头，防重复提交
+
+## 部分失败与补偿
+
+- 多步骤工作流每步持久化状态到 DB（`JobStatus` 枚举），支持断点续跑
+- M9 配图失败不应回滚 M4-M8 已生成正文 → 降级为无图发布或标记待补图
+- 计费事件与业务事件解耦：业务失败不扣费，业务成功才触发 `CreditDeductEvent`
+
+## 优雅停机
+
+- NestJS 监听 `SIGTERM`：停止接收新任务 → 等待进行中 BullMQ 任务完成（最长 30s）→ 关闭 DB/Redis 连接
+- Playwright 浏览器实例在进程退出前全部 `close()`
+- 健康检查 `/health`：检测 DB、Redis、队列连通性
+
+## 灾难恢复预留
+
+- 数据库每日自动备份（云托管自带或 pg_dump 定时任务）
+- 关键配置（Prompt 模板、项目配置）支持导出/导入
+- 后期可加多区域部署，当前代码避免单点硬编码（URL/region 走配置）

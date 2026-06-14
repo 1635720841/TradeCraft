@@ -1,0 +1,43 @@
+---
+description: 编码前审查清单（写代码前逐项过）
+alwaysApply: true
+---
+
+# 编码前审查（全部勾选后才输出代码）
+
+## AI 防漂移（全 AI 开发必过）
+- [ ] 已读仓库同类文件作模板？未从零发明目录/响应/错误格式？
+- [ ] 只改用户要求范围？未顺手重构/升级依赖/改无关文件？
+- [ ] 未擅自加 npm 包？未用 any/ts-ignore 放水？
+- [ ] 新功能接线完整（module 注册/路由/error-codes/前端 api）？
+
+## 架构（防屎山）
+- [ ] 依赖方向正确？无插件互 import、无循环依赖、无跨模块直查 DB
+- [ ] 热路径无 LLM/SERP/Playwright？>3s 已走队列？
+- [ ] 状态有单一真相源（DB/S3/Redis）？跨表写有事务、事件在事务后？
+- [ ] 是上帝类/上帝 Service 吗？超行数需拆分
+
+## 原则
+- [ ] 平台层 or 项目插件？外部调用经过 Interface？
+- [ ] 主流程无堆叠副作用（计费/通知走事件）？
+
+## 通用
+- [ ] 文件头 docstring；无 any；无空 catch；无 console.log
+- [ ] 后端 <300行/方法<50行；前端 .vue<250行
+- [ ] 临时 hack 有 TODO(日期,#issue)，无注释废代码
+
+## 后端
+- [ ] module/controller/service/dto；DI 注入；DB 带 orgId+projectId
+- [ ] 错误码来自 error-codes.ts；日志含 traceId/orgId/projectId
+- [ ] 列表分页；长任务 202 异步入队；外部 API 有超时
+
+## 前端
+- [ ] SFC 标签顺序：`template` → `script setup` → `style`（禁止 script 在前）
+- [ ] 枚举/状态走 `constants/dicts/` + `dictLabel`/`dictTagType`，禁止 template 三元硬编码
+- [ ] script setup；Props 类型化；文案直接写中文
+- [ ] API 走 api/ 层；错误展示 error.message
+- [ ] 路由懒加载；onUnmounted 清理定时器
+
+## 质量
+- [ ] 租户隔离可测；关键路径有单元测试
+- [ ] 列表不返大字段；SERP 走缓存；任务幂等

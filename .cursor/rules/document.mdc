@@ -1,0 +1,36 @@
+---
+description: Markdown 文档编写规范
+globs: "{docs/**/*.md,README.md,CHANGELOG.md,.cursor/skills/**/*.md}"
+alwaysApply: false
+---
+
+# 文档规范（WM）
+
+## 通用
+
+- Markdown + 中文为主
+- 内容与代码同步更新；`docs/CURRENT_STATE.md` 记录阶段进度
+
+## 目录
+
+| 路径 | 用途 |
+|------|------|
+| `README.md` | 项目概述、快速开始 |
+| `docs/SETUP.md` | 安装、启动、迁移、排错 |
+| `docs/CURRENT_STATE.md` | AI 跨对话进度锚点 |
+| `docs/adr/` | 架构决策记录 |
+
+## 格式
+
+- ATX 标题（`#`），层级不跳级
+- 代码块标注语言
+- 列表用 `-`
+
+## 代码示例
+
+- 与仓库当前命令/API 一致（如 `pnpm dev:web`、`/api/v1/`）
+- 不写未实现的路径或虚构组件名
+
+## 版本
+
+- 重大变更可记 `CHANGELOG.md`（语义化版本）

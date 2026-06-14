@@ -1,0 +1,365 @@
+/**
+ * OpenAI 兼容 LLM 适配器：通过环境变量接入 DeepSeek / PackyAPI / OpenAI 等。
+ *
+ * 边界：
+ * - 不负责：Prompt 文件管理（由 PromptLoaderService 加载）
+ *
+ * 入口：
+ * - OpenAiCompatibleAdapter
+ */
+
+import { Injectable } from '@nestjs/common';
+import {
+  defaultBrandVoice,
+  getContentLanguageLabel,
+  LOCAL_SEO_PASS_THRESHOLD,
+  normalizeContentLanguage,
+  parseLlmJson,
+  LlmJsonParseError,
+} from '@wm/shared-core';
+import type {
+  BriefInput,
+  BriefOutput,
+  DraftInput,
+  DraftOutput,
+  ILLMProvider,
+  OptimizeInput,
+  OptimizeOutput,
+  RewriteInput,
+  RewriteOutput,
+} from '@wm/provider-interfaces';
+import { BusinessException } from '../../../../core/exceptions/business.exception';
+import { ErrorCodes } from '../../../../core/exceptions/error-codes';
+import { LoggerService } from '../../../../core/logger/logger.service';
+import { PromptLoaderService } from '../prompt-loader.service';
+import { PromptBindingService } from '../../../../modules/prompt/prompt-binding.service';
+import type { PromptRuntimeSlotId } from '../../../../modules/prompt/prompt-slot-metadata';
+import {
+  toEnglishPromptScoreBreakdown,
+  toEnglishPromptSuggestion,
+  toEnglishPromptSuggestions,
+} from './prompt-input-en.util';
+import { buildProxyHint, fetchWithRetry } from '../../../../core/http/http-fetch';
+import { resolveLlmChatCompletionsUrl, resolveLlmConfig, resolveLlmSampling, type LlmTask } from './llm.config';
+
+const REQUEST_TIMEOUT_MS = Number(process.env.LLM_REQUEST_TIMEOUT_MS ?? 180_000);
+const BRIEF_SUMMARY_FALLBACK_ZH = '（无 Brief 摘要，按当前正文结构与主题保留核心信息）';
+const BRIEF_SUMMARY_FALLBACK_EN =
+  '(No Brief summary — preserve core structure and topic from current body)';
+const SUGGESTION_FALLBACK_ZH = '（无具体条目，请按可读性、去 AI 感与原创性整体润色）';
+const KEYWORD_FALLBACK_ZH = '（无额外实体词，保持现有术语覆盖）';
+
+function buildReadabilityPriorityBlock(input: OptimizeInput): string {
+  if (!input.readabilityPriority) return '';
+  const points =
+    typeof input.pointsToGo === 'number' ? String(input.pointsToGo) : '?';
+  const target = input.localScoreTarget ?? LOCAL_SEO_PASS_THRESHOLD;
+  const audit =
+    input.readabilityAudit?.trim() ||
+    'Scan the body and split every sentence over 22 words and every paragraph over 80 words.';
+  return [
+    '## READABILITY PRIORITY MODE (this round ONLY)',
+    '',
+    `Local score is **${points} points** below ${target}. **Readability is the sole goal this round.**`,
+    '',
+    '- Split **every** sentence over **22 words**; split paragraphs over **80 words**',
+    '- **Keep every SERP entity term** — use shorter sentences, not long clauses',
+    '- Do **not** add length or new sections — surgical splits only',
+    '',
+    audit,
+    '',
+    '**This round overrides "keep entities over readability"** — entities stay, sentences MUST shorten.',
+  ].join('\n');
+}
+
+interface OpenAiChatResponse {
+  choices?: Array<{ message?: { content?: string } }>;
+}
+
+@Injectable()
+export class OpenAiCompatibleAdapter implements ILLMProvider {
+  constructor(
+    private readonly logger: LoggerService,
+    private readonly promptLoader: PromptLoaderService,
+    private readonly promptBinding: PromptBindingService,
+  ) {}
+
+  private loadPromptVersion(slotId: PromptRuntimeSlotId): Promise<string> {
+    return this.promptBinding.getActiveVersion(slotId);
+  }
+
+  async generateBrief(input: BriefInput): Promise<BriefOutput> {
+    const promptVersion = await this.loadPromptVersion('brief');
+    const template = await this.promptLoader.load(promptVersion);
+    const userContent = this.fillTemplate(template, this.buildPromptVars(input));
+
+    const outline = await this.chatJson(userContent, 'generateBrief', resolveLlmSampling('default'), 'brief');
+    return { outline, promptVersion };
+  }
+
+  async generateDraft(input: DraftInput): Promise<DraftOutput> {
+    const promptVersion = await this.loadPromptVersion('draft');
+    const template = await this.promptLoader.load(promptVersion);
+    const userContent = this.fillTemplate(template, {
+      ...this.buildPromptVars(input),
+      brief: JSON.stringify(input.brief.outline),
+    });
+
+    const parsed = await this.chatJson<{ content?: string }>(
+      userContent,
+      'generateDraft',
+      resolveLlmSampling('default'),
+      'draft',
+    );
+    const content = typeof parsed.content === 'string' ? parsed.content : JSON.stringify(parsed);
+
+    return { content, promptVersion };
+  }
+
+  async generateOptimize(input: OptimizeInput): Promise<OptimizeOutput> {
+    const promptVersion = await this.loadPromptVersion(
+      input.optimizePhase === 'semrush' ? 'semrushOptimize' : 'localOptimize',
+    );
+    const template = await this.promptLoader.load(promptVersion);
+    const suggestionBlock =
+      input.suggestions.length > 0
+        ? toEnglishPromptSuggestions(input.suggestions)
+            .map((line) => `- ${line}`)
+            .join('\n')
+        : `- ${toEnglishPromptSuggestion(SUGGESTION_FALLBACK_ZH)}`;
+    const keywordBlock =
+      (input.recommendedKeywords ?? []).length > 0
+        ? input.recommendedKeywords!.map((term) => `- ${term}`).join('\n')
+        : `- ${toEnglishPromptSuggestion(KEYWORD_FALLBACK_ZH)}`;
+
+    const competitorWords = input.semrushCompetitorWordCount;
+    const currentWords = input.semrushCurrentWordCount;
+    const readability = input.semrushReadabilityScore;
+    const semrushWordCap =
+      typeof competitorWords === 'number' && competitorWords > 0
+        ? String(competitorWords + 50)
+        : '(unknown — if sidebar says "longer than competitors", trim toward competitor length)';
+    const semrushWordTarget =
+      typeof competitorWords === 'number' && competitorWords > 0
+        ? String(competitorWords)
+        : '(unknown)';
+    const semrushCurrentWords =
+      typeof currentWords === 'number' && currentWords > 0 ? String(currentWords) : '(unknown)';
+    const semrushReadability =
+      typeof readability === 'number' ? `${readability}/100` : '(unknown, target ≥70)';
+    const localScore =
+      typeof input.localScore === 'number' ? String(input.localScore) : '(unknown)';
+    const localScoreTarget = String(input.localScoreTarget ?? LOCAL_SEO_PASS_THRESHOLD);
+    const localScoreBreakdown = toEnglishPromptScoreBreakdown(
+      input.localScoreBreakdown?.trim() || '（无明细；按优化建议与 SERP 实体词列表逐项落实）',
+    );
+    const optimizeHistoryContext =
+      input.optimizeHistoryContext?.trim() ||
+      '(First optimization round — no prior history.)';
+    const focusDimensions =
+      input.focusDimensions?.trim() ||
+      '(Address the lowest-scoring dimensions in the breakdown above.)';
+    const readabilityPriorityBlock = buildReadabilityPriorityBlock(input);
+    const scoreGapPlan =
+      input.scoreGapPlan?.trim() ||
+      '(Use the breakdown above — fix the smallest gap dimension first.)';
+
+    const userContent = this.fillTemplate(template, {
+      ...this.buildPromptVars(input),
+      searchIntent: input.searchIntent ?? 'informational',
+      targetWordCount: String(input.targetWordCount ?? 1500),
+      localScore,
+      localScoreTarget,
+      localScoreBreakdown,
+      scoreGapPlan,
+      optimizeHistoryContext,
+      focusDimensions,
+      readabilityPriorityBlock,
+      semrushCompetitorWordCount: semrushWordTarget,
+      semrushCurrentWordCount: semrushCurrentWords,
+      semrushReadabilityScore: semrushReadability,
+      semrushWordCountCap: semrushWordCap,
+      briefSummary:
+        input.briefSummary?.trim() === BRIEF_SUMMARY_FALLBACK_ZH || !input.briefSummary?.trim()
+          ? BRIEF_SUMMARY_FALLBACK_EN
+          : input.briefSummary,
+      recommendedKeywords: keywordBlock,
+      suggestions: suggestionBlock,
+      content: input.content,
+    });
+
+    const parsed = await this.chatJson<{
+      content?: string;
+      changesSummary?: string[];
+      warnings?: string[];
+    }>(userContent, 'generateOptimize', resolveLlmSampling('optimize'), 'optimize');
+    const content = typeof parsed.content === 'string' ? parsed.content : input.content;
+    const changesSummary = Array.isArray(parsed.changesSummary)
+      ? parsed.changesSummary.filter((item): item is string => typeof item === 'string')
+      : undefined;
+    const warnings = Array.isArray(parsed.warnings)
+      ? parsed.warnings.filter((item): item is string => typeof item === 'string')
+      : undefined;
+
+    return { content, promptVersion, changesSummary, warnings };
+  }
+
+  async generateRewrite(input: RewriteInput): Promise<RewriteOutput> {
+    const promptVersion = await this.loadPromptVersion('rewrite');
+    const template = await this.promptLoader.load(promptVersion);
+    const userContent = this.fillTemplate(template, {
+      ...this.buildPromptVars(input),
+      searchIntent: input.searchIntent ?? 'informational',
+      targetWordCount: String(input.targetWordCount ?? 1500),
+      briefSummary:
+        input.briefSummary?.trim() === BRIEF_SUMMARY_FALLBACK_ZH || !input.briefSummary?.trim()
+          ? BRIEF_SUMMARY_FALLBACK_EN
+          : input.briefSummary,
+      instruction: input.instruction,
+      content: input.content,
+    });
+
+    const parsed = await this.chatJson<{
+      content?: string;
+      changesSummary?: string[];
+      warnings?: string[];
+    }>(userContent, 'generateRewrite', resolveLlmSampling('optimize'), 'rewrite');
+    const content = typeof parsed.content === 'string' ? parsed.content : input.content;
+    const changesSummary = Array.isArray(parsed.changesSummary)
+      ? parsed.changesSummary.filter((item): item is string => typeof item === 'string')
+      : undefined;
+    const warnings = Array.isArray(parsed.warnings)
+      ? parsed.warnings.filter((item): item is string => typeof item === 'string')
+      : undefined;
+
+    return { content, promptVersion, changesSummary, warnings };
+  }
+
+  private buildPromptVars(input: {
+    keyword: string;
+    brandVoice?: string;
+    contentLanguage?: string;
+  }): Record<string, string> {
+    const contentLanguage = normalizeContentLanguage(input.contentLanguage);
+    return {
+      keyword: input.keyword,
+      outputLanguage: getContentLanguageLabel(contentLanguage),
+      brandVoice: input.brandVoice ?? defaultBrandVoice(contentLanguage),
+    };
+  }
+
+  private fillTemplate(template: string, vars: Record<string, string>): string {
+    return Object.entries(vars).reduce(
+      (text, [key, value]) => text.replaceAll(`{{${key}}}`, value),
+      template,
+    );
+  }
+
+  private async chatJson<T>(
+    userContent: string,
+    action: string,
+    sampling?: ReturnType<typeof resolveLlmSampling>,
+    task: LlmTask = 'default',
+  ): Promise<T> {
+    let config;
+    try {
+      config = resolveLlmConfig(task);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'LLM 配置无效';
+      throw new BusinessException(ErrorCodes.EXTERNAL_API_ERROR, message);
+    }
+
+    const apiUrl = resolveLlmChatCompletionsUrl(config.baseUrl);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+    if (task === 'optimize' || task === 'rewrite' || task === 'draft') {
+      this.logger.info('LLM chat request', {
+        action,
+        task,
+        model: config.model,
+        provider: config.providerLabel,
+      });
+    }
+
+    const body: Record<string, unknown> = {
+      model: config.model,
+      messages: [
+        { role: 'system', content: 'You output valid JSON only. No Markdown code fences or extra commentary.' },
+        { role: 'user', content: userContent },
+      ],
+    };
+    if (config.jsonMode) {
+      body.response_format = { type: 'json_object' };
+    }
+    if (sampling) {
+      body.temperature = sampling.temperature;
+      if (sampling.seed != null) {
+        body.seed = sampling.seed;
+      }
+    }
+
+    try {
+      const response = await fetchWithRetry(
+        apiUrl,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${config.apiKey}`,
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        },
+        { label: config.providerLabel },
+      );
+
+      if (!response.ok) {
+        const errorBody = await response.text().catch(() => '');
+        const detail = errorBody ? `：${errorBody.slice(0, 200)}` : '';
+        throw new BusinessException(
+          ErrorCodes.EXTERNAL_API_ERROR,
+          `${config.providerLabel} API 请求失败：HTTP ${response.status}${detail}`,
+        );
+      }
+
+      const data = (await response.json()) as OpenAiChatResponse;
+      const raw = data.choices?.[0]?.message?.content;
+      if (!raw) {
+        throw new BusinessException(
+          ErrorCodes.EXTERNAL_API_ERROR,
+          `${config.providerLabel} 返回内容为空`,
+        );
+      }
+
+      try {
+        return parseLlmJson<T>(raw);
+      } catch (error) {
+        if (error instanceof LlmJsonParseError) {
+          this.logger.error('LLM JSON parse failed', {
+            action,
+            provider: config.providerLabel,
+            model: config.model,
+            rawSnippet: error.rawSnippet,
+          });
+          throw new BusinessException(ErrorCodes.LLM_PARSE_ERROR, '大模型返回格式无效，请重试');
+        }
+        throw error;
+      }
+    } catch (error) {
+      if (error instanceof BusinessException) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : '未知错误';
+      const cause =
+        error instanceof Error && error.cause instanceof Error ? error.cause.message : '';
+      const proxyHint = buildProxyHint(error);
+      throw new BusinessException(
+        ErrorCodes.EXTERNAL_API_ERROR,
+        `${config.providerLabel} API 调用失败：${message}${cause ? `（${cause}）` : ''}${proxyHint}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+}
