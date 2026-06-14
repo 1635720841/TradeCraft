@@ -47,6 +47,7 @@
         <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link @click="goDetail(row.id)">查看详情</el-button>
+            <el-button type="warning" link @click="goEdit(row.id)">编辑后再审</el-button>
             <el-button
               type="success"
               link
@@ -167,6 +168,14 @@ function onSizeChange() {
 
 function goDetail(jobId: string) {
   router.push({ name: "SeoFactoryJobDetail", params: { projectId, jobId } });
+}
+
+function goEdit(jobId: string) {
+  router.push({
+    name: "SeoFactoryJobDetail",
+    params: { projectId, jobId },
+    query: { tab: "draft", edit: "1" }
+  });
 }
 
 function openReviewDialog(jobId: string, action: "approve" | "reject") {

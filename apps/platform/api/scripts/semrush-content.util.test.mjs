@@ -31,4 +31,14 @@ describe('markdownToHtml', () => {
     assert.match(html, /<h1>Title<\/h1>/);
     assert.match(html, /<p>Body text\.<\/p>/);
   });
+
+  it('converts markdown tables to html tables', () => {
+    const html = markdownToHtml(
+      '| Use case | Priority |\n| --- | --- |\n| EV fleet | Fast diagnostics |',
+    );
+    assert.match(html, /<table>/);
+    assert.match(html, /<th>Use case<\/th>/);
+    assert.match(html, /<td>EV fleet<\/td>/);
+    assert.doesNotMatch(html, /\| --- \|/);
+  });
 });

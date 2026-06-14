@@ -30,6 +30,7 @@ let createdJobId = '';
 function requireCtx(t) {
   if (!ctx) {
     t.skip('API 未就绪或 E2E_SKIP=true');
+    return null;
   }
   return ctx;
 }
@@ -53,7 +54,9 @@ describe('E2E article job smoke', () => {
   });
 
   it('login and load seed project', async (t) => {
-    const { accessToken } = requireCtx(t);
+    const session = requireCtx(t);
+    if (!session) return;
+    const { accessToken } = session;
 
     const me = await apiRequest('GET', '/api/v1/auth/me', { token: accessToken });
     assert.ok(me.data?.email, '应返回当前用户邮箱');
@@ -65,7 +68,9 @@ describe('E2E article job smoke', () => {
   });
 
   it('creates a site for the project', async (t) => {
-    const { accessToken } = requireCtx(t);
+    const session = requireCtx(t);
+    if (!session) return;
+    const { accessToken } = session;
 
     const suffix = Date.now();
     const created = await apiRequest('POST', `/api/v1/projects/${E2E_PROJECT_ID}/sites`, {
@@ -83,7 +88,9 @@ describe('E2E article job smoke', () => {
   });
 
   it('creates article job and returns 202 QUEUED', async (t) => {
-    const { accessToken } = requireCtx(t);
+    const session = requireCtx(t);
+    if (!session) return;
+    const { accessToken } = session;
     assert.ok(createdSiteId, '依赖上一用例创建的站点');
 
     const keyword = `e2e smoke keyword ${Date.now()}`;
@@ -104,7 +111,9 @@ describe('E2E article job smoke', () => {
   });
 
   it('observes job status change after enqueue', async (t) => {
-    const { accessToken } = requireCtx(t);
+    const session = requireCtx(t);
+    if (!session) return;
+    const { accessToken } = session;
     assert.ok(createdJobId, '依赖上一用例创建的任务');
 
     const finalJob = await pollUntil(
@@ -135,7 +144,9 @@ describe('E2E article job smoke', () => {
   });
 
   it('downloads export html when a completed job exists', async (t) => {
-    const { accessToken } = requireCtx(t);
+    const session = requireCtx(t);
+    if (!session) return;
+    const { accessToken } = session;
 
     const list = await apiRequest('GET', `/api/v1/projects/${E2E_PROJECT_ID}/article-jobs?limit=20`, {
       token: accessToken,

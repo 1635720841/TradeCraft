@@ -20,6 +20,7 @@ import {
   isPendingHumanReview,
   type YmylReviewResult,
 } from '../content-review/ymyl-detect.util';
+import type { DraftStaleness } from '../../constants/draft-edit';
 import { ExportService } from '../export/export.service';
 import type { ReviewArticleJobDto } from './dto/review-article-job.dto';
 
@@ -74,6 +75,19 @@ export class ArticleJobReviewService {
     dto: ReviewArticleJobDto,
   ) {
     const job = await this.loadReviewableJob(organizationId, projectId, jobId);
+
+    const draftRow = await this.prisma.articleJob.findFirst({
+      where: { id: jobId, organizationId, projectId },
+      select: { draftData: true },
+    });
+    const exportStale = (draftRow?.draftData as { staleness?: DraftStaleness | null } | null)
+      ?.staleness?.affected?.export === true;
+    if (exportStale) {
+      throw new BusinessException(
+        ErrorCodes.DRAFT_EXPORT_STALE,
+        '稿件已手动编辑，导出物已失效，请先重算 SEO 或确认内容后再审核',
+      );
+    }
 
     const ymylReview = this.buildReviewUpdate(job.seoCheckData, {
       humanReviewStatus: 'approved',

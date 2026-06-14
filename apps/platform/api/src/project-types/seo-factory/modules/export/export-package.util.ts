@@ -28,6 +28,8 @@ export interface BuildExportPackageInput {
   manifestText?: string;
   articleImages?: ArticleImageRecord[];
   contentMarkdown?: string;
+  /** 优先从对象存储读取稿件正文插图（相对 API 路径） */
+  fetchImage?: (url: string) => Promise<{ body: Buffer; contentType?: string } | null>;
 }
 
 export interface BuildExportPackageResult {
@@ -167,7 +169,9 @@ export async function buildExportPackageZip(
 
   for (let index = 0; index < imageSources.length; index += 1) {
     const source = imageSources[index];
-    const fetched = await fetchRemoteImage(source.url);
+    const fetched =
+      (input.fetchImage ? await input.fetchImage(source.url) : null) ??
+      (await fetchRemoteImage(source.url));
     if (!fetched) continue;
 
     const ext = resolveImageExtension(source.url, fetched.contentType);

@@ -13,7 +13,8 @@ export class BusinessException extends HttpException {
     public readonly code: ErrorCode,
     message: string,
     public readonly context?: Record<string, unknown>,
+    status: HttpStatus = HttpStatus.BAD_REQUEST,
   ) {
-    super({ code, message }, HttpStatus.BAD_REQUEST);
+    super({ code, message }, status);
   }
 }

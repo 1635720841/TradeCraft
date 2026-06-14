@@ -566,4 +566,15 @@ Phase 4 — 变现
 
 ---
 
+## 稿件手动编辑（规格：`docs/specs/draft-manual-edit.md`）
+
+- [x] **EDIT-A** 最小 PATCH + stale + 前端 textarea 编辑
+- [x] **EDIT-B** postSave `refresh_local`
+- [x] **EDIT-C** YMYL 重置 + approve 拦截 + export stale UI
+- [x] **EDIT-D** history + rollback API + UI
+- [x] **EDIT-E** postSave Semrush 重跑 + Staleness Banner 增强
+- [x] **EDIT-F** E2E `e2e/draft-edit.test.mjs`
+
+---
+
 *最后更新：2026-06-14 | 产品壳 + 关键词池 + QuillBot + 组织配额已接入；WordPress 前端 UI 暂缓，见 `docs/CURRENT_STATE.md`*

@@ -26,6 +26,14 @@
             <el-tag :type="dictTagType(jobStatusDict, row.status)">
               {{ dictLabel(jobStatusDict, row.status) }}
             </el-tag>
+            <el-tag
+              v-if="draftEditLabel(row as ArticleJobItem)"
+              type="warning"
+              size="small"
+              class="ml-1"
+            >
+              {{ draftEditLabel(row as ArticleJobItem) }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="进度" min-width="180" show-overflow-tooltip>
@@ -122,6 +130,7 @@ import {
   formatWorkflowProgressShort,
   workflowStepLabel
 } from "@/utils/seo-factory/workflow-progress";
+import { draftEditStatusLabel } from "@/utils/seo-factory/draft-edit-preview";
 
 defineOptions({ name: "JobListView" });
 
@@ -146,6 +155,10 @@ const hasActiveJobs = computed(() =>
 
 function formatTime(iso: string) {
   return new Date(iso).toLocaleString("zh-CN");
+}
+
+function draftEditLabel(row: ArticleJobItem): string | null {
+  return draftEditStatusLabel(row);
 }
 
 function progressText(row: unknown): string | null {

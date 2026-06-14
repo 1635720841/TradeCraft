@@ -24,6 +24,10 @@ import {
   buildExportHtmlUrl,
   buildExportStoragePrefix,
 } from './export-html.util';
+import {
+  buildDraftImageStorageKey,
+  parseDraftImageApiUrl,
+} from '../article-job/draft-image.util';
 
 export interface ExportJobContext {
   jobId: string;
@@ -62,30 +66,17 @@ export class ExportService {
       return null;
     }
 
-    const briefData = job.briefData as {
-      title?: string;
-      metaDescription?: string;
-    } | null;
-    const draftData = job.draftData as {
-      title?: string;
-      metaDescription?: string;
-      content?: string;
-    } | null;
-
-    const title = draftData?.title ?? briefData?.title ?? job.targetKeyword;
-    const metaDescription = draftData?.metaDescription ?? briefData?.metaDescription;
-    const content = draftData?.content?.trim() ?? '';
+    const exported = this.resolveExportContent(job);
     const prefix = buildExportStoragePrefix(ctx.organizationId, ctx.projectId, ctx.jobId);
     const exportedAt = new Date().toISOString();
-    const publishable = canPublishArticle(job.seoCheckData) && content.length > 0;
 
     const manifest = {
       traceId: ctx.traceId,
       jobId: ctx.jobId,
-      title,
+      title: exported.title,
       targetKeyword: job.targetKeyword,
       exportedAt,
-      publishable,
+      publishable: exported.publishable,
     };
 
     await this.storage.putObject(
@@ -94,38 +85,24 @@ export class ExportService {
       'application/json',
     );
 
-    if (!publishable) {
+    if (!exported.publishable) {
       this.logger.info('Export manifest only (not publishable)', {
         traceId: ctx.traceId,
         jobId: ctx.jobId,
         action: 'export.manifest_only',
         ymylBlocked: !canPublishArticle(job.seoCheckData),
-        emptyContent: content.length === 0,
+        emptyContent: exported.content.length === 0,
       });
       return null;
     }
 
-    const jsonLd = buildArticleJsonLd({
-      title,
-      description: metaDescription,
-      content,
-      siteDomain: job.site.domain,
-      targetKeyword: job.targetKeyword,
-      publishedAt: exportedAt,
-    });
-
-    const html = buildExportHtmlDocument({
-      title,
-      metaDescription,
-      contentMarkdown: content,
-      jsonLd,
-    });
+    const html = this.buildHtmlDocument(job, exported, exportedAt);
 
     await Promise.all([
       this.storage.putObject(`${prefix}/article.html`, Buffer.from(html, 'utf8'), 'text/html'),
       this.storage.putObject(
         `${prefix}/article.jsonld`,
-        Buffer.from(JSON.stringify(jsonLd, null, 2), 'utf8'),
+        Buffer.from(JSON.stringify(exported.jsonLd, null, 2), 'utf8'),
         'application/ld+json',
       ),
     ]);
@@ -140,6 +117,34 @@ export class ExportService {
     });
 
     return outputUrl;
+  }
+
+  /** 下载 HTML：按当前稿件实时生成，避免旧缓存仍含 Markdown 表格等 */
+  async getFreshExportHtml(
+    organizationId: string,
+    projectId: string,
+    jobId: string,
+  ): Promise<{ body: Buffer; contentType: string }> {
+    const job = await this.loadExportJob(organizationId, projectId, jobId);
+
+    if (!job.outputUrl) {
+      throw new BusinessException(ErrorCodes.NOT_FOUND, '导出文件不存在，请先生成导出');
+    }
+
+    if (!canPublishArticle(job.seoCheckData)) {
+      throw new BusinessException(
+        ErrorCodes.VALIDATION_ERROR,
+        'YMYL 需人工审核，暂不可下载可发布 HTML',
+      );
+    }
+
+    const exported = this.resolveExportContent(job);
+    if (!exported.content) {
+      throw new BusinessException(ErrorCodes.NOT_FOUND, '正文为空，无法导出');
+    }
+
+    const html = this.buildHtmlDocument(job, exported);
+    return { body: Buffer.from(html, 'utf8'), contentType: 'text/html; charset=utf-8' };
   }
 
   async getExportObject(
@@ -174,14 +179,7 @@ export class ExportService {
     projectId: string,
     jobId: string,
   ): Promise<{ buffer: Buffer; fileName: string; imageCount: number }> {
-    const job = await this.prisma.articleJob.findFirst({
-      where: { id: jobId, organizationId, projectId },
-      include: { site: { select: { domain: true } } },
-    });
-
-    if (!job) {
-      throw new BusinessException(ErrorCodes.JOB_NOT_FOUND, '任务不存在');
-    }
+    const job = await this.loadExportJob(organizationId, projectId, jobId);
 
     if (!job.outputUrl) {
       throw new BusinessException(ErrorCodes.NOT_FOUND, '导出文件不存在');
@@ -194,10 +192,9 @@ export class ExportService {
       );
     }
 
-    const [htmlFile, jsonLdFile] = await Promise.all([
-      this.getExportObject(organizationId, projectId, jobId, 'html'),
-      this.getExportObject(organizationId, projectId, jobId, 'jsonld'),
-    ]);
+    const exported = this.resolveExportContent(job);
+    const exportedAt = new Date().toISOString();
+    const html = this.buildHtmlDocument(job, exported, exportedAt);
 
     let manifestText: string | undefined;
     try {
@@ -207,32 +204,23 @@ export class ExportService {
       manifestText = undefined;
     }
 
-    const briefData = job.briefData as {
-      title?: string;
-      metaDescription?: string;
-    } | null;
     const draftData = job.draftData as {
-      title?: string;
-      metaDescription?: string;
-      content?: string;
       articleImages?: ArticleImageRecord[];
+      content?: string;
     } | null;
-
-    const title = draftData?.title ?? briefData?.title ?? job.targetKeyword;
-    const metaDescription = draftData?.metaDescription ?? briefData?.metaDescription;
-    const exportedAt = new Date().toISOString();
 
     const result = await buildExportPackageZip({
       targetKeyword: job.targetKeyword,
-      title,
-      metaDescription,
+      title: exported.title,
+      metaDescription: exported.metaDescription,
       siteDomain: job.site.domain,
       exportedAt,
-      html: htmlFile.body.toString('utf8'),
-      jsonLdText: jsonLdFile.body.toString('utf8'),
+      html,
+      jsonLdText: JSON.stringify(exported.jsonLd, null, 2),
       manifestText,
       articleImages: draftData?.articleImages,
-      contentMarkdown: draftData?.content,
+      contentMarkdown: exported.content,
+      fetchImage: (url) => this.fetchDraftImageForExport(organizationId, projectId, jobId, url),
     });
 
     this.logger.info('Export package built', {
@@ -246,5 +234,103 @@ export class ExportService {
     });
 
     return result;
+  }
+
+  private async fetchDraftImageForExport(
+    organizationId: string,
+    projectId: string,
+    jobId: string,
+    url: string,
+  ): Promise<{ body: Buffer; contentType?: string } | null> {
+    const parsed = parseDraftImageApiUrl(url);
+    if (!parsed || parsed.projectId !== projectId || parsed.jobId !== jobId) {
+      return null;
+    }
+
+    const key = buildDraftImageStorageKey(
+      organizationId,
+      projectId,
+      jobId,
+      parsed.filename,
+    );
+    const stored = await this.storage.getObject(key);
+    if (!stored) return null;
+
+    return {
+      body: stored.body,
+      contentType: stored.contentType,
+    };
+  }
+
+  private async loadExportJob(organizationId: string, projectId: string, jobId: string) {
+    const job = await this.prisma.articleJob.findFirst({
+      where: { id: jobId, organizationId, projectId },
+      include: { site: { select: { domain: true } } },
+    });
+
+    if (!job) {
+      throw new BusinessException(ErrorCodes.JOB_NOT_FOUND, '任务不存在');
+    }
+
+    return job;
+  }
+
+  private resolveExportContent(job: {
+    targetKeyword: string;
+    briefData: unknown;
+    draftData: unknown;
+    seoCheckData: unknown;
+    site: { domain: string };
+  }) {
+    const briefData = job.briefData as {
+      title?: string;
+      metaDescription?: string;
+    } | null;
+    const draftData = job.draftData as {
+      title?: string;
+      metaDescription?: string;
+      content?: string;
+    } | null;
+
+    const title = draftData?.title ?? briefData?.title ?? job.targetKeyword;
+    const metaDescription = draftData?.metaDescription ?? briefData?.metaDescription;
+    const content = draftData?.content?.trim() ?? '';
+    const publishable = canPublishArticle(job.seoCheckData) && content.length > 0;
+    const publishedAt = new Date().toISOString();
+    const jsonLd = buildArticleJsonLd({
+      title,
+      description: metaDescription,
+      content,
+      siteDomain: job.site.domain,
+      targetKeyword: job.targetKeyword,
+      publishedAt,
+    });
+
+    return { title, metaDescription, content, publishable, jsonLd };
+  }
+
+  private buildHtmlDocument(
+    job: { targetKeyword: string; site: { domain: string }; seoCheckData: unknown },
+    exported: ReturnType<ExportService['resolveExportContent']>,
+    publishedAt?: string,
+  ) {
+    const jsonLd =
+      publishedAt != null
+        ? buildArticleJsonLd({
+            title: exported.title,
+            description: exported.metaDescription,
+            content: exported.content,
+            siteDomain: job.site.domain,
+            targetKeyword: job.targetKeyword,
+            publishedAt,
+          })
+        : exported.jsonLd;
+
+    return buildExportHtmlDocument({
+      title: exported.title,
+      metaDescription: exported.metaDescription,
+      contentMarkdown: exported.content,
+      jsonLd,
+    });
   }
 }

@@ -12,6 +12,11 @@ import type {
   CreateArticleJobPayload,
   CreateBatchArticleJobsPayload,
   CmsPublishResult,
+  DraftEditHistoryResult,
+  DraftImageUploadResult,
+  DraftResolveStaleAction,
+  PatchArticleDraftPayload,
+  PatchArticleDraftResult,
   PendingReviewItem,
   RewriteArticleJobPayload,
   SeoFactoryProjectStats,
@@ -195,6 +200,80 @@ export async function discardArticleRewrite(
   const res = await http.request<
     WmApiResponse<Pick<ArticleJobItem, "id" | "traceId" | "status" | "targetKeyword">>
   >("post", `${projectBase(projectId)}/${jobId}/rewrite/discard`);
+  return res.data;
+}
+
+/** 手动编辑稿件（标题 / Meta / 正文 Markdown） */
+export async function patchArticleDraft(
+  projectId: string,
+  jobId: string,
+  payload: PatchArticleDraftPayload
+): Promise<PatchArticleDraftResult> {
+  const res = await http.request<WmApiResponse<PatchArticleDraftResult>>(
+    "patch",
+    `${projectBase(projectId)}/${jobId}/draft`,
+    { data: payload }
+  );
+  return res.data;
+}
+
+/** 稿件手动编辑历史 */
+export async function listArticleDraftHistory(
+  projectId: string,
+  jobId: string
+): Promise<DraftEditHistoryResult> {
+  const res = await http.request<WmApiResponse<DraftEditHistoryResult>>(
+    "get",
+    `${projectBase(projectId)}/${jobId}/draft/history`
+  );
+  return res.data;
+}
+
+/** 回滚至某次编辑前的快照 */
+export async function rollbackArticleDraft(
+  projectId: string,
+  jobId: string,
+  historyId: string,
+  postSaveAction?: PatchArticleDraftPayload["postSaveAction"]
+): Promise<PatchArticleDraftResult> {
+  const res = await http.request<WmApiResponse<PatchArticleDraftResult>>(
+    "post",
+    `${projectBase(projectId)}/${jobId}/draft/rollback`,
+    { data: { historyId, postSaveAction } }
+  );
+  return res.data;
+}
+
+/** 编辑后消除 stale 标记（Banner 快捷操作） */
+export async function resolveArticleDraftStale(
+  projectId: string,
+  jobId: string,
+  action: DraftResolveStaleAction
+): Promise<PatchArticleDraftResult> {
+  const res = await http.request<WmApiResponse<PatchArticleDraftResult>>(
+    "post",
+    `${projectBase(projectId)}/${jobId}/draft/resolve-stale`,
+    { data: { action } }
+  );
+  return res.data;
+}
+
+/** 上传稿件正文插图（本地上传，最大 5MB） */
+export async function uploadArticleDraftImage(
+  projectId: string,
+  jobId: string,
+  file: File
+): Promise<DraftImageUploadResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await http.request<WmApiResponse<DraftImageUploadResult>>(
+    "post",
+    `${projectBase(projectId)}/${jobId}/draft/images`,
+    {
+      data: formData,
+      headers: { "Content-Type": "multipart/form-data" }
+    }
+  );
   return res.data;
 }
 

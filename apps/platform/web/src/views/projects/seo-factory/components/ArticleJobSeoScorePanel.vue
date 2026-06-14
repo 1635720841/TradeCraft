@@ -17,6 +17,16 @@
     />
 
     <el-alert
+      v-if="localScoreStale || semrushScoreStale"
+      class="mb-4"
+      type="warning"
+      :closable="false"
+      show-icon
+      title="评分已过期"
+      description="稿件经手动编辑后，下方分数可能基于旧稿。请到「稿件正文」Tab 按发布清单重算本地 SEO 或重跑 Semrush。"
+    />
+
+    <el-alert
       v-if="hasData || canCheck"
       class="mb-4"
       type="info"
@@ -90,6 +100,9 @@
         </template>
         <template v-else-if="semrushScore != null">
           <el-tag :type="semrushTagType">{{ semrushScore }} / 10</el-tag>
+          <el-tag v-if="semrushScoreStale" class="ml-2" type="warning" size="small" effect="plain">
+            已过期
+          </el-tag>
           <span class="ml-2 text-sm text-gray-500">
             通过线 {{ SEMRUSH_PASS_THRESHOLD }}（权威分）
           </span>
@@ -98,6 +111,9 @@
       </el-descriptions-item>
       <el-descriptions-item label="本地预检">
         <el-tag :type="localTagType">{{ localScore ?? "-" }} / 100</el-tag>
+        <el-tag v-if="localScoreStale" class="ml-2" type="warning" size="small" effect="plain">
+          已过期
+        </el-tag>
         <el-tag
           v-if="localPassed === true"
           class="ml-2"
@@ -421,6 +437,8 @@ const props = defineProps<{
   semrushScore?: number | null;
   seoCheckData?: ArticleJobSeoCheckData | null;
   optimizeHistory?: ArticleJobOptimizeRound[] | null;
+  localScoreStale?: boolean;
+  semrushScoreStale?: boolean;
   canCheck?: boolean;
   checking?: boolean;
   checkStale?: boolean;

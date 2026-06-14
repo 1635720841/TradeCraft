@@ -50,26 +50,19 @@
     </ul>
   </div>
 
-  <div v-if="previewBlocks.length" class="mb-2 font-medium">候选正文预览</div>
-  <article
-    v-if="previewBlocks.length"
+  <div v-if="candidate?.content?.trim()" class="mb-2 font-medium">候选正文预览</div>
+  <div
+    v-if="candidate?.content?.trim()"
     class="draft-preview rounded border border-blue-200 bg-blue-50/40 p-4"
   >
-    <template v-for="(block, index) in previewBlocks" :key="index">
-      <h2 v-if="block.type === 'h2'" class="draft-h2">{{ block.text }}</h2>
-      <h3 v-else-if="block.type === 'h3'" class="draft-h3">{{ block.text }}</h3>
-      <p v-else-if="block.type === 'p'" class="draft-p">{{ block.text }}</p>
-      <ul v-else-if="block.type === 'ul' && block.items?.length" class="draft-ul">
-        <li v-for="(item, i) in block.items" :key="i">{{ item }}</li>
-      </ul>
-    </template>
-  </article>
+    <ArticleJobDraftHtmlBody :content="candidate.content" />
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from "vue";
 import type { ArticleJobRewriteCandidate } from "@/api/seo-factory/types";
-import { parseSimpleMarkdown } from "@/utils/seo-factory/parseSimpleMarkdown";
+import ArticleJobDraftHtmlBody from "./ArticleJobDraftHtmlBody.vue";
 
 defineOptions({ name: "ArticleJobRewriteResult" });
 
@@ -88,10 +81,6 @@ const modeLabel = computed(() =>
   props.candidate?.mode === "instruction" ? "定向改写" : "按建议优化"
 );
 
-const previewBlocks = computed(() =>
-  props.candidate?.content ? parseSimpleMarkdown(props.candidate.content) : []
-);
-
 function formatTime(iso: string) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
@@ -102,36 +91,5 @@ function formatTime(iso: string) {
 <style scoped>
 .draft-preview {
   line-height: 1.75;
-  color: var(--el-text-color-primary);
-}
-
-.draft-h2 {
-  margin: 1.25rem 0 0.75rem;
-  font-size: 1.25rem;
-  font-weight: 600;
-}
-
-.draft-h2:first-child {
-  margin-top: 0;
-}
-
-.draft-h3 {
-  margin: 1rem 0 0.5rem;
-  font-size: 1.05rem;
-  font-weight: 600;
-}
-
-.draft-p {
-  margin: 0.5rem 0;
-}
-
-.draft-ul {
-  margin: 0.5rem 0;
-  padding-left: 1.25rem;
-  list-style-type: disc;
-}
-
-.draft-ul li {
-  margin: 0.25rem 0;
 }
 </style>

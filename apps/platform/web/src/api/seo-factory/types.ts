@@ -140,11 +140,62 @@ export interface ArticleJobYmylReview {
   humanReviewedBy?: string;
 }
 
+export type DraftPostSaveAction = "none" | "refresh_local" | "rerun_from_optimizing";
+
+export type DraftResolveStaleAction = "refresh_local" | "rerun_semrush" | "regenerate_export";
+
+export interface DraftStalenessAffected {
+  localSeo: boolean;
+  semrush: boolean;
+  paraphrase: boolean;
+  ymyl: boolean;
+  export: boolean;
+  internalLinks: boolean;
+  images: boolean;
+}
+
+export interface DraftStaleness {
+  contentChanged: boolean;
+  titleMetaChanged: boolean;
+  invalidatedAt: string;
+  invalidatedBy: string;
+  affected: DraftStalenessAffected;
+  postSaveAction?: DraftPostSaveAction;
+}
+
+export interface ManualEditChangeSummary {
+  titleChanged: boolean;
+  metaChanged: boolean;
+  contentDiffStats: {
+    added: number;
+    removed: number;
+    charsBefore: number;
+    charsAfter: number;
+  };
+}
+
+export interface ManualEditHistoryEntry {
+  id: string;
+  editedAt: string;
+  editedBy: string;
+  changeSummary: ManualEditChangeSummary;
+  snapshot: {
+    title?: string;
+    metaDescription?: string;
+    content: string;
+  };
+  postSaveAction: DraftPostSaveAction;
+  staleness: DraftStalenessAffected;
+}
+
 export interface ArticleJobDraftData {
   title?: string;
   content?: string;
   metaDescription?: string;
   promptVersion?: string;
+  contentVersion?: number;
+  staleness?: DraftStaleness | null;
+  manualEditHistory?: ManualEditHistoryEntry[];
   optimizeHistory?: ArticleJobOptimizeRound[];
   internalLinks?: ArticleJobInternalLink[];
   internalLinksApplied?: boolean;
@@ -164,6 +215,42 @@ export interface RewriteArticleJobPayload {
     keepTitleMeta?: boolean;
     rerunLocalSeo?: boolean;
   };
+}
+
+export interface PatchArticleDraftPayload {
+  title?: string;
+  metaDescription?: string;
+  content?: string;
+  contentVersion: number;
+  postSaveAction?: DraftPostSaveAction;
+  clientChangeNote?: string;
+}
+
+export interface PatchArticleDraftResult {
+  id: string;
+  traceId: string;
+  status: string;
+  targetKeyword: string;
+  draftData?: ArticleJobDraftData | null;
+  localSeoScore?: number | null;
+  semrushScore?: number | null;
+  outputUrl?: string | null;
+  seoCheckData?: ArticleJobSeoCheckData | null;
+  updatedAt: string;
+  staleness?: DraftStaleness | null;
+  contentVersion: number;
+}
+
+export interface DraftImageUploadResult {
+  url: string;
+  filename: string;
+  contentType: string;
+  size: number;
+}
+
+export interface DraftEditHistoryResult {
+  items: ManualEditHistoryEntry[];
+  contentVersion: number;
 }
 
 export interface ArticleJobWorkflowProgress {

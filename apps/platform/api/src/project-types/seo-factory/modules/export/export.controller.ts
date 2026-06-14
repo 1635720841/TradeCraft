@@ -25,11 +25,10 @@ export class ExportController {
     @Res() res: Response,
   ): Promise<void> {
     await this.projectService.assertAccessible(ctx.organizationId, projectId);
-    const file = await this.exportService.getExportObject(
+    const file = await this.exportService.getFreshExportHtml(
       ctx.organizationId,
       projectId,
       id,
-      'html',
     );
     res.setHeader('Content-Type', file.contentType);
     res.send(file.body);

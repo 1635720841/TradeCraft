@@ -83,7 +83,13 @@
             <span v-else class="text-gray-500">未完成</span>
           </el-descriptions-item>
           <el-descriptions-item label="导出">
-            <div v-if="job.outputUrl" class="flex flex-wrap items-center gap-2">
+            <div v-if="exportStale" class="text-amber-600 text-sm">
+              稿件已编辑，导出物已失效。
+              <el-button type="primary" link @click="handleResolveDraftStale('regenerate_export')">
+                重新生成
+              </el-button>
+            </div>
+            <div v-else-if="job.outputUrl" class="flex flex-wrap items-center gap-2">
               <el-button
                 type="primary"
                 link
@@ -154,6 +160,14 @@
           </el-descriptions-item>
         </el-descriptions>
 
+        <ArticleJobDraftPublishChecklist
+          v-if="publishChecklistItems.length && activeTab !== 'draft'"
+          class="mt-4"
+          :items="publishChecklistItems"
+          @action="handleChecklistAction"
+          @go-ymyl="activeTab = 'ymyl'"
+        />
+
         <el-alert
           v-if="requiresHumanReview"
           class="mt-4"
@@ -190,6 +204,8 @@
             :semrush-score="job.semrushScore"
             :seo-check-data="job.seoCheckData"
             :optimize-history="job.draftData?.optimizeHistory"
+            :local-score-stale="draftStaleness?.affected?.localSeo"
+            :semrush-score-stale="draftStaleness?.affected?.semrush"
             :can-check="hasDraftContent"
             :checking="isSemrushChecking"
             :check-stale="isOptimizingStale"
@@ -202,9 +218,30 @@
             @rewrite="rewriteDrawerOpen = true"
           />
         </el-tab-pane>
-        <el-tab-pane label="初稿预览" name="draft">
+        <el-tab-pane label="稿件正文" name="draft">
+          <ArticleJobDraftEditGuide />
+
+          <ArticleJobDraftStalenessBanner
+            v-if="draftStaleness && draftViewMode === 'edit'"
+            :staleness="draftStaleness"
+            :resolving="draftResolving"
+            @resolve="handleResolveDraftStale"
+            @go-review="activeTab = 'ymyl'"
+          />
+
+          <ArticleJobDraftPublishChecklist
+            v-else-if="publishChecklistItems.length"
+            :items="publishChecklistItems"
+            @action="handleChecklistAction"
+            @go-ymyl="activeTab = 'ymyl'"
+          />
+
+          <div v-if="hasDraftContent" class="mb-4">
+            <el-segmented v-model="draftViewModeProxy" :options="draftViewOptions" />
+          </div>
+
           <ArticleJobRewriteResult
-            v-if="rewriteCandidate"
+            v-if="rewriteCandidate && draftViewMode === 'preview'"
             class="mb-4"
             :candidate="rewriteCandidate"
             :accepting="rewriteAccepting"
@@ -213,13 +250,36 @@
             @discard="handleDiscardRewrite"
           />
 
+          <ArticleJobDraftEditor
+            v-if="draftViewMode === 'edit'"
+            ref="draftEditorRef"
+            :project-id="projectId"
+            :job-id="jobId"
+            :draft-data="job.draftData"
+            :article-images="job.draftData?.articleImages"
+            :saving="draftSaving"
+            :can-save="canSaveDraftEdit"
+            :edit-blocked-reason="draftEditBlockedReason"
+            @save="handleQuickSave"
+            @save-preview="handleSaveAndPreview"
+            @save-advanced="() => openDraftSaveDialog(false)"
+            @cancel="void switchDraftViewMode('preview')"
+          />
+
           <ArticleJobDraftPreview
+            v-else
             :draft-data="job.draftData"
             :can-rewrite="canTriggerRewrite"
             :rewriting="isRewriting"
             :rewrite-blocked-reason="rewriteBlockedReason"
             :show-current-label="Boolean(rewriteCandidate)"
             @rewrite="rewriteDrawerOpen = true"
+          />
+
+          <ArticleJobDraftHistory
+            :items="draftEditHistory"
+            :rolling-back-id="draftRollingBackId"
+            @rollback="handleDraftRollback"
           />
 
           <el-alert
@@ -262,11 +322,33 @@
       :submitting="rewriteSubmitting"
       @submit="handleRewriteSubmit"
     />
+
+    <ArticleJobDraftSaveDialog
+      v-model="draftSaveDialogOpen"
+      :submitting="draftSaving"
+      :summary-text="draftSaveSummary"
+      :affected="pendingEditAffected"
+      :show-ymyl-warning="pendingYmylReReview"
+      @confirm="handleConfirmDraftSave"
+    />
+
+    <ArticleJobDraftRollbackDialog
+      v-model="rollbackDialogOpen"
+      :entry="rollbackTarget"
+      :submitting="Boolean(draftRollingBackId)"
+      @confirm="submitRollback"
+    />
+
+    <ArticleJobDraftVersionConflictDialog
+      v-model="versionConflictOpen"
+      :submitting="draftSaving"
+      @retry="handleVersionConflictRetry"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   acceptArticleRewrite,
@@ -275,12 +357,23 @@ import {
   downloadArticleExportHtml,
   downloadArticleExportJsonLd,
   downloadArticleExportPackage,
+  patchArticleDraft,
   publishArticleJob,
+  resolveArticleDraftStale,
   retryArticleJob,
+  rollbackArticleDraft,
   triggerArticleRewrite,
   triggerSemrushCheck
 } from "@/api/seo-factory/article-job";
-import type { RewriteArticleJobPayload } from "@/api/seo-factory/types";
+import type {
+  DraftResolveStaleAction,
+  DraftStalenessAffected,
+  ManualEditHistoryEntry,
+  RewriteArticleJobPayload
+} from "@/api/seo-factory/types";
+import { previewPendingEditAffected, buildPublishChecklist, needsSaveConfirmDialog, resolveQuickSaveAction } from "@/utils/seo-factory/draft-edit-preview";
+import type { DraftPostSaveAction } from "@/api/seo-factory/types";
+import { ElMessageBox } from "element-plus";
 import { useArticleJobPolling } from "@/composables/seo-factory/useArticleJobPolling";
 import { WORDPRESS_CMS_UI_ENABLED } from "@/constants/feature-flags";
 import { message } from "@/utils/message";
@@ -289,7 +382,15 @@ import { LOCAL_SEO_PASS_THRESHOLD } from "@/constants/seo-factory";
 import { dictLabel, dictTagType } from "@/utils/dict";
 import { workflowStepLabel } from "@/utils/seo-factory/workflow-progress";
 import ArticleJobBriefPanel from "./components/ArticleJobBriefPanel.vue";
+import ArticleJobDraftEditor from "./components/ArticleJobDraftEditor.vue";
+import ArticleJobDraftEditGuide from "./components/ArticleJobDraftEditGuide.vue";
+import ArticleJobDraftHistory from "./components/ArticleJobDraftHistory.vue";
 import ArticleJobDraftPreview from "./components/ArticleJobDraftPreview.vue";
+import ArticleJobDraftPublishChecklist from "./components/ArticleJobDraftPublishChecklist.vue";
+import ArticleJobDraftRollbackDialog from "./components/ArticleJobDraftRollbackDialog.vue";
+import ArticleJobDraftSaveDialog from "./components/ArticleJobDraftSaveDialog.vue";
+import ArticleJobDraftStalenessBanner from "./components/ArticleJobDraftStalenessBanner.vue";
+import ArticleJobDraftVersionConflictDialog from "./components/ArticleJobDraftVersionConflictDialog.vue";
 import ArticleJobImagesPanel from "./components/ArticleJobImagesPanel.vue";
 import ArticleJobInternalLinksPanel from "./components/ArticleJobInternalLinksPanel.vue";
 import ArticleJobRewriteDrawer from "./components/ArticleJobRewriteDrawer.vue";
@@ -322,6 +423,29 @@ const rewriteAccepting = ref(false);
 const rewriteDiscarding = ref(false);
 const exportDownloading = ref<"html" | "jsonld" | "package" | null>(null);
 const cmsPublishing = ref(false);
+const draftViewMode = ref<"preview" | "edit">("preview");
+const draftViewOptions = [
+  { label: "预览", value: "preview" },
+  { label: "编辑", value: "edit" }
+];
+const draftEditorRef = ref<InstanceType<typeof ArticleJobDraftEditor> | null>(null);
+const draftSaving = ref(false);
+const draftSaveDialogOpen = ref(false);
+const draftSaveSummary = ref("");
+const pendingEditAffected = ref<DraftStalenessAffected | null>(null);
+const draftRollingBackId = ref<string | null>(null);
+const rollbackDialogOpen = ref(false);
+const rollbackTarget = ref<ManualEditHistoryEntry | null>(null);
+const draftResolving = ref<DraftResolveStaleAction | null>(null);
+const versionConflictOpen = ref(false);
+const pendingSaveAction = ref<DraftPostSaveAction>("refresh_local");
+const pendingGoPreview = ref(false);
+const draftViewModeProxy = computed({
+  get: () => draftViewMode.value,
+  set: (value: "preview" | "edit") => {
+    void switchDraftViewMode(value);
+  }
+});
 
 const hasDraftContent = computed(() => {
   const content = job.value?.draftData?.content;
@@ -331,6 +455,69 @@ const hasDraftContent = computed(() => {
 const semrushPending = computed(() => job.value?.seoCheckData?.semrush?.pending ?? null);
 const rewritePending = computed(() => job.value?.draftData?.rewritePending ?? null);
 const rewriteCandidate = computed(() => job.value?.draftData?.rewriteCandidate ?? null);
+const draftStaleness = computed(() => job.value?.draftData?.staleness ?? null);
+const exportStale = computed(() => draftStaleness.value?.affected?.export === true);
+const draftEditHistory = computed(
+  () => [...(job.value?.draftData?.manualEditHistory ?? [])].reverse()
+);
+
+const draftEditBlockedReason = computed(() => {
+  if (rewriteCandidate.value) return "请先采纳或放弃 AI 候选版本";
+  if (isRewriting.value) return "AI 重写进行中";
+  if (isSemrushChecking.value) return "Semrush 检测进行中";
+  return "";
+});
+
+const canSaveDraftEdit = computed(
+  () => hasDraftContent.value && !draftEditBlockedReason.value && !draftSaving.value
+);
+
+watch(draftViewMode, (mode) => {
+  if (mode === "edit" && draftEditBlockedReason.value) {
+    draftViewMode.value = "preview";
+    message(draftEditBlockedReason.value, { type: "warning" });
+  }
+});
+
+async function switchDraftViewMode(next: "preview" | "edit") {
+  if (next === draftViewMode.value) return;
+
+  if (draftViewMode.value === "edit" && next === "preview") {
+    const editor = draftEditorRef.value;
+    if (editor?.isDirty) {
+      try {
+        await ElMessageBox.confirm("有未保存的修改，确定离开编辑模式？", "未保存修改", {
+          type: "warning",
+          confirmButtonText: "离开",
+          cancelButtonText: "继续编辑"
+        });
+      } catch {
+        return;
+      }
+    }
+  }
+
+  if (next === "edit" && draftEditBlockedReason.value) {
+    message(draftEditBlockedReason.value, { type: "warning" });
+    return;
+  }
+
+  draftViewMode.value = next;
+}
+
+watch(
+  () => route.query,
+  (query) => {
+    if (query.tab === "draft") activeTab.value = "draft";
+    if (query.edit === "1" && hasDraftContent.value) draftViewMode.value = "edit";
+  },
+  { immediate: true }
+);
+
+onMounted(() => {
+  if (route.query.tab === "draft") activeTab.value = "draft";
+  if (route.query.edit === "1" && hasDraftContent.value) draftViewMode.value = "edit";
+});
 
 const isSemrushChecking = computed(
   () =>
@@ -354,6 +541,23 @@ const ymylReviewCompleted = computed(() => Boolean(ymylReview.value?.reviewedAt)
 const requiresHumanReview = computed(
   () => ymylReview.value?.requires_human_review === true
 );
+
+const publishChecklistItems = computed(() =>
+  buildPublishChecklist({
+    staleness: draftStaleness.value,
+    localSeoScore: job.value?.localSeoScore,
+    outputUrl: job.value?.outputUrl,
+    ymylReview: ymylReview.value,
+    semrushRunning: isSemrushChecking.value,
+    resolvingAction: draftResolving.value
+  })
+);
+
+const pendingYmylReReview = computed(() => {
+  if (!requiresHumanReview.value) return false;
+  if (ymylReview.value?.humanReviewStatus !== "approved") return false;
+  return pendingEditAffected.value?.ymyl === true;
+});
 
 const internalLinkCount = computed(() => job.value?.draftData?.internalLinks?.length ?? 0);
 const articleImageCount = computed(() => job.value?.draftData?.articleImages?.length ?? 0);
@@ -604,6 +808,177 @@ async function handleDiscardRewrite() {
     message(msg, { type: "error" });
   } finally {
     rewriteDiscarding.value = false;
+  }
+}
+
+async function handleResolveDraftStale(action: DraftResolveStaleAction) {
+  if (draftResolving.value) return;
+
+  draftResolving.value = action;
+  try {
+    await resolveArticleDraftStale(projectId.value, jobId.value, action);
+    const labels: Record<DraftResolveStaleAction, string> = {
+      refresh_local: "本地 SEO 已重算",
+      rerun_semrush: "Semrush 终检已启动",
+      regenerate_export: "导出物已重新生成"
+    };
+    message(labels[action], { type: "success" });
+    if (action === "rerun_semrush") startPolling();
+    await fetchOnce();
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "操作失败";
+    message(msg, { type: "error" });
+  } finally {
+    draftResolving.value = null;
+  }
+}
+
+function handleChecklistAction(action: DraftResolveStaleAction) {
+  void handleResolveDraftStale(action);
+}
+
+function extractApiErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const response = (error as { response?: { data?: { error?: { code?: string } } } }).response;
+  return response?.data?.error?.code;
+}
+
+function openDraftSaveDialog(goPreview = false) {
+  pendingGoPreview.value = goPreview;
+  const editor = draftEditorRef.value;
+  if (!editor || !job.value?.draftData) return;
+
+  const payload = editor.getPayload();
+  const before = job.value.draftData;
+  const affected = previewPendingEditAffected(before, payload);
+  if (!affected) {
+    message("内容无变更", { type: "warning" });
+    return;
+  }
+
+  const parts: string[] = [];
+  if (affected.export) parts.push("导出物");
+  if (affected.localSeo) parts.push("本地 SEO 分");
+  draftSaveSummary.value = `将保存对${parts.length ? parts.join("、") : "稿件"}的修改。`;
+  pendingEditAffected.value = affected;
+  draftSaveDialogOpen.value = true;
+}
+
+function handleQuickSave() {
+  void runDraftSave({ goPreview: false, forceDialog: false });
+}
+
+function handleSaveAndPreview() {
+  void runDraftSave({ goPreview: true, forceDialog: false });
+}
+
+async function runDraftSave(options: { goPreview: boolean; forceDialog: boolean }) {
+  const editor = draftEditorRef.value;
+  if (!editor || !job.value?.draftData) return;
+
+  const payload = editor.getPayload();
+  const before = job.value.draftData;
+  const affected = previewPendingEditAffected(before, payload);
+  if (!affected) {
+    message("内容无变更", { type: "warning" });
+    return;
+  }
+
+  const ymylWasApproved = ymylReview.value?.humanReviewStatus === "approved";
+  if (
+    options.forceDialog ||
+    needsSaveConfirmDialog(before, payload, { ymylWasApproved })
+  ) {
+    pendingGoPreview.value = options.goPreview;
+    openDraftSaveDialog();
+    return;
+  }
+
+  await submitDraftSave(resolveQuickSaveAction(affected), { goPreview: options.goPreview });
+}
+
+async function submitDraftSave(
+  postSaveAction: DraftPostSaveAction,
+  options?: { goPreview?: boolean }
+) {
+  const editor = draftEditorRef.value;
+  if (!editor || !job.value?.draftData || draftSaving.value) return;
+
+  const payload = editor.getPayload();
+  draftSaving.value = true;
+  try {
+    await patchArticleDraft(projectId.value, jobId.value, {
+      ...payload,
+      contentVersion: job.value.draftData.contentVersion ?? 0,
+      postSaveAction
+    });
+    draftSaveDialogOpen.value = false;
+    editor.markSaved();
+    if (options?.goPreview) {
+      await switchDraftViewMode("preview");
+    }
+    message(
+      postSaveAction === "rerun_from_optimizing"
+        ? "已保存，正在重算 SEO / Semrush…"
+        : postSaveAction === "refresh_local"
+          ? "已保存，正在重算本地 SEO…"
+          : "稿件已保存",
+      { type: "success" }
+    );
+    if (postSaveAction === "rerun_from_optimizing") startPolling();
+    await fetchOnce();
+  } catch (error) {
+    if (extractApiErrorCode(error) === "DRAFT_VERSION_CONFLICT") {
+      pendingSaveAction.value = postSaveAction;
+      pendingGoPreview.value = options?.goPreview ?? false;
+      versionConflictOpen.value = true;
+      return;
+    }
+    const msg = error instanceof Error ? error.message : "保存失败";
+    message(msg, { type: "error" });
+  } finally {
+    draftSaving.value = false;
+  }
+}
+
+async function handleVersionConflictRetry() {
+  versionConflictOpen.value = false;
+  await fetchOnce();
+  await submitDraftSave(pendingSaveAction.value, { goPreview: pendingGoPreview.value });
+}
+
+async function handleConfirmDraftSave(postSaveAction: DraftPostSaveAction) {
+  pendingSaveAction.value = postSaveAction;
+  await submitDraftSave(postSaveAction, { goPreview: pendingGoPreview.value });
+}
+
+function handleDraftRollback(historyId: string) {
+  if (draftRollingBackId.value || draftSaving.value) return;
+
+  const entry = job.value?.draftData?.manualEditHistory?.find((item) => item.id === historyId);
+  if (!entry) return;
+
+  rollbackTarget.value = entry;
+  rollbackDialogOpen.value = true;
+}
+
+async function submitRollback() {
+  if (!rollbackTarget.value || draftRollingBackId.value) return;
+
+  const historyId = rollbackTarget.value.id;
+  draftRollingBackId.value = historyId;
+  try {
+    await rollbackArticleDraft(projectId.value, jobId.value, historyId, "refresh_local");
+    rollbackDialogOpen.value = false;
+    rollbackTarget.value = null;
+    message("已回滚至历史版本", { type: "success" });
+    await switchDraftViewMode("preview");
+    await fetchOnce();
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "回滚失败";
+    message(msg, { type: "error" });
+  } finally {
+    draftRollingBackId.value = null;
   }
 }
 

@@ -15,7 +15,7 @@
 - [x] NestJS API + Prisma + Core（guards、exceptions、logger、redis、queue、storage、**按 org 限流**）
 - [x] Prisma migration 历史已与 schema 对齐（`20260614120000_sync_quota_prompt_keyword_cms`，共 8 条）
 - [x] 对象存储：`S3_BUCKET` 配置后走 S3/MinIO，否则 `.data/exports` 本地 fallback
-- [x] E2E 冒烟：`e2e/article-job-smoke.test.mjs`（登录 → 建站点 → 入队 → 状态变更；CI 已接）
+- [x] E2E 冒烟：`e2e/article-job-smoke.test.mjs` + **`e2e/draft-edit.test.mjs`**（编辑 / stale / 回滚）
 - [x] 开发种子 `pnpm db:seed`；单元测试 **85** 项（`pnpm test`）；E2E `pnpm test:e2e`
 - [x] Auth：自建 JWT 登录/刷新 + **Logto OIDC 回调**（可选）+ `AuthGuard` + `@ReqCtx()` + RBAC（ADMIN / MEMBER）
 - [x] 项目 CRUD（org 隔离）+ 前端真实登录 / 401 跳转 / 项目创建
@@ -33,7 +33,7 @@
 - [x] **QuillBot 润色**：工作流 `paraphrasing` 步骤 + `modules/paraphrase/` + Prompt `seo_quillbot_v1`；`QUILLBOT_DISABLED=true` 可跳过
 - [x] YMYL：`content-review` + `ymyl` 步骤 + 前端警告 + **待审核队列** `/reviews`
 - [x] M10 导出：HTML / JSON-LD 本地存储 + API 下载 + **zip 资产包**（HTML + images/ + meta.txt）
-- [x] article-job：202 入队、批量创建、失败续跑、手动 Semrush、AI 改写
+- [x] article-job：202 入队、批量创建、失败续跑、手动 Semrush、AI 改写、**稿件手动编辑**
 - [x] 站点：CRUD + 页面库 sync/list（供内链）
 
 ### 产品壳（前端）
@@ -75,8 +75,23 @@ SERP → Brief → 初稿 → 内链 → 配图 → Semrush 优化 → QuillBot 
 | M10 导出 | export 模块 | ✅（本地 + 单文件下载 + zip 资产包） |
 | M11 计费 | `article.completed` | ✅ |
 | M12 Prompt | DB 热更新 | ✅ |
+| **稿件手动编辑** | PATCH draft + stale + history + rollback | ✅ |
 
 编排常量：`project-types/seo-factory/constants/workflow-resume.ts`
+
+## 稿件手动编辑（M 扩展）
+
+| 能力 | 说明 |
+|------|------|
+| API | `PATCH .../draft`、`GET .../draft/history`、`POST .../draft/rollback`、`POST .../draft/resolve-stale` |
+| 可编辑字段 | 标题、Meta Description、正文 Markdown（**分屏实时预览**） |
+| 乐观锁 | `draftData.contentVersion`，冲突 → 409 `DRAFT_VERSION_CONFLICT` |
+| 失效联动 | 保存后按 staleness 矩阵清空 SEO 分 / outputUrl / 重置 YMYL pending |
+| postSave | `none` \| `refresh_local`（默认）\| `rerun_from_optimizing` |
+| 前端入口 | 任务详情「初稿预览」预览/编辑；YMYL 队列「编辑后再审」 |
+| 规格 | [`docs/specs/draft-manual-edit.md`](specs/draft-manual-edit.md) |
+| 后端 | `article-job-draft-edit.service.ts`、`draft-edit.util.ts` |
+| 测试 | `pnpm test:draft-edit`；E2E `e2e/draft-edit.test.mjs` |
 
 ## 关键路径
 
@@ -90,7 +105,9 @@ SERP → Brief → 初稿 → 内链 → 配图 → Semrush 优化 → QuillBot 
 | WordPress 发布（API） | `project-types/seo-factory/modules/export/cms-publish.service.ts` |
 | 前端功能开关 | `apps/platform/web/src/constants/feature-flags.ts` |
 | 工作台路由 | `apps/platform/web/src/router/modules/remaining.ts` |
-| 单元测试 | `apps/platform/api/scripts/*.test.mjs` |
+| 单元测试 | `apps/platform/api/scripts/*.test.mjs`（含 `draft-edit.util.test.mjs`） |
+| 稿件手动编辑 | `project-types/seo-factory/modules/article-job/article-job-draft-edit.service.ts` |
+| E2E | `apps/platform/api/e2e/` |
 | Prisma migrations | `apps/platform/api/prisma/migrations/`（`pnpm db:deploy`） |
 | 对象存储 | `core/storage/`（`S3_BUCKET` → S3，否则本地） |
 

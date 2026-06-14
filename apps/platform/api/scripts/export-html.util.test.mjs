@@ -27,6 +27,20 @@ describe('buildExportHtmlDocument', () => {
     assert.match(html, /<h1>Hello<\/h1>/);
     assert.match(html, /<strong>bold<\/strong>/);
   });
+
+  it('renders markdown tables with styles', () => {
+    const html = buildExportHtmlDocument({
+      title: 'Table Article',
+      metaDescription: 'Summary',
+      contentMarkdown: '| A | B |\n| --- | --- |\n| 1 | 2 |',
+      jsonLd: { '@type': 'Article', headline: 'Table Article' },
+    });
+
+    assert.match(html, /<table>/);
+    assert.match(html, /<th>A<\/th>/);
+    assert.match(html, /article table/);
+    assert.doesNotMatch(html, /\| --- \|/);
+  });
 });
 
 describe('buildExportHtmlUrl', () => {

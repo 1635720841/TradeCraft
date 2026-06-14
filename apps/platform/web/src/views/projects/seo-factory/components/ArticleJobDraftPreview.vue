@@ -37,29 +37,12 @@
 
       <div v-if="showCurrentLabel" class="mb-2 text-sm font-medium text-gray-600">当前版本</div>
 
-      <article v-if="blocks.length" class="draft-preview rounded border border-gray-200 bg-gray-50 p-4">
-        <template v-for="(block, index) in blocks" :key="index">
-          <h2 v-if="block.type === 'h2'" class="draft-h2">{{ block.text }}</h2>
-          <h3 v-else-if="block.type === 'h3'" class="draft-h3">{{ block.text }}</h3>
-          <p v-else-if="block.type === 'p'" class="draft-p">
-            <InlineMarkdownText :text="block.text ?? ''" />
-          </p>
-          <figure v-else-if="block.type === 'img' && block.src" class="draft-figure">
-            <img
-              :src="block.src"
-              :alt="block.alt ?? ''"
-              class="draft-img"
-              loading="lazy"
-            />
-            <figcaption v-if="block.alt" class="draft-caption">{{ block.alt }}</figcaption>
-          </figure>
-          <ul v-else-if="block.type === 'ul' && block.items?.length" class="draft-ul">
-            <li v-for="(item, i) in block.items" :key="i">
-              <InlineMarkdownText :text="item" />
-            </li>
-          </ul>
-        </template>
-      </article>
+      <div
+        v-if="draft.content?.trim()"
+        class="draft-preview rounded border border-gray-200 bg-gray-50 p-4"
+      >
+        <ArticleJobDraftHtmlBody :content="draft.content" />
+      </div>
 
       <el-empty v-else description="初稿正文为空" />
     </template>
@@ -71,8 +54,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { ArticleJobDraftData } from "@/api/seo-factory/types";
-import { parseSimpleMarkdown } from "@/utils/seo-factory/parseSimpleMarkdown";
-import InlineMarkdownText from "./InlineMarkdownText.vue";
+import ArticleJobDraftHtmlBody from "./ArticleJobDraftHtmlBody.vue";
 
 defineOptions({ name: "ArticleJobDraftPreview" });
 
@@ -92,61 +74,10 @@ const draft = computed(() => props.draftData);
 const metaTitle = computed(() => draft.value?.title);
 const metaDescription = computed(() => draft.value?.metaDescription);
 const promptVersion = computed(() => draft.value?.promptVersion);
-const blocks = computed(() =>
-  draft.value?.content ? parseSimpleMarkdown(draft.value.content) : []
-);
 </script>
 
 <style scoped>
 .draft-preview {
   line-height: 1.75;
-  color: var(--el-text-color-primary);
-}
-
-.draft-h2 {
-  margin: 1.25rem 0 0.75rem;
-  font-size: 1.25rem;
-  font-weight: 600;
-}
-
-.draft-h2:first-child {
-  margin-top: 0;
-}
-
-.draft-h3 {
-  margin: 1rem 0 0.5rem;
-  font-size: 1.05rem;
-  font-weight: 600;
-}
-
-.draft-p {
-  margin: 0.5rem 0;
-}
-
-.draft-ul {
-  margin: 0.5rem 0;
-  padding-left: 1.25rem;
-  list-style-type: disc;
-}
-
-.draft-ul li {
-  margin: 0.25rem 0;
-}
-
-.draft-figure {
-  margin: 1rem 0;
-}
-
-.draft-img {
-  display: block;
-  max-width: 100%;
-  border-radius: 0.375rem;
-  border: 1px solid var(--el-border-color-lighter);
-}
-
-.draft-caption {
-  margin-top: 0.35rem;
-  font-size: 0.875rem;
-  color: var(--el-text-color-secondary);
 }
 </style>

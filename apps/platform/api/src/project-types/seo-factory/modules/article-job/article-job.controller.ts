@@ -12,21 +12,37 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
+  Res,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import type { RequestContext } from '@wm/shared-core';
 import { ReqCtx } from '../../../../core/decorators/request-context.decorator';
+import { Public } from '../../../../core/decorators/public.decorator';
+import { UnauthorizedException } from '../../../../core/exceptions/auth.exception';
+import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { ProjectService } from '../../../../modules/project/project.service';
 import { AcceptRewriteArticleJobDto, RewriteArticleJobDto } from './dto/rewrite-article-job.dto';
 import { CreateBatchArticleJobsDto } from './dto/create-batch-article-jobs.dto';
 import { CreateArticleJobDto } from './dto/create-article-job.dto';
 import { ReviewArticleJobDto } from './dto/review-article-job.dto';
 import { ArticleJobRewriteService } from './article-job-rewrite.service';
+import { ArticleJobDraftEditService } from './article-job-draft-edit.service';
+import { ArticleJobDraftImageService } from './article-job-draft-image.service';
+import { verifyDraftImageSignedQuery } from './draft-image.util';
+import { DRAFT_IMAGE_MAX_BYTES } from '../../constants/draft-image';
 import { ArticleJobReviewService } from './article-job-review.service';
+import { PatchArticleDraftDto, RollbackArticleDraftDto } from './dto/patch-article-draft.dto';
+import { ResolveDraftStaleDto } from './dto/resolve-draft-stale.dto';
 import { ArticleJobService } from './article-job.service';
 import { CmsPublishService } from '../export/cms-publish.service';
 import { PublishArticleJobDto } from '../export/dto/publish-article-job.dto';
@@ -36,6 +52,8 @@ export class ArticleJobController {
   constructor(
     private readonly articleJobService: ArticleJobService,
     private readonly articleJobRewriteService: ArticleJobRewriteService,
+    private readonly articleJobDraftEditService: ArticleJobDraftEditService,
+    private readonly articleJobDraftImageService: ArticleJobDraftImageService,
     private readonly articleJobReviewService: ArticleJobReviewService,
     private readonly cmsPublishService: CmsPublishService,
     private readonly projectService: ProjectService,
@@ -222,6 +240,124 @@ export class ArticleJobController {
       id,
     );
     return { data: job, meta: { traceId: job.traceId } };
+  }
+
+  @Patch(':id/draft')
+  async patchDraft(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+    @Body() dto: PatchArticleDraftDto,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const job = await this.articleJobDraftEditService.patchDraft(
+      ctx,
+      ctx.organizationId,
+      projectId,
+      id,
+      dto,
+    );
+    return { data: job, meta: { traceId: job.traceId } };
+  }
+
+  @Get(':id/draft/history')
+  async listDraftHistory(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const result = await this.articleJobDraftEditService.listEditHistory(
+      ctx.organizationId,
+      projectId,
+      id,
+    );
+    return { data: result, meta: { traceId: ctx.traceId } };
+  }
+
+  @Post(':id/draft/rollback')
+  async rollbackDraft(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+    @Body() dto: RollbackArticleDraftDto,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const job = await this.articleJobDraftEditService.rollbackDraft(
+      ctx,
+      ctx.organizationId,
+      projectId,
+      id,
+      dto,
+    );
+    return { data: job, meta: { traceId: job.traceId } };
+  }
+
+  @Post(':id/draft/resolve-stale')
+  async resolveDraftStale(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+    @Body() dto: ResolveDraftStaleDto,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const job = await this.articleJobDraftEditService.resolveStaleAction(
+      ctx,
+      ctx.organizationId,
+      projectId,
+      id,
+      dto,
+    );
+    return { data: job, meta: { traceId: job.traceId } };
+  }
+
+  @Post(':id/draft/images')
+  @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: DRAFT_IMAGE_MAX_BYTES },
+    }),
+  )
+  async uploadDraftImage(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const data = await this.articleJobDraftImageService.uploadDraftImage(
+      ctx.organizationId,
+      projectId,
+      id,
+      file,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Public()
+  @Get(':id/draft/images/:filename')
+  @Header('Cache-Control', 'private, max-age=3600')
+  async getDraftImage(
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+    @Param('filename') filename: string,
+    @Query('exp') exp: string | undefined,
+    @Query('sig') sig: string | undefined,
+    @Res() res: Response,
+  ): Promise<void> {
+    if (!verifyDraftImageSignedQuery(projectId, id, filename, exp, sig)) {
+      throw new UnauthorizedException(ErrorCodes.UNAUTHORIZED, '图片链接无效或已过期');
+    }
+
+    const job = await this.articleJobService.findOneForImageAccess(projectId, id);
+    const file = await this.articleJobDraftImageService.getDraftImage(
+      job.organizationId,
+      projectId,
+      id,
+      filename,
+    );
+    res.setHeader('Content-Type', file.contentType);
+    res.send(file.body);
   }
 
   @Post(':id/review/approve')

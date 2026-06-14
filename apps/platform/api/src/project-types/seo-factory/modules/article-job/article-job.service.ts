@@ -291,6 +291,20 @@ export class ArticleJobService {
     return job;
   }
 
+  /** 签名 URL 读取稿件插图时解析租户（无需登录态） */
+  async findOneForImageAccess(projectId: string, id: string) {
+    const job = await this.prisma.articleJob.findFirst({
+      where: { id, projectId },
+      select: { organizationId: true },
+    });
+
+    if (!job) {
+      throw new BusinessException(ErrorCodes.JOB_NOT_FOUND, '任务不存在');
+    }
+
+    return job;
+  }
+
   /** 手动触发 Semrush RPA 检测当前初稿（异步，立即返回 OPTIMIZING） */
   async triggerSemrushCheck(organizationId: string, projectId: string, id: string) {
     const job = await this.prisma.articleJob.findFirst({
