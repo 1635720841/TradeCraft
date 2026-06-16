@@ -220,11 +220,22 @@ function blockElementToMarkdown(el: Element): string {
   if (tag === "div") {
     const table = el.querySelector("table");
     if (table) return tableElementToMarkdown(table);
+
+    const img = el.querySelector("img");
+    if (img && !el.textContent?.replace(/\u00a0/g, " ").trim()) {
+      return imageElementToMarkdown(img as HTMLImageElement);
+    }
   }
 
   if (/^h[1-6]$/.test(tag)) {
     const level = Number(tag[1]);
     return `${"#".repeat(level)} ${inlineNodesToMarkdown(el).trim()}`;
+  }
+
+  if (tag === "figure") {
+    const img = el.querySelector("img");
+    if (img) return imageElementToMarkdown(img as HTMLImageElement);
+    return inlineNodesToMarkdown(el).trim();
   }
 
   if (tag === "p") {

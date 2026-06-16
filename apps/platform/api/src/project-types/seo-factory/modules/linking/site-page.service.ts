@@ -38,6 +38,7 @@ export class SitePageService {
         title: true,
         summary: true,
         keywords: true,
+        primaryKeyword: true,
         pageType: true,
         businessValue: true,
         lastUpdated: true,
@@ -98,6 +99,48 @@ export class SitePageService {
     return { discovered: discovered.length, upserted };
   }
 
+  async patchPage(
+    organizationId: string,
+    projectId: string,
+    siteId: string,
+    pageId: string,
+    primaryKeyword?: string | null,
+  ) {
+    await this.assertSiteExists(organizationId, projectId, siteId);
+
+    const page = await this.prisma.sitePage.findFirst({
+      where: { id: pageId, organizationId, projectId, siteId },
+      select: { id: true },
+    });
+
+    if (!page) {
+      throw new BusinessException(ErrorCodes.NOT_FOUND, '页面不存在');
+    }
+
+    return this.prisma.sitePage.update({
+      where: { id: pageId },
+      data: {
+        primaryKeyword:
+          primaryKeyword === undefined
+            ? undefined
+            : primaryKeyword?.trim() || null,
+      },
+      select: {
+        id: true,
+        url: true,
+        title: true,
+        summary: true,
+        keywords: true,
+        primaryKeyword: true,
+        pageType: true,
+        businessValue: true,
+        lastUpdated: true,
+        source: true,
+        updatedAt: true,
+      },
+    });
+  }
+
   async loadCandidates(
     organizationId: string,
     projectId: string,
@@ -112,6 +155,7 @@ export class SitePageService {
         title: true,
         summary: true,
         keywords: true,
+        primaryKeyword: true,
         pageType: true,
         businessValue: true,
       },
@@ -126,6 +170,7 @@ export class SitePageService {
         title: row.title,
         summary: row.summary,
         keywords: row.keywords,
+        primaryKeyword: row.primaryKeyword,
         pageType: row.pageType,
         businessValue: row.businessValue,
       }));

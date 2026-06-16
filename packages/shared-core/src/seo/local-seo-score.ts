@@ -6,6 +6,7 @@
  */
 
 import { EN_STOPWORDS } from './stopwords-en';
+import { extractLongSentences, extractLongParagraphs } from './readability-fix.util';
 
 export const LOCAL_SEO_PASS_THRESHOLD = 95;
 
@@ -46,6 +47,10 @@ export interface LocalSeoScoreResult {
     longSentencesOver22: number;
     longParagraphsOver80: number;
     passiveVoiceHits: number;
+    /** 超长句原文抽样，供 UI 定位与 LLM 定向改写 */
+    longSentenceSamples?: Array<{ text: string; wordCount: number }>;
+    /** 超长段原文抽样（>80 词/段） */
+    longParagraphSamples?: Array<{ text: string; wordCount: number }>;
   };
 }
 
@@ -439,6 +444,9 @@ export function scoreLocalSeo(input: LocalSeoScoreInput): LocalSeoScoreResult {
   const keywordHits = countPhrase(content, keyword);
   const keywordDensity = (keywordHits * keyword.split(/\s+/).length) / Math.max(wordCount, 1);
 
+  const longSentenceSamples = extractLongSentences(content).slice(0, 8);
+  const longParagraphSamples = extractLongParagraphs(content).slice(0, 6);
+
   return {
     score,
     breakdown,
@@ -453,6 +461,8 @@ export function scoreLocalSeo(input: LocalSeoScoreInput): LocalSeoScoreResult {
       longSentencesOver22: readabilityPart.longSentencesOver22,
       longParagraphsOver80: readabilityPart.longParagraphsOver80,
       passiveVoiceHits: readabilityPart.passiveVoiceHits,
+      longSentenceSamples,
+      longParagraphSamples,
     },
   };
 }

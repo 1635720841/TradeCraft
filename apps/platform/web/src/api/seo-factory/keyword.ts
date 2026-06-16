@@ -3,12 +3,14 @@
  */
 
 import { http } from "@/utils/http";
-import type { ArticleJobItem, WmApiResponse } from "./types";
+import type { ArticleJobItem, KeywordCannibalizationWarning, WmApiResponse } from "./types";
 
 export interface KeywordEntryItem {
   id: string;
   keyword: string;
   siteId?: string | null;
+  clusterId?: string | null;
+  cluster?: { id: string; name: string } | null;
   intent: string;
   status: string;
   source: string;
@@ -27,6 +29,8 @@ export interface KeywordEntryItem {
 export interface CreateKeywordPayload {
   keyword: string;
   siteId?: string;
+  clusterId?: string;
+  clusterName?: string;
   intent?: string;
   searchVolume?: number;
   keywordDifficulty?: number;
@@ -38,6 +42,8 @@ export interface CreateKeywordPayload {
 
 export interface UpdateKeywordPayload {
   siteId?: string | null;
+  clusterId?: string | null;
+  clusterName?: string;
   intent?: string;
   status?: string;
   searchVolume?: number | null;
@@ -62,10 +68,22 @@ export async function listKeywords(
   projectId: string,
   page = 1,
   limit = 20,
-  filters: { status?: string; intent?: string } = {}
+  filters: {
+    status?: string;
+    intent?: string;
+    clusterId?: string;
+    unclustered?: boolean;
+    queueable?: boolean;
+  } = {}
 ): Promise<WmApiResponse<KeywordEntryItem[]>> {
+  const params: Record<string, string | number | boolean> = { page, limit };
+  if (filters.status) params.status = filters.status;
+  if (filters.intent) params.intent = filters.intent;
+  if (filters.clusterId) params.clusterId = filters.clusterId;
+  if (filters.unclustered) params.unclustered = "1";
+  if (filters.queueable) params.queueable = "1";
   return http.request<WmApiResponse<KeywordEntryItem[]>>("get", projectBase(projectId), {
-    params: { page, limit, ...filters }
+    params
   });
 }
 
@@ -110,8 +128,10 @@ export async function createJobFromKeyword(
   projectId: string,
   keywordId: string,
   siteId?: string
-): Promise<{ job: ArticleJobItem; keywordId: string }> {
-  const res = await http.request<WmApiResponse<{ job: ArticleJobItem; keywordId: string }>>(
+): Promise<{ job: ArticleJobItem; keywordId: string; warnings?: KeywordCannibalizationWarning[] }> {
+  const res = await http.request<
+    WmApiResponse<{ job: ArticleJobItem; keywordId: string; warnings?: KeywordCannibalizationWarning[] }>
+  >(
     "post",
     `${projectBase(projectId)}/${keywordId}/create-job`,
     { data: siteId ? { siteId } : {} }

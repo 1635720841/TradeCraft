@@ -43,9 +43,21 @@ import { DRAFT_IMAGE_MAX_BYTES } from '../../constants/draft-image';
 import { ArticleJobReviewService } from './article-job-review.service';
 import { PatchArticleDraftDto, RollbackArticleDraftDto } from './dto/patch-article-draft.dto';
 import { ResolveDraftStaleDto } from './dto/resolve-draft-stale.dto';
+import { ArticleJobBriefService } from './article-job-brief.service';
+import { ArticleJobInternalLinksService } from './article-job-internal-links.service';
+import { PatchInternalLinksDto } from './dto/patch-internal-links.dto';
 import { ArticleJobService } from './article-job.service';
 import { CmsPublishService } from '../export/cms-publish.service';
 import { PublishArticleJobDto } from '../export/dto/publish-article-job.dto';
+import {
+  BatchPublishArticleJobsDto,
+  BatchRetryArticleJobsDto,
+} from './dto/batch-article-jobs-actions.dto';
+import { PatchArticleBriefDto } from './dto/patch-article-brief.dto';
+import { RerunArticleOptimizationDto } from './dto/rerun-article-optimization.dto';
+import { RefreshArticleJobSerpDto } from './dto/refresh-article-job-serp.dto';
+import { BatchExportArticleJobsDto } from './dto/batch-export-article-jobs.dto';
+import { ExportService } from '../export/export.service';
 
 @Controller('api/v1/projects/:projectId/article-jobs')
 export class ArticleJobController {
@@ -55,7 +67,10 @@ export class ArticleJobController {
     private readonly articleJobDraftEditService: ArticleJobDraftEditService,
     private readonly articleJobDraftImageService: ArticleJobDraftImageService,
     private readonly articleJobReviewService: ArticleJobReviewService,
+    private readonly articleJobBriefService: ArticleJobBriefService,
+    private readonly articleJobInternalLinksService: ArticleJobInternalLinksService,
     private readonly cmsPublishService: CmsPublishService,
+    private readonly exportService: ExportService,
     private readonly projectService: ProjectService,
   ) {}
 
@@ -85,37 +100,96 @@ export class ArticleJobController {
   }
 
   @Get('stats/summary')
-  async stats(@ReqCtx() ctx: RequestContext, @Param('projectId') projectId: string) {
+  async stats(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Query('siteId') siteId?: string,
+  ) {
     await this.projectService.assertAccessible(ctx.organizationId, projectId);
-    const data = await this.articleJobService.getProjectStats(ctx.organizationId, projectId);
+    const data = await this.articleJobService.getProjectStats(
+      ctx.organizationId,
+      projectId,
+      siteId?.trim() || undefined,
+    );
     return { data, meta: { traceId: ctx.traceId } };
   }
 
-  @Get('reviews/pending')
-  async listPendingReviews(
+  @Post('batch/retry')
+  @HttpCode(HttpStatus.OK)
+  async batchRetry(
     @ReqCtx() ctx: RequestContext,
     @Param('projectId') projectId: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
+    @Body() dto: BatchRetryArticleJobsDto,
   ) {
     await this.projectService.assertAccessible(ctx.organizationId, projectId);
-    const result = await this.articleJobReviewService.listPending(
+    const data = await this.articleJobService.batchRetry(
       ctx.organizationId,
       projectId,
-      page ? Number(page) : 1,
-      limit ? Number(limit) : 20,
+      dto.jobIds,
     );
-    return {
-      data: result.items,
-      meta: {
-        traceId: ctx.traceId,
-        pagination: {
-          page: result.page,
-          limit: result.limit,
-          total: result.total,
-        },
-      },
-    };
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Post('batch/brief-approve')
+  @HttpCode(HttpStatus.OK)
+  async batchApproveBrief(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Body() dto: BatchRetryArticleJobsDto,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const data = await this.articleJobBriefService.batchApproveBrief(
+      ctx,
+      ctx.organizationId,
+      projectId,
+      dto.jobIds,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Post('batch/publish')
+  @HttpCode(HttpStatus.OK)
+  async batchPublish(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Body() dto: BatchPublishArticleJobsDto,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const data = await this.cmsPublishService.batchPublish(
+      ctx.organizationId,
+      projectId,
+      ctx.traceId,
+      dto,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Post('batch/export')
+  @Header('Cache-Control', 'private, no-store')
+  async batchExport(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Body() dto: BatchExportArticleJobsDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const pack = await this.exportService.buildBatchExportPackage(
+      ctx.organizationId,
+      projectId,
+      dto.jobIds,
+    );
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename*=UTF-8''${encodeURIComponent(pack.fileName)}`,
+    );
+    res.setHeader('X-Export-Exported', String(pack.exported));
+    res.setHeader('X-Export-Failed', String(pack.failed));
+    res.setHeader(
+      'X-Export-Failures',
+      encodeURIComponent(JSON.stringify(pack.failures)),
+    );
+    res.send(pack.buffer);
   }
 
   @Get()
@@ -124,6 +198,14 @@ export class ArticleJobController {
     @Param('projectId') projectId: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('briefPending') briefPending?: string,
+    @Query('generating') generating?: string,
+    @Query('cmsPublishFailed') cmsPublishFailed?: string,
+    @Query('cmsPublishPending') cmsPublishPending?: string,
+    @Query('staleDraft') staleDraft?: string,
+    @Query('reviewPending') reviewPending?: string,
+    @Query('status') status?: string,
+    @Query('siteId') siteId?: string,
   ) {
     await this.projectService.assertAccessible(ctx.organizationId, projectId);
     const result = await this.articleJobService.findMany(
@@ -131,6 +213,16 @@ export class ArticleJobController {
       projectId,
       page ? Number(page) : 1,
       limit ? Number(limit) : 20,
+      {
+        briefPending: briefPending === '1' || briefPending === 'true',
+        generating: generating === '1' || generating === 'true',
+        cmsPublishFailed: cmsPublishFailed === '1' || cmsPublishFailed === 'true',
+        cmsPublishPending: cmsPublishPending === '1' || cmsPublishPending === 'true',
+        staleDraft: staleDraft === '1' || staleDraft === 'true',
+        reviewPending: reviewPending === '1' || reviewPending === 'true',
+        status: status === 'FAILED' ? 'FAILED' : undefined,
+        siteId: siteId?.trim() || undefined,
+      },
     );
     const traceId = result.items[0]?.traceId ?? ctx.traceId;
     return {
@@ -189,6 +281,54 @@ export class ArticleJobController {
   ) {
     await this.projectService.assertAccessible(ctx.organizationId, projectId);
     const job = await this.articleJobService.cancelSemrushCheck(ctx.organizationId, projectId, id);
+    return { data: job, meta: { traceId: job.traceId } };
+  }
+
+  @Post(':id/refresh-serp')
+  @HttpCode(HttpStatus.OK)
+  async refreshSerp(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+    @Body() dto: RefreshArticleJobSerpDto,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const job = await this.articleJobService.refreshSerp(
+      ctx.organizationId,
+      projectId,
+      id,
+      dto,
+    );
+    return { data: job, meta: { traceId: job.traceId } };
+  }
+
+  @Post(':id/rerun-optimization')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async rerunOptimization(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+    @Body() dto: RerunArticleOptimizationDto,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const job = await this.articleJobService.rerunOptimization(
+      ctx.organizationId,
+      projectId,
+      id,
+      dto.reason ?? 'manual',
+    );
+    return { data: job, meta: { traceId: job.traceId } };
+  }
+
+  @Post(':id/rerun-paraphrase')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async rerunParaphrase(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const job = await this.articleJobService.rerunParaphrase(ctx.organizationId, projectId, id);
     return { data: job, meta: { traceId: job.traceId } };
   }
 
@@ -411,6 +551,89 @@ export class ArticleJobController {
       id,
       ctx.traceId,
       dto,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Patch(':id/internal-links')
+  async patchInternalLinks(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+    @Body() dto: PatchInternalLinksDto,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const data = await this.articleJobInternalLinksService.patchInternalLinks(
+      ctx.organizationId,
+      projectId,
+      id,
+      dto,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Post(':id/internal-links/reapply')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async reapplyInternalLinks(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const data = await this.articleJobInternalLinksService.reapplyInternalLinks(
+      ctx.organizationId,
+      projectId,
+      id,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Patch(':id/brief')
+  async patchBrief(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+    @Body() dto: PatchArticleBriefDto,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const data = await this.articleJobBriefService.patchBrief(
+      ctx.organizationId,
+      projectId,
+      id,
+      dto,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Post(':id/brief/approve')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async approveBrief(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const data = await this.articleJobBriefService.approveBrief(
+      ctx,
+      ctx.organizationId,
+      projectId,
+      id,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Post(':id/brief/regenerate')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async regenerateBrief(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const data = await this.articleJobBriefService.regenerateBrief(
+      ctx.organizationId,
+      projectId,
+      id,
     );
     return { data, meta: { traceId: ctx.traceId } };
   }

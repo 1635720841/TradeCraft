@@ -16,7 +16,7 @@
 | P1 | 核心引擎验证 | ✅ 已完成 | SERP → Brief → 初稿（后端 + 入队） |
 | P2 | 自动化攻坚 | 🟡 进行中 | Semrush、内链、配图、QuillBot 已接入；队列/browser 池待做 |
 | P3 | SaaS 化基座 | 🟡 进行中 | Auth、多租户、项目 CRUD、工作台壳、站点/关键词/审核页已接入 |
-| P4 | 资产完善与变现 | 🟡 进行中 | 导出、计费、Prompt、组织配额已完成；S3/E2E/WordPress UI 待做 |
+| P4 | 资产完善与变现 | 🟡 进行中 | 导出、计费、Prompt、CMS（含 Shopify 产品页）、Brief/批量运营、概览待办已接入 |
 
 ---
 
@@ -183,6 +183,7 @@
 | SITE-002 | Site DTO + Response 映射 | [x] | P3 | SITE-001 | `modules/site/dto/` |
 | SITE-003 | 前端站点管理页 | [x] | P3 | SITE-001 | `SiteManageView.vue` |
 | SITE-004 | WordPress CMS 配置（站点 REST 凭证） | [x] | P4 | SITE-001 | `site-cms.util.ts`（**后端**；前端 UI 见 CMS-002） |
+| SITE-005 | 站点写作素材（行业/认证/起订量/文末询盘引导） | [x] | P4 | SITE-001 | `site-settings.ts`、`SiteManageView.vue` |
 
 ### SITE-001 验收
 - [ ] 字段：domain、brandVoice、targetMarket
@@ -333,6 +334,7 @@
 | LINK-002 | 本地页面库数据模型与导入 | [x] | P2 | LINK-001 | `prisma/schema.prisma` |
 | LINK-003 | 文本向量匹配算法 | [~] | P2 | LINK-002 | `modules/linking/link-match.util.ts` |
 | LINK-004 | 自然内链植入逻辑 | [x] | P2 | LINK-003, WF-007 | `modules/linking/` |
+| LINK-005 | 内链人工编辑 + 重跑植入 API/UI（含增删） | [x] | P4 | LINK-004 | `internal-links.util.ts`、`ArticleJobInternalLinksPanel.vue` |
 
 ### LINK-004 验收
 - [ ] 内链锚文本自然，不堆砌
@@ -408,9 +410,9 @@
 | FE-S-006 | 任务详情页（轮询状态） | [x] | P3 | FE-S-003, JOB-004 | `JobDetailView.vue` |
 | FE-S-007 | 站点管理页 | [x] | P3 | SITE-003 | `SiteManageView.vue` |
 | FE-S-008 | composable：useArticleJobPolling | [x] | P3 | FE-S-006 | `composables/seo-factory/` |
-| FE-S-009 | 工作台 Tab 壳（概览/任务/关键词/站点/审核） | [x] | P3 | FE-S-001 | `SeoFactoryWorkbenchShell.vue`、`remaining.ts` |
+| FE-S-009 | 工作台左侧导航壳（概览/任务/词库/站点/设置） | [x] | P3 | FE-S-001 | `SeoFactoryWorkbenchNav.vue`、`SeoFactoryWorkbenchShell.vue` |
 | FE-S-010 | 关键词池页 | [x] | P3 | KW-001 | `KeywordPoolView.vue` |
-| FE-S-011 | YMYL 待审核队列页 | [x] | P3 | REV-001 | `ReviewQueueView.vue` |
+| FE-S-011 | YMYL 审核（任务列表阶段 + 行内通过/驳回） | [x] | P3 | REV-001 | `JobListView.vue?stage=reviewPending` |
 | FE-S-012 | 组织设置页（配额/成员） | [x] | P4 | ORG-001 | `OrganizationSettingsView.vue` |
 
 ### FE-S-004 验收
@@ -456,12 +458,63 @@
 
 ---
 
-## 模块 24 — seo-factory：CMS 发布（WordPress，后端优先）
+## 模块 24 — seo-factory：CMS 发布（WordPress + Shopify）
 
 | ID | 任务 | 状态 | Phase | 依赖 | 落位 |
 |----|------|------|-------|------|------|
 | CMS-001 | CmsPublishService + POST publish API | [x] | P4 | EXP-002, SITE-004 | `cms-publish.service.ts` |
-| CMS-002 | 前端 WordPress UI | [ ] | P4 | CMS-001 | `feature-flags.ts`（**暂缓**，后端可测 API） |
+| CMS-002 | 前端 CMS UI（推送状态、批量推送） | [x] | P4 | CMS-001 | `feature-flags.ts`、`JobListView.vue` |
+| CMS-003 | Shopify Admin API 推送 | [x] | P4 | CMS-001 | `cms-publish.service.ts`、`SiteManageView.vue` |
+| CMS-004 | Shopify Blog / Files / 产品页 / 更新已发 | [x] | P4 | CMS-003 | Blog 下拉、Files 上传、Product 描述推送、更新 |
+
+---
+
+## 模块 26 — seo-factory：Brief 人工确认（WF-BRIEF）
+
+| ID | 任务 | 状态 | Phase | 依赖 | 落位 |
+|----|------|------|-------|------|------|
+| WF-BRIEF-001 | Site.settings.requireBriefApproval + 工作流暂停 | [x] | P4 | WF-003 | `brief-approval.ts`、`workflow.service.ts` |
+| WF-BRIEF-002 | Brief patch / approve / regenerate API | [x] | P4 | WF-BRIEF-001 | `article-job-brief.service.ts` |
+| WF-BRIEF-003 | 详情 Brief 确认面板 | [x] | P4 | WF-BRIEF-002 | `ArticleJobBriefReviewPanel.vue` |
+| WF-BRIEF-004 | 列表阶段筛选 + 概览流水线快捷入口 | [x] | P4 | WF-BRIEF-002 | `JobListView.vue?stage=outlinePending` |
+| WF-BRIEF-005 | 任务列表批量/单行确认大纲 | [x] | P4 | WF-BRIEF-004 | `JobListView.vue`、`POST .../batch/brief-approve` |
+
+---
+
+## 模块 27 — seo-factory：运营批量与进度（OPS）
+
+| ID | 任务 | 状态 | Phase | 依赖 | 落位 |
+|----|------|------|-------|------|------|
+| OPS-PROGRESS-001 | 任务进度条 + 概览统计卡片 | [x] | P4 | JOB-003 | `job-progress.ts`、`ArticleJobProgressStepper.vue` |
+| OPS-BATCH-001 | 批量续跑 / 批量推送 CMS | [x] | P4 | JOB-003, CMS-001 | `batch/retry`、`batch/publish` |
+| OPS-BATCH-002 | 批量导出 zip | [x] | P4 | EXP-003 | `batch/export`、`export.service.ts` |
+| OPS-INTENT-001 | 搜索意图入队快照 + Brief/Draft Prompt | [x] | P4 | KW-001, LLM-003 | `search-intent.ts`、`ArticleJob.searchIntent` |
+| OPS-INTENT-002 | 新建任务选手动意图 / 列表展示 | [x] | P4 | OPS-INTENT-001 | `JobCreateView.vue`、`JobListView.vue` |
+| OPS-CMS-FILTER-001 | 任务列表筛选 CMS 推送失败 | [x] | P4 | CMS-001 | `?cmsPublishFailed=1`、`JobListView.vue` |
+| OPS-FILTER-FAILED-001 | 任务列表筛选生成失败 | [x] | P4 | JOB-003 | `?status=FAILED`、概览「查看失败」 |
+| OPS-CLUSTER-001 | 主题集群 CRUD + 关键词归属 + 进度看板 | [x] | P4 | KW-001 | `KeywordCluster`、`TopicClusterView.vue` |
+| OPS-FILTER-PENDING-001 | 任务列表筛选待推送 CMS | [x] | P4 | CMS-002 | `?cmsPublishPending=1` |
+| OPS-UX-001 | 运营文案去术语 + 导航顺序 + 无站点拦截 | [x] | P4 | FE-S-012 | `SeoFactoryWorkbenchShell.vue` 等 |
+| OPS-GSC-001 | Google Search Console OAuth + 28 天同步 | [x] | P4 | SITE-001 | `gsc.service.ts`、`ProjectSettingsView.vue`（嵌入 GSC） |
+| OPS-GUIDE-001 | 概览页运营待办 + 流程说明 + 名词解释 | [x] | P4 | OPS-PROGRESS-001 | `WorkbenchOverviewView.vue` |
+| OPS-CLUSTER-BATCH-001 | 主题集群整组批量入队 | [x] | P4 | OPS-CLUSTER-001 | `POST .../keyword-clusters/:id/create-jobs` |
+| OPS-STALE-001 | 稿件改后待办统计 + 列表筛选 | [x] | P4 | EDIT-001 | `?staleDraft=1`、`staleDraftCount` |
+| OPS-CMS-GUIDE-001 | 站点 CMS 配置迁入设置页 | [x] | P4 | CMS-001 | `ProjectSettingsView.vue` |
+| OPS-DETAIL-001 | 任务详情运营视图简化（高级信息折叠） | [x] | P4 | FE-S-012 | `JobDetailView.vue` |
+| OPS-PROFILE-TODO-001 | 站点未填写作素材待办统计 | [x] | P4 | SITE-005 | `sitesMissingProfileCount` |
+| OPS-GSC-AUTO-001 | GSC 连接后自动首次同步 + 过期提示 | [x] | P4 | OPS-GSC-001 | `gsc.service.ts`、`GscPerformanceView.vue` |
+| OPS-GSC-LINK-001 | GSC 热门页面关联已推送文章任务 | [x] | P4 | OPS-GSC-001, CMS-001 | `pageUrlsMatchForGsc`、概览 API |
+| OPS-BRIEF-BATCH-001 | 任务列表批量确认大纲并生成初稿 | [x] | P4 | WF-BRIEF-001 | `JobListView.vue`、`POST .../batch/brief-approve` |
+| OPS-CLUSTER-OVERVIEW-001 | 概览页主题排产进度卡片 | [x] | P4 | OPS-CLUSTER-001 | `WorkbenchOverviewView.vue` |
+| OPS-GSC-AUTO-STALE-001 | GSC 过期/未同步自动拉取 + 概览待办 | [x] | P4 | OPS-GSC-AUTO-001 | `GscPerformanceView.vue`、`gscStaleSyncCount` |
+| OPS-SITE-PROFILE-FILTER-001 | 站点列表未填卖点筛选与高亮 | [x] | P4 | OPS-PROFILE-TODO-001 | `SiteManageView.vue?profile=missing` |
+| OPS-KW-FILTER-001 | 关键词池「可入队 / 未分组」快捷筛选 | [x] | P4 | KW-001 | `?queueable=1`、`?unclustered=1` |
+| OPS-GSC-CRON-001 | GSC 每日定时同步（BullMQ） | [x] | P4 | OPS-GSC-001 | `GscSyncProcessor`、`GSC_AUTO_SYNC_ENABLED` |
+| OPS-SITE-FILTER-001 | 任务列表按站点筛选 | [x] | P4 | JOB-003 | `?siteId=`、列表展示站点列 |
+| OPS-IA-001 | 运营 IA 重构：左侧导航、设置页、队列收进任务阶段 | [x] | P4 | FE-S-009 | `ProjectSettingsView.vue`、`remaining.ts` |
+| OPS-KW-OVERVIEW-001 | 概览关键词池统计卡片 | [x] | P4 | KW-001 | `keywordQueueableCount` 等 |
+| QA-012 | batch/export E2E | [x] | P4 | OPS-BATCH-002 | `e2e/batch-export.test.mjs` |
+| CMS-004 | Shopify Blog / Files / 产品页 / 更新已发 | [x] | P4 | CMS-003 | Blog 下拉、Files 上传、Product 描述推送、更新 |
 
 ---
 
@@ -470,7 +523,7 @@
 | ID | 任务 | 状态 | Phase | 依赖 | 落位 |
 |----|------|------|-------|------|------|
 | REV-001 | 待审核列表 + approve/reject API | [x] | P3 | WF-006 | `article-job.controller.ts` |
-| REV-002 | 前端 ReviewQueueView | [x] | P3 | REV-001 | `ReviewQueueView.vue` |
+| REV-002 | 任务列表行内审核 + `?reviewPending=1` | [x] | P3 | REV-001 | `JobListView.vue`、`reviewPending` API |
 
 ---
 
@@ -507,6 +560,8 @@
 | QA-009 | YMYL 检测单元测试 | [x] | P2 | WF-006 | `scripts/ymyl-detect.util.test.mjs` |
 | QA-005 | 计费事件监听测试 | [x] | P4 | BILL-003 | `scripts/billing-event.test.mjs` |
 | QA-006 | E2E：创建任务 → 队列 → 状态变更 | [x] | P3 | QUEUE-002 | `e2e/article-job-smoke.test.mjs` |
+| QA-010 | internal-links 编辑同步单元测试 | [x] | P4 | LINK-005 | `scripts/internal-links.util.test.mjs` |
+| QA-011 | brief-approval / search-intent / shopify-files 单测 | [x] | P4 | WF-BRIEF-001, OPS-INTENT-001, CMS-004 | `scripts/brief-approval.test.mjs` 等 |
 
 ---
 
@@ -566,6 +621,29 @@ Phase 4 — 变现
 
 ---
 
+## SEO 外贸优化 P0（2026-06-14）
+
+| ID | 任务 | 状态 |
+|----|------|------|
+| P0-001 | 站点 Profile 扩展（5 字段 + Prompt/UI） | [x] |
+| P0-002 | 发布前检查清单（JobDetailView） | [x] |
+| P0-003 | GSC 偏弱 → 概览改稿待办 | [x] |
+| P0-004 | Brief FAQ / Snippet + serpContext 修复 | [x] |
+| P0-005 | 关键词同质化警告 API + 前端 | [x] |
+
+## SEO 外贸优化 Backlog（P1/P2，待排期）
+
+| ID | 任务 | 状态 |
+|----|------|------|
+| P1-001 | 内容形态（文章 / 产品增强 / FAQ 页） | [x] |
+| P1-002 | CTA UTM 模板 + Inquiry HTML 导出块 | [x] |
+| P1-003 | 页面库 primaryKeyword + PageType 内链路由 | [x] |
+| P1-004 | 主题集群支柱页标记 | [x] |
+| P1-005 | JSON-LD FAQPage 自动写入 | [x] |
+| P2-001 | i18n / CRM 归因 / 竞品 / Technical SEO / 外链 / 协作 / S3 outputUrl / 本地 SEO 预检 | [ ] |
+
+---
+
 ## 稿件手动编辑（规格：`docs/specs/draft-manual-edit.md`）
 
 - [x] **EDIT-A** 最小 PATCH + stale + 前端 textarea 编辑
@@ -577,4 +655,4 @@ Phase 4 — 变现
 
 ---
 
-*最后更新：2026-06-14 | 产品壳 + 关键词池 + QuillBot + 组织配额已接入；WordPress 前端 UI 暂缓，见 `docs/CURRENT_STATE.md`*
+*最后更新：2026-06-14 | SEO 工作台左侧导航 IA、任务阶段筛选合并队列、设置页；见 `docs/CURRENT_STATE.md`*

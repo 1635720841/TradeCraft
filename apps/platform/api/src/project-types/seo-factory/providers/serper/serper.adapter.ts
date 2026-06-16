@@ -1,5 +1,5 @@
 /**
- * Serper.dev SERP 适配器：实现 ISerpProvider，含 Redis 24h 防御性缓存。
+ * Serper.dev SERP 适配器：实现 ISerpProvider，含可配置 Redis 搜索缓存。
  *
  * 边界：
  * - 不负责：业务编排（由 ScraperService / WorkflowService 处理）
@@ -11,6 +11,7 @@
 import { Injectable } from '@nestjs/common';
 import { buildSerpCacheKey, buildSerpFingerprint } from '@wm/shared-core';
 import type { ISerpProvider, SerpQuery, SerpResult } from '@wm/provider-interfaces';
+import { SERPER_ORGANIC_NUM } from '../../constants/serp-filter';
 import { BusinessException } from '../../../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { LoggerService } from '../../../../core/logger/logger.service';
@@ -28,10 +29,14 @@ export class SerperAdapter implements ISerpProvider {
   ) {}
 
   async fetchSerp(query: SerpQuery): Promise<SerpResult> {
-    const fingerprint = buildSerpFingerprint(query.keyword, query.locale, query.country);
-    const canCache = Boolean(query.organizationId && query.projectId);
+    const num = query.num ?? SERPER_ORGANIC_NUM;
+    const fingerprint = buildSerpFingerprint(query.keyword, query.locale, query.country, num);
+    const cacheTtlSeconds = query.cacheTtlSeconds ?? 0;
+    const canCache = Boolean(
+      query.organizationId && query.projectId && cacheTtlSeconds > 0,
+    );
 
-    if (canCache) {
+    if (canCache && !query.bypassCache) {
       const cacheKey = buildSerpCacheKey(query.organizationId!, query.projectId!, fingerprint);
       const cached = await this.redis.get(cacheKey);
       if (cached) {
@@ -40,8 +45,13 @@ export class SerperAdapter implements ISerpProvider {
           fingerprint,
           organizationId: query.organizationId,
           projectId: query.projectId,
+          cacheTtlSeconds,
         });
-        return { ...(JSON.parse(cached) as Omit<SerpResult, 'fingerprint'>), fingerprint };
+        return {
+          ...(JSON.parse(cached) as Omit<SerpResult, 'fingerprint' | 'fromCache'>),
+          fingerprint,
+          fromCache: true,
+        };
       }
     }
 
@@ -66,6 +76,7 @@ export class SerperAdapter implements ISerpProvider {
             q: query.keyword,
             gl: query.country.toLowerCase(),
             hl: query.locale,
+            num,
           }),
           signal: controller.signal,
         },
@@ -84,6 +95,7 @@ export class SerperAdapter implements ISerpProvider {
         organic: (data.organic as unknown[]) ?? [],
         aiOverview: data.answerBox ?? data.knowledgeGraph,
         fingerprint,
+        fromCache: false,
       };
 
       if (canCache) {
@@ -91,12 +103,15 @@ export class SerperAdapter implements ISerpProvider {
         await this.redis.setSerpCache(
           cacheKey,
           JSON.stringify({ organic: result.organic, aiOverview: result.aiOverview }),
+          cacheTtlSeconds,
         );
         this.logger.info('SERP cache miss, stored', {
           action: 'serper.cache_miss',
           fingerprint,
           organizationId: query.organizationId,
           projectId: query.projectId,
+          cacheTtlSeconds,
+          bypassCache: query.bypassCache === true,
         });
       }
 

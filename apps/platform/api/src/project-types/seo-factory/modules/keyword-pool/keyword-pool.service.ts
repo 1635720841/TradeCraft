@@ -8,7 +8,7 @@
  * - KeywordPoolService
  */
 
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import {
   KeywordIntent,
   KeywordSource,
@@ -27,16 +27,20 @@ import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { LoggerService } from '../../../../core/logger/logger.service';
 import { ArticleJobService } from '../article-job/article-job.service';
 import { MAX_BATCH_JOB_LIMIT } from '../../constants/serp-filter';
+import { enrichBrandVoiceForPrompt } from '../../constants/site-settings';
 import type { CreateKeywordDto } from './dto/create-keyword.dto';
 import type { GenerateKeywordSeedsDto } from './dto/generate-keyword-seeds.dto';
 import type { UpdateKeywordDto } from './dto/update-keyword.dto';
 import { computeKeywordPriorityScore } from './keyword-priority.util';
 import { BillingService } from '../../../../modules/billing/billing.service';
+import { KeywordClusterService } from './keyword-cluster.service';
 
 const keywordSelect = {
   id: true,
   keyword: true,
   siteId: true,
+  clusterId: true,
+  cluster: { select: { id: true, name: true } },
   intent: true,
   status: true,
   source: true,
@@ -62,6 +66,8 @@ export class KeywordPoolService {
     @Inject(LLM_PROVIDER) private readonly llmProvider: ILLMProvider,
     @Inject(KEYWORD_METRICS_PROVIDER)
     private readonly keywordMetricsProvider: IKeywordMetricsProvider,
+    @Inject(forwardRef(() => KeywordClusterService))
+    private readonly keywordClusterService: KeywordClusterService,
   ) {}
 
   async findMany(
@@ -72,6 +78,9 @@ export class KeywordPoolService {
       limit?: number;
       status?: string;
       intent?: string;
+      clusterId?: string;
+      unclustered?: boolean;
+      queueable?: boolean;
     } = {},
   ) {
     const page = Math.max(options.page ?? 1, 1);
@@ -83,6 +92,11 @@ export class KeywordPoolService {
       projectId,
       ...(options.status ? { status: options.status as KeywordStatus } : {}),
       ...(options.intent ? { intent: options.intent as KeywordIntent } : {}),
+      ...(options.clusterId ? { clusterId: options.clusterId } : {}),
+      ...(options.unclustered ? { clusterId: null } : {}),
+      ...(options.queueable
+        ? { status: { in: [KeywordStatus.PENDING, KeywordStatus.APPROVED] } }
+        : {}),
     };
 
     const [items, total] = await Promise.all([
@@ -113,7 +127,7 @@ export class KeywordPoolService {
 
     const seedResult = await this.llmProvider.generateKeywordSeeds({
       siteDomain: site.domain,
-      brandVoice: site.brandVoice ?? undefined,
+      brandVoice: enrichBrandVoiceForPrompt(site.brandVoice, site.settings) ?? undefined,
       targetMarket: site.targetMarket ?? undefined,
       contentLanguage: site.contentLanguage === 'zh-CN' ? 'zh-CN' : 'en',
       count,
@@ -238,6 +252,13 @@ export class KeywordPoolService {
     await this.assertSiteIfProvided(organizationId, projectId, dto.siteId);
     const keyword = this.normalizeKeyword(dto.keyword);
 
+    const clusterId = await this.resolveClusterId(
+      organizationId,
+      projectId,
+      dto.clusterId,
+      dto.clusterName,
+    );
+
     const existing = await this.prisma.keywordEntry.findFirst({
       where: {
         projectId,
@@ -262,6 +283,7 @@ export class KeywordPoolService {
         organizationId,
         projectId,
         siteId: dto.siteId ?? null,
+        clusterId,
         keyword,
         intent: (dto.intent as KeywordIntent) ?? KeywordIntent.INFORMATIONAL,
         source,
@@ -311,6 +333,17 @@ export class KeywordPoolService {
       await this.assertSiteIfProvided(organizationId, projectId, dto.siteId);
     }
 
+    const clusterId =
+      dto.clusterId !== undefined || dto.clusterName !== undefined
+        ? await this.resolveClusterId(
+            organizationId,
+            projectId,
+            dto.clusterId,
+            dto.clusterName,
+            dto.clusterId === null,
+          )
+        : undefined;
+
     const searchVolume = dto.searchVolume === undefined ? current.searchVolume : dto.searchVolume;
     const keywordDifficulty =
       dto.keywordDifficulty === undefined ? current.keywordDifficulty : dto.keywordDifficulty;
@@ -328,6 +361,7 @@ export class KeywordPoolService {
       where: { id },
       data: {
         siteId: dto.siteId === undefined ? undefined : dto.siteId,
+        clusterId: clusterId === undefined ? undefined : clusterId,
         intent: dto.intent as KeywordIntent | undefined,
         status: dto.status as KeywordStatus | undefined,
         searchVolume: dto.searchVolume === undefined ? undefined : dto.searchVolume,
@@ -370,6 +404,7 @@ export class KeywordPoolService {
       siteId: resolvedSiteId,
       targetKeyword: entry.keyword,
       contentLanguage: site.contentLanguage === 'zh-CN' ? 'zh-CN' : 'en',
+      searchIntent: entry.intent,
     });
 
     await this.prisma.keywordEntry.update({
@@ -381,7 +416,7 @@ export class KeywordPoolService {
       },
     });
 
-    return { job, keywordId: entry.id };
+    return { job, keywordId: entry.id, warnings: job.warnings ?? [] };
   }
 
   async createJobsFromKeywords(
@@ -463,6 +498,41 @@ export class KeywordPoolService {
     return entry;
   }
 
+  private async resolveClusterId(
+    organizationId: string,
+    projectId: string,
+    clusterId?: string | null,
+    clusterName?: string,
+    clearCluster = false,
+  ): Promise<string | null | undefined> {
+    if (clearCluster) {
+      return null;
+    }
+
+    if (clusterId) {
+      const cluster = await this.prisma.keywordCluster.findFirst({
+        where: { id: clusterId, organizationId, projectId },
+        select: { id: true },
+      });
+
+      if (!cluster) {
+        throw new BusinessException(ErrorCodes.KEYWORD_CLUSTER_NOT_FOUND, '主题集群不存在');
+      }
+
+      return cluster.id;
+    }
+
+    if (clusterName?.trim()) {
+      return this.keywordClusterService.findOrCreateByName(
+        organizationId,
+        projectId,
+        clusterName,
+      );
+    }
+
+    return undefined;
+  }
+
   private normalizeKeyword(value: string): string {
     return value.trim().replace(/\s+/g, ' ');
   }
@@ -485,6 +555,7 @@ export class KeywordPoolService {
           brandVoice: true,
           targetMarket: true,
           contentLanguage: true,
+          settings: true,
         },
       });
 
@@ -503,6 +574,7 @@ export class KeywordPoolService {
         brandVoice: true,
         targetMarket: true,
         contentLanguage: true,
+        settings: true,
       },
       orderBy: { createdAt: 'asc' },
     });

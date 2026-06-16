@@ -23,6 +23,10 @@ export interface SerpOrganicFilterMeta {
   excluded: number;
   articlesOnly: boolean;
   limit: number;
+  /** 识别为博客/资讯文的条数 */
+  articleKept?: number;
+  /** 为凑够样本从其余搜索结果回补的条数 */
+  backfillKept?: number;
 }
 
 const EXCLUDE_HOST_FRAGMENTS = [
@@ -91,6 +95,22 @@ function parseHttpUrl(url: string): { host: string; path: string } | null {
   };
 }
 
+function isHardExcludedUrl(url: string): boolean {
+  const parsed = parseHttpUrl(url);
+  if (!parsed) {
+    return true;
+  }
+
+  const { host, path } = parsed;
+  if (EXCLUDE_HOST_FRAGMENTS.some((fragment) => host.includes(fragment))) {
+    return true;
+  }
+  if (EXCLUDE_PATH_FRAGMENTS.some((fragment) => path.includes(fragment))) {
+    return true;
+  }
+  return false;
+}
+
 /** 判断 URL 是否像 SEO 资讯/博客文章页（非产品、首页、登录等） */
 export function isSeoArticleUrl(url: string): boolean {
   const parsed = parseHttpUrl(url);
@@ -98,12 +118,9 @@ export function isSeoArticleUrl(url: string): boolean {
     return false;
   }
 
-  const { host, path } = parsed;
+  const { path } = parsed;
 
-  if (EXCLUDE_HOST_FRAGMENTS.some((fragment) => host.includes(fragment))) {
-    return false;
-  }
-  if (EXCLUDE_PATH_FRAGMENTS.some((fragment) => path.includes(fragment))) {
+  if (isHardExcludedUrl(url)) {
     return false;
   }
   if (path === '/' || path === '') {
@@ -122,6 +139,21 @@ export function isSeoArticleUrl(url: string): boolean {
   }
 
   return false;
+}
+
+/** 博客类不足时，可回补的其它搜索结果（公司页、方案页等，仍排除电商/产品页） */
+export function isUsefulSerpFallbackUrl(url: string): boolean {
+  if (!url.trim() || isHardExcludedUrl(url) || isSeoArticleUrl(url)) {
+    return false;
+  }
+
+  const parsed = parseHttpUrl(url);
+  if (!parsed) {
+    return false;
+  }
+
+  const { path } = parsed;
+  return path !== '/' && path !== '';
 }
 
 /** 从文章 URL 提取可用作关键词的 slug 文本 */
@@ -144,29 +176,68 @@ export function keywordFromArticleUrl(url: string): string {
   }
 }
 
-/** 过滤 SERP 有机结果，仅保留 SEO 文章类竞品并限制条数 */
+/** 过滤 SERP 有机结果，优先保留 SEO 文章类竞品；不足时自动回补 */
 export function filterSerpOrganicForSeoArticles(
   organic: SerpOrganicItem[],
-  options: { limit: number; articlesOnly: boolean },
+  options: {
+    limit: number;
+    articlesOnly: boolean;
+    minArticleCandidates?: number;
+  },
 ): { filtered: SerpOrganicItem[]; meta: SerpOrganicFilterMeta } {
   const total = organic.length;
-  let candidates = organic;
+  const safeLimit = Math.max(1, options.limit);
+  const minArticleCandidates = Math.max(1, options.minArticleCandidates ?? 3);
 
-  if (options.articlesOnly) {
-    candidates = organic.filter((item) => item.link && isSeoArticleUrl(item.link));
+  if (!options.articlesOnly) {
+    const filtered = organic.slice(0, safeLimit);
+    return {
+      filtered,
+      meta: {
+        total,
+        kept: filtered.length,
+        excluded: total - filtered.length,
+        articlesOnly: false,
+        limit: safeLimit,
+        articleKept: filtered.length,
+        backfillKept: 0,
+      },
+    };
   }
 
-  const safeLimit = Math.max(1, options.limit);
-  const filtered = candidates.slice(0, safeLimit);
+  const articleCandidates = organic.filter((item) => item.link && isSeoArticleUrl(item.link));
+  const kept: SerpOrganicItem[] = articleCandidates.slice(0, safeLimit);
+  const keptLinks = new Set(kept.map((item) => item.link));
+
+  if (kept.length < minArticleCandidates && kept.length < safeLimit) {
+    for (const item of organic) {
+      if (!item.link || keptLinks.has(item.link)) {
+        continue;
+      }
+      if (!isUsefulSerpFallbackUrl(item.link)) {
+        continue;
+      }
+      kept.push(item);
+      keptLinks.add(item.link);
+      if (kept.length >= safeLimit) {
+        break;
+      }
+    }
+  }
+
+  const articleKept = kept.filter((item) => item.link && isSeoArticleUrl(item.link)).length;
+  const backfillKept = kept.length - articleKept;
 
   return {
-    filtered,
+    filtered: kept,
     meta: {
       total,
-      kept: filtered.length,
-      excluded: total - filtered.length,
-      articlesOnly: options.articlesOnly,
+      kept: kept.length,
+      excluded: total - kept.length,
+      articlesOnly: true,
       limit: safeLimit,
+      articleKept,
+      backfillKept,
     },
   };
 }

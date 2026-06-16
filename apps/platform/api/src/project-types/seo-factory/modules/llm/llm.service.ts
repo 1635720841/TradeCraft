@@ -14,6 +14,18 @@ import { BusinessException } from '../../../../core/exceptions/business.exceptio
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { PrismaService } from '../../../../core/database/prisma.service';
 import { LoggerService } from '../../../../core/logger/logger.service';
+import { parseSiteWorkflowSettings, withBriefApproval } from '../../constants/brief-approval';
+import {
+  getSearchIntentGuidelines,
+  normalizeKeywordIntent,
+  searchIntentPromptLabel,
+} from '../../constants/search-intent';
+import {
+  contentFormPromptLabel,
+  getContentFormGuidelines,
+  normalizeArticleContentForm,
+} from '../../constants/content-form';
+import { resolveClusterPromptContext } from '../keyword-pool/cluster-prompt-context.util';
 import { buildOptimizeBriefContext } from './optimize-context.util';
 import {
   formatOptimizeHistoryContext,
@@ -46,6 +58,7 @@ export interface GenerateOptimizeMeta {
   readabilityAudit?: string;
   pointsToGo?: number;
   scoreGapPlan?: string;
+  contentCoverageMaxed?: boolean;
 }
 
 export interface OptimizeRoundBreakdown {
@@ -109,19 +122,43 @@ export class LlmService {
   async generateBrief(ctx: LlmJobContext): Promise<void> {
     const job = await this.prisma.articleJob.findFirst({
       where: { id: ctx.jobId, organizationId: ctx.organizationId, projectId: ctx.projectId },
-      select: { serpData: true },
+      select: {
+        serpData: true,
+        searchIntent: true,
+        contentForm: true,
+        site: { select: { settings: true } },
+      },
     });
+
+    const intent = normalizeKeywordIntent(job?.searchIntent);
+    const contentForm = normalizeArticleContentForm(job?.contentForm);
+    const clusterContext = await resolveClusterPromptContext(
+      this.prisma,
+      ctx.organizationId,
+      ctx.projectId,
+      ctx.targetKeyword,
+    );
 
     const brief = await this.llmProvider.generateBrief({
       keyword: ctx.targetKeyword,
       serpContext: job?.serpData ?? {},
       brandVoice: ctx.brandVoice,
       contentLanguage: ctx.contentLanguage,
+      searchIntent: searchIntentPromptLabel(intent),
+      intentGuidelines: getSearchIntentGuidelines(intent),
+      contentForm: contentFormPromptLabel(contentForm),
+      contentFormGuidelines: getContentFormGuidelines(contentForm),
+      clusterContext,
+    });
+
+    const requireApproval = parseSiteWorkflowSettings(job?.site?.settings).requireBriefApproval;
+    const briefData = withBriefApproval(brief, {
+      approvalStatus: requireApproval ? 'pending' : 'skipped',
     });
 
     await this.prisma.articleJob.update({
       where: { id: ctx.jobId },
-      data: { briefData: brief as object },
+      data: { briefData: briefData as object },
     });
 
     this.logger.info('Brief generated', {
@@ -137,7 +174,7 @@ export class LlmService {
   async generateDraft(ctx: LlmJobContext): Promise<void> {
     const job = await this.prisma.articleJob.findFirst({
       where: { id: ctx.jobId, organizationId: ctx.organizationId, projectId: ctx.projectId },
-      select: { briefData: true },
+      select: { briefData: true, searchIntent: true, contentForm: true },
     });
 
     const briefData = job?.briefData as { outline?: unknown; promptVersion?: string } | null;
@@ -146,11 +183,25 @@ export class LlmService {
       promptVersion: briefData?.promptVersion ?? 'seo_brief_v1',
     };
 
+    const intent = normalizeKeywordIntent(job?.searchIntent);
+    const contentForm = normalizeArticleContentForm(job?.contentForm);
+    const clusterContext = await resolveClusterPromptContext(
+      this.prisma,
+      ctx.organizationId,
+      ctx.projectId,
+      ctx.targetKeyword,
+    );
+
     const draft = await this.llmProvider.generateDraft({
       keyword: ctx.targetKeyword,
       brief,
       brandVoice: ctx.brandVoice,
       contentLanguage: ctx.contentLanguage,
+      searchIntent: searchIntentPromptLabel(intent),
+      intentGuidelines: getSearchIntentGuidelines(intent),
+      contentForm: contentFormPromptLabel(contentForm),
+      contentFormGuidelines: getContentFormGuidelines(contentForm),
+      clusterContext,
     });
 
     await this.prisma.articleJob.update({
@@ -218,6 +269,7 @@ export class LlmService {
       readabilityAudit: meta?.readabilityAudit,
       pointsToGo: meta?.pointsToGo,
       scoreGapPlan: meta?.scoreGapPlan,
+      contentCoverageMaxed: meta?.contentCoverageMaxed,
     });
 
     const optimizeHistory = [...(existingDraft?.optimizeHistory ?? [])];
@@ -259,6 +311,69 @@ export class LlmService {
     });
 
     return optimized.content;
+  }
+
+  /** Semrush 8.8–8.9 手术式改写：只改侧栏点名的句子和词，避免整篇 optimize 降分 */
+  async generateSemrushNearMissRewrite(
+    ctx: LlmJobContext,
+    content: string,
+    instruction: string,
+    meta: Pick<GenerateOptimizeMeta, 'round' | 'scoreBefore' | 'localScore' | 'phase'>,
+  ): Promise<string> {
+    const job = await this.prisma.articleJob.findFirst({
+      where: { id: ctx.jobId, organizationId: ctx.organizationId, projectId: ctx.projectId },
+      select: { briefData: true, draftData: true },
+    });
+
+    const briefContext = buildOptimizeBriefContext(job?.briefData);
+    const existingDraft = job?.draftData as {
+      optimizeHistory?: DraftOptimizeRound[];
+    } | null;
+
+    const rewritten = await this.llmProvider.generateRewrite({
+      keyword: ctx.targetKeyword,
+      content,
+      instruction,
+      brandVoice: ctx.brandVoice,
+      contentLanguage: ctx.contentLanguage,
+      briefSummary: briefContext.briefSummary,
+      targetWordCount: briefContext.targetWordCount,
+      searchIntent: briefContext.searchIntent,
+    });
+
+    const optimizeHistory = [...(existingDraft?.optimizeHistory ?? [])];
+    optimizeHistory.push({
+      phase: meta.phase,
+      round: meta.round,
+      kind: 'optimize',
+      promptVersion: rewritten.promptVersion,
+      changesSummary: rewritten.changesSummary,
+      warnings: rewritten.warnings,
+      optimizedAt: new Date().toISOString(),
+      scoreBefore: meta.scoreBefore ?? meta.localScore,
+    });
+
+    await this.prisma.articleJob.update({
+      where: { id: ctx.jobId },
+      data: {
+        draftData: {
+          ...existingDraft,
+          content: rewritten.content,
+          promptVersion: rewritten.promptVersion,
+          optimizeHistory,
+        } as object,
+      },
+    });
+
+    this.logger.info('Semrush near-miss surgical rewrite', {
+      traceId: ctx.traceId,
+      jobId: ctx.jobId,
+      action: 'llm.semrush_near_miss_rewrite',
+      round: meta.round,
+      changesSummary: rewritten.changesSummary,
+    });
+
+    return rewritten.content;
   }
 
   /** 记录初稿/初检等基线分数 */

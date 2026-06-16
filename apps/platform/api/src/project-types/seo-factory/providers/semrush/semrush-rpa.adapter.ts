@@ -15,6 +15,7 @@ import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { LoggerService } from '../../../../core/logger/logger.service';
 import { markdownToHtml } from './semrush-content';
 import {
+  SEMRUSH_EXPAND_POLL_MS,
   SEMRUSH_RPA_TIMEOUT_MS,
   SEMRUSH_SCORE_STABLE_POLLS,
   SEMRUSH_SWA_EDITOR_TIMEOUT_MS,
@@ -26,6 +27,7 @@ import { parseChecksPayload } from './semrush-checks.parser';
 import {
   isSemrushRecommendationsPayload,
   parseLastStatusPayload,
+  parseOverallScoreRelaxed,
   parseSemrushRecommendationsPayload,
   pickBestRecommendationsCapture,
   type ParsedSemrushRecommendations,
@@ -177,7 +179,24 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
       },
     );
 
-    await sleep(SEMRUSH_UI_SETTLE_MS);
+    const widgetVisible = await page
+      .locator(SEMRUSH_SWA_SELECTORS.checkerWidget)
+      .first()
+      .isVisible()
+      .catch(() => false);
+    const sidebarReady = widgetVisible
+      ? await page
+          .locator(SEMRUSH_SWA_SELECTORS.suggestionListItem)
+          .first()
+          .isVisible()
+          .catch(() => false)
+      : false;
+
+    await sleep(sidebarReady ? 400 : SEMRUSH_UI_SETTLE_MS);
+
+    if (sidebarReady) {
+      return;
+    }
 
     await pollUntil(
       async () => {
@@ -210,7 +229,7 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
       },
     ).catch(() => undefined);
 
-    await sleep(SEMRUSH_UI_SETTLE_MS);
+    await sleep(widgetVisible ? 400 : SEMRUSH_UI_SETTLE_MS);
   }
 
   /** 拆成独立关键词，供 SWA 标签输入（禁止整串逗号一次填入）；过滤过泛单词 */
@@ -260,9 +279,9 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
     await sleep(SEMRUSH_UI_SETTLE_MS);
     await this.dismissOverlays(page);
 
-    await this.clickAnalyzeButton(page);
+    await this.triggerAnalysisIfNeeded(page);
 
-    await sleep(3_000);
+    await sleep(2_000);
     const score = await this.waitForScore(page, getCaptured);
     await sleep(SEMRUSH_UI_SETTLE_MS);
     return score;
@@ -273,6 +292,14 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
     keyword: string,
     recommendedKeywords?: string[],
   ): Promise<void> {
+    if (await this.isKeywordGoalAlreadySatisfied(page, keyword)) {
+      this.logger.info('Semrush keyword goal already active, skipping setup', {
+        action: 'semrush.keyword_goal_skip',
+        primaryKeyword: keyword,
+      });
+      return;
+    }
+
     const keywords = this.collectKeywordList(keyword, recommendedKeywords);
     const keywordInput = await this.ensureKeywordInputVisible(page);
 
@@ -291,6 +318,43 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
       primaryKeyword: keyword,
       recommendedCount: recommendedKeywords?.length ?? 0,
     });
+  }
+
+  /** 侧栏已展示目标词 + 建议区时，跳过「设置新目标」填词（省 30–90s） */
+  private async isKeywordGoalAlreadySatisfied(page: Page, primary: string): Promise<boolean> {
+    const primaryPhrase = primary
+      .split(/[,，]/)
+      .map((part) => part.trim().toLowerCase())
+      .filter(Boolean)[0];
+    if (!primaryPhrase) return false;
+
+    const tagTexts = await this.getKeywordTagTexts(page);
+    if (
+      tagTexts.some(
+        (tag) =>
+          tag.toLowerCase().includes(primaryPhrase) || primaryPhrase.includes(tag.toLowerCase()),
+      )
+    ) {
+      return true;
+    }
+
+    const widgetText = await page
+      .locator(SEMRUSH_SWA_SELECTORS.checkerWidget)
+      .first()
+      .innerText()
+      .catch(() => '');
+    if (!widgetText) return false;
+
+    const normalized = widgetText.toLowerCase();
+    const hasKeyword = normalized.includes(primaryPhrase);
+    const hasAnalysisPanel = /可读性|readability|seo|语气|tone/i.test(widgetText);
+    const hasSuggestions = await page
+      .locator(SEMRUSH_SWA_SELECTORS.suggestionListItem)
+      .first()
+      .isVisible()
+      .catch(() => false);
+
+    return hasKeyword && hasAnalysisPanel && hasSuggestions;
   }
 
   private async clearExistingKeywordTags(
@@ -362,18 +426,21 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
       .scrollIntoViewIfNeeded()
       .catch(() => undefined);
 
+    let lastExpandAt = 0;
     await pollUntil(
       async () => {
-        if (await this.isKeywordInputVisible(page)) {
-          return true;
+        if (await this.isKeywordInputVisible(page)) return true;
+        // 节流展开点击，避免某些节点下重复点击把折叠区反复开/关。
+        const now = Date.now();
+        if (now - lastExpandAt >= 1_200) {
+          lastExpandAt = now;
+          await this.tryExpandNewGoals(page);
         }
-
-        await this.tryExpandNewGoals(page);
-        await sleep(SEMRUSH_UI_SETTLE_MS);
         return this.isKeywordInputVisible(page);
       },
       {
         timeoutMs: SEMRUSH_SWA_SIDEBAR_TIMEOUT_MS,
+        intervalMs: SEMRUSH_EXPAND_POLL_MS,
         label: '关键词输入框（需展开「设置新目标」）',
       },
     );
@@ -381,9 +448,21 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
     return this.keywordInputLocator(page);
   }
 
-  /** 右侧「内容推荐」里关键词在折叠区；标题常带 > 前缀，不能用 exact 匹配 */
+  /** 右侧「内容推荐」里关键词在折叠区；点击标题即可同步展开，无需长 settle */
   private async tryExpandNewGoals(page: Page): Promise<void> {
     if (await this.isKeywordInputVisible(page)) return;
+
+    const setGoals = page.getByText('设置新目标', { exact: true });
+    if (await setGoals.isVisible().catch(() => false)) {
+      await this.clickGoalToggleIfCollapsed(setGoals);
+      return;
+    }
+
+    const setGoalsEn = page.getByText('Set new goal', { exact: true });
+    if (await setGoalsEn.isVisible().catch(() => false)) {
+      await this.clickGoalToggleIfCollapsed(setGoalsEn);
+      return;
+    }
 
     const expanded = await page
       .evaluate(`() => {
@@ -418,10 +497,7 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
       }`)
       .catch(() => false);
 
-    if (expanded) {
-      await sleep(SEMRUSH_UI_SETTLE_MS);
-      if (await this.isKeywordInputVisible(page)) return;
-    }
+    if (expanded) return;
 
     const expanders = [
       page.getByRole('button', { name: /设置新目标|Set new goal/i }),
@@ -432,11 +508,28 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
 
     for (const expander of expanders) {
       if (!(await expander.isVisible().catch(() => false))) continue;
-      await expander.scrollIntoViewIfNeeded().catch(() => undefined);
-      await expander.click({ timeout: 5_000 }).catch(() => undefined);
-      await sleep(SEMRUSH_UI_SETTLE_MS);
+      await this.clickGoalToggleIfCollapsed(expander);
       return;
     }
+  }
+
+  private async clickGoalToggleIfCollapsed(
+    locator: ReturnType<Page['locator']>,
+  ): Promise<void> {
+    const expanded = await locator
+      .evaluate((el) => {
+        const toggle =
+          el.closest('[aria-expanded]') ??
+          el.closest('button, [role="button"], summary') ??
+          el;
+        return toggle.getAttribute('aria-expanded') === 'true';
+      })
+      .catch(() => false);
+
+    if (expanded) return;
+
+    await locator.scrollIntoViewIfNeeded().catch(() => undefined);
+    await locator.click({ timeout: 5_000 }).catch(() => undefined);
   }
 
   private primaryKeywordKeys(primary: string): Set<string> {
@@ -583,6 +676,44 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
     }
   }
 
+  /** 粘贴正文后 SWA 常自动分析；若侧栏已出「重新分析」则不再重复点击 */
+  private async triggerAnalysisIfNeeded(page: Page): Promise<void> {
+    await sleep(1_500);
+
+    const analyzing = await page
+      .getByText(/分析中|正在分析|Analyzing/i)
+      .first()
+      .isVisible()
+      .catch(() => false);
+    if (analyzing) {
+      this.logger.info('Semrush analysis already in progress after paste', {
+        action: 'semrush.analyze_skip',
+        reason: 'in_progress',
+      });
+      return;
+    }
+
+    const hasReAnalyze = await page
+      .locator(SEMRUSH_SWA_SELECTORS.reAnalyze)
+      .first()
+      .isVisible()
+      .catch(() => false);
+    const suggestionCount = await this.countSidebarSuggestions(page);
+    const domScore = this.resolveScore(await this.tryReadScore(page));
+
+    if (hasReAnalyze && suggestionCount >= 2 && domScore !== null) {
+      this.logger.info('Semrush analysis already complete after paste', {
+        action: 'semrush.analyze_skip',
+        reason: 'sidebar_ready',
+        score: domScore,
+        suggestionCount,
+      });
+      return;
+    }
+
+    await this.clickAnalyzeButton(page);
+  }
+
   private async clickAnalyzeButton(page: Page): Promise<void> {
     const labels = ['获取推荐', 'Get recommendations', '重新分析', 'Re-analyze'];
 
@@ -644,23 +775,30 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
   ): Promise<number> {
     const deadline = Date.now() + SEMRUSH_RPA_TIMEOUT_MS;
     const stablePollsRequired = Math.max(2, SEMRUSH_SCORE_STABLE_POLLS);
+    const startedAt = Date.now();
     let lastSnippet = '';
     let stableCount = 0;
     let lastMerged: number | null = null;
 
     while (Date.now() < deadline) {
       const analysisComplete = await this.isAnalysisComplete(page);
+      const suggestionCount = analysisComplete
+        ? await this.countSidebarSuggestions(page)
+        : 0;
       const domScore = this.resolveScore(await this.tryReadScore(page));
-      const fetched = await this.fetchRecommendationsWhenReady(
-        page,
-        analysisComplete ? 2_000 : 1_000,
-      );
+      const fetchBudget = analysisComplete ? 3_000 : 1_500;
+      const fetched = await this.fetchRecommendationsWhenReady(page, fetchBudget);
       const apiScore = this.resolveScore(
         fetched?.overall ??
           pickBestRecommendationsCapture(getCaptured())?.overall ??
+          this.tryReadScoreFromCaptured(getCaptured()) ??
           this.tryReadScoreFromApi(getCaptured()),
       );
       const mergedScore = this.pickOverallScore(domScore, apiScore, 'waitForScore');
+      const pollsRequired =
+        analysisComplete && suggestionCount >= 2 && mergedScore !== null
+          ? 1
+          : stablePollsRequired;
 
       if (mergedScore !== null && analysisComplete) {
         if (lastMerged !== null && Math.abs(mergedScore - lastMerged) < 0.05) {
@@ -670,7 +808,7 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
         }
         lastMerged = mergedScore;
 
-        if (stableCount >= stablePollsRequired) {
+        if (stableCount >= pollsRequired) {
           const finalDomScore = this.resolveScore(await this.tryReadScore(page));
           const finalScore =
             this.pickOverallScore(finalDomScore, apiScore, 'waitForScore.final') ??
@@ -682,6 +820,7 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
             domScore: finalDomScore ?? domScore,
             apiScore,
             stablePolls: stableCount,
+            suggestionCount,
             source: finalDomScore !== null ? 'dom' : domScore !== null ? 'dom' : 'api',
           });
           return finalScore;
@@ -691,13 +830,33 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
         lastMerged = null;
       }
 
+      if (
+        analysisComplete &&
+        suggestionCount >= 2 &&
+        mergedScore === null &&
+        Date.now() - startedAt > 40_000
+      ) {
+        const forced = await this.fetchRecommendationsWhenReady(page, 10_000);
+        const forcedScore = this.resolveScore(
+          forced?.overall ?? this.tryReadScoreFromCaptured(getCaptured()),
+        );
+        if (forcedScore !== null) {
+          this.logger.info('Semrush score resolved via forced API fetch', {
+            action: 'semrush.score_forced',
+            score: forcedScore,
+            suggestionCount,
+          });
+          return forcedScore;
+        }
+      }
+
       lastSnippet = await page
         .locator('body')
         .innerText()
         .then((t) => t.replace(/\s+/g, ' ').slice(0, 200))
         .catch(() => '');
 
-      await sleep(2_000);
+      await sleep(analysisComplete ? 1_500 : 2_000);
     }
 
     throw new Error(
@@ -785,6 +944,21 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
 
   private tryReadScoreFromApi(captured: CapturedApiPayload[]): number | null {
     return pickBestRecommendationsCapture(captured)?.overall ?? null;
+  }
+
+  /** data_ready 未置 true 时仍尝试从 recommendations 响应读分 */
+  private tryReadScoreFromCaptured(captured: CapturedApiPayload[]): number | null {
+    for (let i = captured.length - 1; i >= 0; i -= 1) {
+      const body = captured[i]?.body;
+      if (!isSemrushRecommendationsPayload(body)) continue;
+      const relaxed = parseOverallScoreRelaxed(body);
+      if (relaxed !== undefined) return relaxed;
+    }
+    return null;
+  }
+
+  private async countSidebarSuggestions(page: Page): Promise<number> {
+    return page.locator(SEMRUSH_SWA_SELECTORS.suggestionListItem).count().catch(() => 0);
   }
 
   private countSuggestions(details?: SemrushSuggestionDetails | null): number {
@@ -914,6 +1088,10 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
           lastParsed = parsed;
           if (body.data_ready === true && parsed.overall !== undefined) {
             return parsed;
+          }
+          const relaxed = parseOverallScoreRelaxed(body);
+          if (relaxed !== undefined) {
+            return { ...parsed, overall: relaxed };
           }
         }
       } catch {
@@ -1310,6 +1488,24 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
       }
 
       const hasStructured = Object.values(details).some((items) => items?.length > 0);
+
+      const extractCasualSentences = () => {
+        const widgetText = normalize(widget.innerText || widget.textContent);
+        const headerRe = /最为随意的句子|Most casual sentences/i;
+        const idx = widgetText.search(headerRe);
+        if (idx < 0) return [];
+        const slice = widgetText.slice(idx, idx + 2500);
+        const numbered = [...slice.matchAll(/\\d+\\.\\s*([A-Za-z][^.!?\\n]{8,220}[.!?]?)/g)]
+          .map((m) => normalize(m[1]))
+          .filter(isBulletText);
+        return [...new Set(numbered)].slice(0, 12);
+      };
+
+      const casualSentences = extractCasualSentences();
+      if (casualSentences.length > 0) {
+        details.tone = [...new Set([...(details.tone ?? []), ...casualSentences])].slice(0, 20);
+      }
+
       if (!hasStructured) {
         const widgetText = normalize(widget.innerText || widget.textContent);
         for (const [key, labels] of Object.entries(sectionMap)) {

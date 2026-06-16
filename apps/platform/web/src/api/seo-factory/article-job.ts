@@ -17,7 +17,6 @@ import type {
   DraftResolveStaleAction,
   PatchArticleDraftPayload,
   PatchArticleDraftResult,
-  PendingReviewItem,
   RewriteArticleJobPayload,
   SeoFactoryProjectStats,
   WmApiResponse
@@ -57,37 +56,47 @@ export async function createBatchArticleJobs(
 export async function listArticleJobs(
   projectId: string,
   page = 1,
-  limit = 20
+  limit = 20,
+  options: {
+    briefPending?: boolean;
+    generating?: boolean;
+    cmsPublishFailed?: boolean;
+    cmsPublishPending?: boolean;
+    staleDraft?: boolean;
+    reviewPending?: boolean;
+    status?: "FAILED";
+    siteId?: string;
+  } = {}
 ): Promise<WmApiResponse<ArticleJobItem[]>> {
+  const params: Record<string, string | number> = { page, limit };
+  if (options.briefPending) params.briefPending = "1";
+  if (options.generating) params.generating = "1";
+  if (options.cmsPublishFailed) params.cmsPublishFailed = "1";
+  if (options.cmsPublishPending) params.cmsPublishPending = "1";
+  if (options.staleDraft) params.staleDraft = "1";
+  if (options.reviewPending) params.reviewPending = "1";
+  if (options.status === "FAILED") params.status = "FAILED";
+  if (options.siteId) params.siteId = options.siteId;
   return http.request<WmApiResponse<ArticleJobItem[]>>(
     "get",
     projectBase(projectId),
-    { params: { page, limit } }
+    { params }
   );
 }
 
 /** 项目工作台统计 */
 export async function getSeoFactoryProjectStats(
-  projectId: string
+  projectId: string,
+  siteId?: string
 ): Promise<SeoFactoryProjectStats> {
+  const params: Record<string, string> = {};
+  if (siteId) params.siteId = siteId;
   const res = await http.request<WmApiResponse<SeoFactoryProjectStats>>(
     "get",
-    `${projectBase(projectId)}/stats/summary`
+    `${projectBase(projectId)}/stats/summary`,
+    { params }
   );
   return res.data;
-}
-
-/** 待 YMYL 人工审核列表 */
-export async function listPendingReviews(
-  projectId: string,
-  page = 1,
-  limit = 20
-): Promise<WmApiResponse<PendingReviewItem[]>> {
-  return http.request<WmApiResponse<PendingReviewItem[]>>(
-    "get",
-    `${projectBase(projectId)}/reviews/pending`,
-    { params: { page, limit } }
-  );
 }
 
 /** 通过 YMYL 人工审核并触发导出 */
@@ -160,6 +169,50 @@ export async function cancelSemrushCheck(
   const res = await http.request<
     WmApiResponse<Pick<ArticleJobItem, "id" | "traceId" | "status" | "targetKeyword">>
   >("post", `${projectBase(projectId)}/${jobId}/semrush-check/cancel`);
+  return res.data;
+}
+
+/** 重新拉取 SERP 并抓取竞品正文（不改大纲/初稿） */
+export interface RefreshArticleJobSerpPayload {
+  serpArticlesOnly?: boolean;
+  serpArticleLimit?: number;
+}
+
+export async function refreshArticleJobSerp(
+  projectId: string,
+  jobId: string,
+  payload?: RefreshArticleJobSerpPayload
+): Promise<Pick<ArticleJobItem, "id" | "traceId" | "targetKeyword">> {
+  const res = await http.request<
+    WmApiResponse<Pick<ArticleJobItem, "id" | "traceId" | "targetKeyword">>
+  >("post", `${projectBase(projectId)}/${jobId}/refresh-serp`, {
+    data: payload ?? {}
+  });
+  return res.data;
+}
+
+/** 已完成任务重新跑 SEO 优化轮次（202 异步） */
+export async function rerunArticleOptimization(
+  projectId: string,
+  jobId: string,
+  payload?: { reason?: "gsc_underperform" | "manual" }
+): Promise<Pick<ArticleJobItem, "id" | "traceId" | "status" | "targetKeyword">> {
+  const res = await http.request<
+    WmApiResponse<Pick<ArticleJobItem, "id" | "traceId" | "status" | "targetKeyword">>
+  >("post", `${projectBase(projectId)}/${jobId}/rerun-optimization`, {
+    data: payload ?? {}
+  });
+  return res.data;
+}
+
+/** 已完成任务仅重跑原创表达优化（202 异步） */
+export async function rerunArticleParaphrase(
+  projectId: string,
+  jobId: string
+): Promise<Pick<ArticleJobItem, "id" | "traceId" | "status" | "targetKeyword">> {
+  const res = await http.request<
+    WmApiResponse<Pick<ArticleJobItem, "id" | "traceId" | "status" | "targetKeyword">>
+  >("post", `${projectBase(projectId)}/${jobId}/rerun-paraphrase`);
   return res.data;
 }
 
@@ -328,5 +381,186 @@ export async function publishArticleJob(
     `${projectBase(projectId)}/${jobId}/publish`,
     { data: payload }
   );
+  return res.data;
+}
+
+export interface BatchActionResultItem {
+  jobId: string;
+  ok: boolean;
+  error?: string;
+}
+
+export interface BatchRetryResult {
+  retried: number;
+  failed: number;
+  results: BatchActionResultItem[];
+}
+
+export interface BatchPublishResult {
+  published: number;
+  failed: number;
+  results: Array<BatchActionResultItem & { data?: CmsPublishResult }>;
+}
+
+/** 批量续跑失败任务 */
+export async function batchRetryArticleJobs(
+  projectId: string,
+  jobIds: string[]
+): Promise<BatchRetryResult> {
+  const res = await http.request<WmApiResponse<BatchRetryResult>>(
+    "post",
+    `${projectBase(projectId)}/batch/retry`,
+    { data: { jobIds } }
+  );
+  return res.data;
+}
+
+export interface BatchBriefApproveResult {
+  approved: number;
+  failed: number;
+  results: BatchActionResultItem[];
+}
+
+/** 批量确认 Brief 并生成初稿 */
+export async function batchApproveArticleBriefs(
+  projectId: string,
+  jobIds: string[]
+): Promise<BatchBriefApproveResult> {
+  const res = await http.request<WmApiResponse<BatchBriefApproveResult>>(
+    "post",
+    `${projectBase(projectId)}/batch/brief-approve`,
+    { data: { jobIds } }
+  );
+  return res.data;
+}
+
+/** 批量推送到 WordPress */
+export async function batchPublishArticleJobs(
+  projectId: string,
+  jobIds: string[],
+  payload: { status?: "draft" | "publish" } = {}
+): Promise<BatchPublishResult> {
+  const res = await http.request<WmApiResponse<BatchPublishResult>>(
+    "post",
+    `${projectBase(projectId)}/batch/publish`,
+    { data: { jobIds, ...payload } }
+  );
+  return res.data;
+}
+
+export interface BatchExportFailureItem {
+  jobId: string;
+  targetKeyword: string;
+  error: string;
+}
+
+export interface BatchExportMeta {
+  exported: number;
+  failed: number;
+  failures: BatchExportFailureItem[];
+}
+
+function parseBatchExportFailures(header: string | undefined): BatchExportFailureItem[] {
+  if (!header) return [];
+  try {
+    const parsed = JSON.parse(decodeURIComponent(header)) as BatchExportFailureItem[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/** 批量下载导出资产包 zip（每个任务一个子目录） */
+export async function batchExportArticleJobs(
+  projectId: string,
+  jobIds: string[]
+): Promise<{ blob: Blob; meta: BatchExportMeta }> {
+  let meta: BatchExportMeta = { exported: jobIds.length, failed: 0, failures: [] };
+  const blob = await http.request<Blob>(
+    "post",
+    `${projectBase(projectId)}/batch/export`,
+    { data: { jobIds }, responseType: "blob" },
+    {
+      beforeResponseCallback: (response) => {
+        meta = {
+          exported: Number(response.headers["x-export-exported"] ?? jobIds.length),
+          failed: Number(response.headers["x-export-failed"] ?? 0),
+          failures: parseBatchExportFailures(response.headers["x-export-failures"])
+        };
+      }
+    }
+  );
+  return { blob, meta };
+}
+
+export interface PatchArticleBriefPayload {
+  title?: string;
+  searchIntent?: string;
+  targetWordCount?: number;
+  outline?: Array<{ heading: string; points?: string[] }>;
+  contentGaps?: string[];
+}
+
+/** 编辑待确认 Brief */
+export async function patchArticleBrief(
+  projectId: string,
+  jobId: string,
+  payload: PatchArticleBriefPayload
+): Promise<ArticleJobItem> {
+  const res = await http.request<WmApiResponse<ArticleJobItem>>(
+    "patch",
+    `${projectBase(projectId)}/${jobId}/brief`,
+    { data: payload }
+  );
+  return res.data;
+}
+
+/** 确认 Brief 并触发初稿 */
+export async function approveArticleBrief(
+  projectId: string,
+  jobId: string
+): Promise<ArticleJobItem> {
+  const res = await http.request<WmApiResponse<ArticleJobItem>>(
+    "post",
+    `${projectBase(projectId)}/${jobId}/brief/approve`
+  );
+  return res.data;
+}
+
+/** 人工编辑内链锚文本与 URL */
+export async function patchArticleInternalLinks(
+  projectId: string,
+  jobId: string,
+  payload: { internalLinks: Array<{ anchorText: string; targetUrl: string }> }
+) {
+  const res = await http.request<
+    WmApiResponse<{
+      id: string;
+      internalLinks: ArticleJobItem["draftData"] extends { internalLinks?: infer T } ? T : never;
+      internalLinksApplied: boolean;
+    }>
+  >("patch", `${projectBase(projectId)}/${jobId}/internal-links`, { data: payload });
+  return res.data;
+}
+
+/** 重跑自动内链植入 */
+export async function reapplyArticleInternalLinks(projectId: string, jobId: string) {
+  const res = await http.request<
+    WmApiResponse<{
+      id: string;
+      internalLinksApplied: boolean;
+    }>
+  >("post", `${projectBase(projectId)}/${jobId}/internal-links/reapply`);
+  return res.data;
+}
+
+/** 重新生成 Brief */
+export async function regenerateArticleBrief(
+  projectId: string,
+  jobId: string
+): Promise<Pick<ArticleJobItem, "id" | "traceId" | "status">> {
+  const res = await http.request<
+    WmApiResponse<Pick<ArticleJobItem, "id" | "traceId" | "status">>
+  >("post", `${projectBase(projectId)}/${jobId}/brief/regenerate`);
   return res.data;
 }

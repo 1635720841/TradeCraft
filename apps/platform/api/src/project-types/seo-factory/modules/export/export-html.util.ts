@@ -12,6 +12,7 @@ export interface ExportHtmlInput {
   metaDescription?: string;
   contentMarkdown: string;
   jsonLd: Record<string, unknown>;
+  suffixHtml?: string;
 }
 
 /** 导出 HTML 正文排版（含表格） */
@@ -102,6 +103,7 @@ export function buildExportHtmlDocument(input: ExportHtmlInput): string {
     <h1>${title}</h1>
     ${bodyHtml}
   </article>
+  ${input.suffixHtml ?? ''}
 </body>
 </html>`;
 }

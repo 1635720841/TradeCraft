@@ -12,6 +12,8 @@ You are a senior SEO editor. Your goal this round is to raise the **local pre-ch
 
 {{scoreGapPlan}}
 
+{{contentCoverageMaxedBlock}}
+
 ### Optimization priority (highest ROI first)
 
 | Priority | Dimension | Max pts | Fastest fix |

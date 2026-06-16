@@ -1,5 +1,5 @@
 /**
- * SEO 优化流水线纯函数单元测试（续跑、轮次上限、Semrush 本地分保护）。
+ * SEO 优化流水线纯函数单元测试（续跑、轮次上限、Semrush 验收判定）。
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -16,13 +16,13 @@ const scorePath = pathToFileURL(
 
 const {
   canResumeSemrushOptimization,
-  meetsSemrushLocalGuard,
   resolveLocalOptimizeRoundCap,
   resolveSemrushOptimizeRoundCap,
-  resolveSemrushRollbackReason,
+  shouldAcceptSemrushCandidate,
   shouldSkipLocalOptimization,
+  shouldSkipLocalPipeline,
 } = await import(utilPath);
-const { LOCAL_SEO_PASS_THRESHOLD, SEMRUSH_PASS_THRESHOLD } = await import(scorePath);
+const { SEMRUSH_PASS_THRESHOLD } = await import(scorePath);
 
 describe('shouldSkipLocalOptimization', () => {
   it('skips when localSeoScore >= 95', () => {
@@ -72,35 +72,31 @@ describe('canResumeSemrushOptimization', () => {
   });
 });
 
-describe('meetsSemrushLocalGuard', () => {
-  it('accepts when Semrush passing regardless of local', () => {
-    assert.equal(meetsSemrushLocalGuard(90, 95, false, true), true);
+describe('shouldSkipLocalPipeline', () => {
+  it('skips when local already passed', () => {
+    assert.equal(shouldSkipLocalPipeline(true, false), true);
   });
 
-  it('accepts when local >= 95', () => {
-    assert.equal(meetsSemrushLocalGuard(95, 95, true, false), true);
+  it('skips when resuming Semrush even if local dropped', () => {
+    assert.equal(shouldSkipLocalPipeline(false, true), true);
   });
 
-  it('allows 1pt local drop when Semrush improves from passing baseline', () => {
-    assert.equal(meetsSemrushLocalGuard(94, 95, true, false), true);
-  });
-
-  it('rejects when local drops below 94 even if Semrush improves', () => {
-    assert.equal(meetsSemrushLocalGuard(93, 95, true, false), false);
-  });
-
-  it('rejects when baseline local was not passing', () => {
-    assert.equal(meetsSemrushLocalGuard(94, 94, true, false), false);
+  it('does not skip when neither passed nor semrush resumable', () => {
+    assert.equal(shouldSkipLocalPipeline(false, false), false);
   });
 });
 
-describe('resolveSemrushRollbackReason', () => {
-  it('returns both when neither improved nor local guard', () => {
-    assert.equal(resolveSemrushRollbackReason(false, false), 'both');
+describe('shouldAcceptSemrushCandidate', () => {
+  it('accepts when Semrush passing regardless of local', () => {
+    assert.equal(shouldAcceptSemrushCandidate(false, true), true);
   });
 
-  it('returns local_below_threshold when only local fails', () => {
-    assert.equal(resolveSemrushRollbackReason(true, false), 'local_below_threshold');
+  it('accepts when Semrush improves even if local would drop', () => {
+    assert.equal(shouldAcceptSemrushCandidate(true, false), true);
+  });
+
+  it('rejects when Semrush neither improves nor passes', () => {
+    assert.equal(shouldAcceptSemrushCandidate(false, false), false);
   });
 });
 
@@ -117,15 +113,19 @@ describe('resolveSemrushOptimizeRoundCap', () => {
 });
 
 describe('pipeline resume scenario', () => {
-  it('local passed + semrush 8.8 with baseline → skip local, resume semrush', () => {
-    const seoCheck = { local: { passed: true, score: 95 }, semrush: { passed: false } };
+  it('local passed + semrush 8.9 with baseline → skip local, resume semrush', () => {
+    const seoCheck = { local: { passed: false, score: 89 }, semrush: { passed: false } };
     const history = [{ phase: 'semrush', round: 0, kind: 'baseline' }];
-    assert.equal(shouldSkipLocalOptimization(95, seoCheck), true);
-    assert.equal(canResumeSemrushOptimization(8.8, seoCheck, history), true);
+    assert.equal(shouldSkipLocalOptimization(89, seoCheck), false);
+    assert.equal(canResumeSemrushOptimization(8.9, seoCheck, history), true);
     assert.equal(
-      meetsSemrushLocalGuard(94, 95, true, false),
+      shouldSkipLocalPipeline(false, true),
       true,
-      'Semrush improve with local 94 should pass guard',
+      'Semrush resume should skip local gate even when local is 89',
     );
+  });
+
+  it('Semrush passing threshold is 9.0', () => {
+    assert.equal(SEMRUSH_PASS_THRESHOLD, 9.0);
   });
 });

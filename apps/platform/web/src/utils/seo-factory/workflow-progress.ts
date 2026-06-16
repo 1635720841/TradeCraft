@@ -13,7 +13,7 @@ const WORKFLOW_STEP_LABELS: Record<ArticleJobWorkflowStep, string> = {
   linking: "内链注入",
   images: "配图生成",
   optimizing: "SEO 优化",
-  paraphrasing: "QuillBot 润色",
+  paraphrasing: "原创表达优化",
   ymyl: "YMYL 审查"
 };
 
@@ -44,7 +44,7 @@ export function formatWorkflowProgressShort(
     return `Semrush 优化 ${progress.round}/${progress.maxRounds} 轮`;
   }
   if (progress.phase === "semrush-check") return "Semrush 终检中";
-  if (progress.phase === "paraphrasing") return progress.message ?? "QuillBot 润色中";
+  if (progress.phase === "paraphrasing") return progress.message ?? "原创表达优化中";
   if (progress.phase === "local-scoring") return "本地预检计分中";
   return null;
 }

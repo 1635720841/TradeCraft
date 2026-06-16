@@ -6,7 +6,8 @@ alwaysApply: false
 
 # 前端速查
 
-> 完整规范：`.cursor/skills/seo-saas-platform/frontend.md`
+> 完整规范：`.cursor/skills/seo-saas-platform/frontend.md`  
+> **运营向产品**：`.cursor/rules/04-ops-product.mdc`（运营/管理端分离，禁止堆功能）
 
 ## 目录
 

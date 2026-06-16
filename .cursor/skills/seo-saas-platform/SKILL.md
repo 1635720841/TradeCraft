@@ -11,7 +11,7 @@ description: >-
 
 ```
 1. 读 ai-guardrails.md → 找仓库同类文件当模板（禁止从零发明）
-2. 读对应 reference → 过 01-checklist.mdc
+2. 读对应 reference → 过 01-checklist.mdc → 运营/UI 再过 04-ops-product.mdc
 3. 写代码 → 接线注册齐全 → 交付时列变更清单
 ```
 
@@ -34,6 +34,7 @@ description: >-
 | [ops.md](ops.md) | 安全、性能、可靠性、数据治理、测试、工具链 |
 | [maintainability.md](maintainability.md) | 依赖边界、防屎山、复杂度预算、质量门禁、ADR |
 | [ai-guardrails.md](ai-guardrails.md) | **AI 防漂移：读再写、克隆不发明、范围锁、接线清单** |
+| `.cursor/rules/04-ops-product.mdc` | **运营产品设计：运营/管理端分离，禁止堆无用功能** |
 
 ## 常见任务速查
 
@@ -53,7 +54,7 @@ description: >-
 
 ### 新建前端页面
 
-1. 读 `vue.mdc` + `module-structure.mdc` 确定落位
+1. 读 `vue.mdc` + `module-structure.mdc` + **`04-ops-product.mdc`** 确定落位与运营边界
 2. `views/platform/` 或 `views/projects/<type>/` 建 `*View.vue`，顶部 `<!-- docstring -->`
 3. `api/platform/` 或 `api/<type>/` 封装 HTTP；composable 处理业务逻辑
 4. `router/modules/*.ts` 注册懒加载路由

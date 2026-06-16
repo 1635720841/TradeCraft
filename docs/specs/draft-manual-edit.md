@@ -58,7 +58,7 @@ POST  /api/v1/projects/:projectId/article-jobs/:id/draft/resolve-stale
 
 ## 禁止
 
-- 富文本编辑使用 `@vueup/vue-quill`（存库仍为 Markdown，经 `draft-content.ts` 转换）
+- 富文本编辑使用 contenteditable 自研或 Quill（已废弃）；正文编辑器统一 **TipTap**（存库仍为 Markdown，经 `draft-content.ts` 转换）
 - 改 Prisma schema
 - 顺手重构 rewrite/workflow
 - `any` / `@ts-ignore`
@@ -77,6 +77,6 @@ POST  /api/v1/projects/:projectId/article-jobs/:id/draft/resolve-stale
 - **发布清单** — `ArticleJobDraftPublishChecklist`：详情顶栏 + 稿件 Tab，逐项重算 SEO / Semrush / 导出 / YMYL
 - **智能保存默认** — `ArticleJobDraftSaveDialog`：`suggestPostSaveAction` 按变更类型预选 postSaveAction；YMYL 已通过时保存警告
 - **编辑入口** — 「稿件正文」Tab 内「预览 | 编辑」分段切换；审核队列 `?tab=draft&edit=1` 直达编辑模式
-- **编辑体验** — Quill 所见即所得编辑器（对齐 Semrush 文章编辑）；保存时自动转回 Markdown 存库
+- **编辑体验** — TipTap 所见即所得（表格 / 图片缩放 / 本地上传）；保存时自动转回 Markdown 存库
 - **回滚确认** — `ArticleJobDraftRollbackDialog`：展示变更摘要后再 rollback
 - **列表 stale 标签** — `JobListView` 显示 `draftEditStatusLabel`

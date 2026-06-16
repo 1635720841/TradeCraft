@@ -32,41 +32,6 @@ export class ArticleJobReviewService {
     private readonly logger: LoggerService,
   ) {}
 
-  async listPending(organizationId: string, projectId: string, page = 1, limit = 20) {
-    const safePage = Math.max(page, 1);
-    const safeLimit = Math.min(Math.max(limit, 1), 100);
-
-    const rows = await this.prisma.articleJob.findMany({
-      where: {
-        organizationId,
-        projectId,
-        status: 'COMPLETED',
-        seoCheckData: {
-          path: ['ymylReview', 'requires_human_review'],
-          equals: true,
-        },
-      },
-      select: {
-        id: true,
-        traceId: true,
-        targetKeyword: true,
-        status: true,
-        seoCheckData: true,
-        draftData: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-      orderBy: { updatedAt: 'desc' },
-    });
-
-    const pending = rows.filter((row) => isPendingHumanReview(row.seoCheckData));
-    const total = pending.length;
-    const skip = (safePage - 1) * safeLimit;
-    const items = pending.slice(skip, skip + safeLimit).map((row) => this.toReviewItem(row));
-
-    return { items, total, page: safePage, limit: safeLimit };
-  }
-
   async approve(
     ctx: RequestContext,
     organizationId: string,
@@ -217,31 +182,6 @@ export class ArticleJobReviewService {
         ...review,
         ...patch,
       },
-    };
-  }
-
-  private toReviewItem(row: {
-    id: string;
-    traceId: string;
-    targetKeyword: string;
-    status: string;
-    seoCheckData: unknown;
-    draftData: unknown;
-    createdAt: Date;
-    updatedAt: Date;
-  }) {
-    const review = getYmylReview(row.seoCheckData);
-    const draftData = row.draftData as { title?: string } | null;
-
-    return {
-      id: row.id,
-      traceId: row.traceId,
-      targetKeyword: row.targetKeyword,
-      title: draftData?.title ?? row.targetKeyword,
-      status: row.status,
-      ymylReview: review,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
     };
   }
 }

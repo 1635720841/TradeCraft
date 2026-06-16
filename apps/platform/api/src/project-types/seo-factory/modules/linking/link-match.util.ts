@@ -13,6 +13,7 @@ export interface SitePageCandidate {
   title: string;
   summary?: string | null;
   keywords: string[];
+  primaryKeyword?: string | null;
   pageType: string;
   businessValue: number;
 }
@@ -36,6 +37,7 @@ export interface LinkMatchOptions {
   maxLinks?: number;
   wordsPerLink?: number;
   maxSameUrl?: number;
+  targetKeyword?: string;
 }
 
 const STOP_WORDS = new Set([
@@ -61,6 +63,7 @@ const DEFAULT_OPTIONS: Required<LinkMatchOptions> = {
   maxLinks: 5,
   wordsPerLink: 1000,
   maxSameUrl: 1,
+  targetKeyword: '',
 };
 
 interface ContentSection {
@@ -99,9 +102,23 @@ function inferPageTypeWeight(pageType: string): number {
   return PAGE_TYPE_WEIGHT[pageType.toUpperCase()] ?? PAGE_TYPE_WEIGHT.PAGE;
 }
 
-function phraseMatchBoost(sectionText: string, page: SitePageCandidate): number {
+function phraseMatchBoost(
+  sectionText: string,
+  page: SitePageCandidate,
+  targetKeyword?: string,
+): number {
   const lower = sectionText.toLowerCase();
   let boost = 0;
+
+  const primary = page.primaryKeyword?.trim().toLowerCase();
+  if (primary && primary.length >= 3) {
+    if (lower.includes(primary)) {
+      boost = Math.max(boost, 0.5);
+    }
+    if (targetKeyword && primary === targetKeyword.trim().toLowerCase()) {
+      boost = Math.max(boost, 0.65);
+    }
+  }
 
   for (const keyword of page.keywords) {
     const trimmed = keyword.trim().toLowerCase();
@@ -121,7 +138,11 @@ function phraseMatchBoost(sectionText: string, page: SitePageCandidate): number 
   return boost;
 }
 
-export function scoreSectionPageMatch(sectionText: string, page: SitePageCandidate): number {
+export function scoreSectionPageMatch(
+  sectionText: string,
+  page: SitePageCandidate,
+  targetKeyword?: string,
+): number {
   const sectionTokens = tokenize(sectionText);
   const pageTokens = [
     ...tokenize(page.title),
@@ -140,7 +161,7 @@ export function scoreSectionPageMatch(sectionText: string, page: SitePageCandida
     business * 0.2 +
     typeBoost * 0.1;
 
-  return Math.min(1, base + phraseMatchBoost(sectionText, page));
+  return Math.min(1, base + phraseMatchBoost(sectionText, page, targetKeyword));
 }
 
 function splitSections(content: string): ContentSection[] {
@@ -282,7 +303,11 @@ export function injectInternalLinks(
   sections.forEach((section, sectionIndex) => {
     if (paragraphHasLink(section.body)) return;
     for (const page of pages) {
-      const score = scoreSectionPageMatch(`${section.heading} ${section.body}`, page);
+      const score = scoreSectionPageMatch(
+        `${section.heading} ${section.body}`,
+        page,
+        opts.targetKeyword,
+      );
       if (score >= opts.minConfidence) {
         candidates.push({ sectionIndex, page, score });
       }

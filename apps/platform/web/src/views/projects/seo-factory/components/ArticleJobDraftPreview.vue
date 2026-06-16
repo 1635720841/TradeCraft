@@ -23,12 +23,12 @@
     </div>
 
     <template v-if="draft">
-      <el-descriptions v-if="metaTitle || metaDescription" :column="1" border class="mb-4">
-        <el-descriptions-item v-if="metaTitle" label="标题">
-          {{ metaTitle }}
+      <el-descriptions :column="1" border class="mb-4">
+        <el-descriptions-item label="标题">
+          {{ metaTitle || "（未填写）" }}
         </el-descriptions-item>
-        <el-descriptions-item v-if="metaDescription" label="Meta Description">
-          {{ metaDescription }}
+        <el-descriptions-item label="Meta Description">
+          {{ metaDescription || "（未填写）" }}
         </el-descriptions-item>
         <el-descriptions-item v-if="promptVersion" label="Prompt 版本">
           {{ promptVersion }}
@@ -53,13 +53,15 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import type { ArticleJobDraftData } from "@/api/seo-factory/types";
+import type { ArticleJobBriefData, ArticleJobDraftData } from "@/api/seo-factory/types";
+import { resolveDraftTitleAndMeta } from "@/utils/seo-factory/draft-edit-preview";
 import ArticleJobDraftHtmlBody from "./ArticleJobDraftHtmlBody.vue";
 
 defineOptions({ name: "ArticleJobDraftPreview" });
 
 const props = defineProps<{
   draftData?: ArticleJobDraftData | null;
+  briefData?: ArticleJobBriefData | null;
   canRewrite?: boolean;
   rewriting?: boolean;
   rewriteBlockedReason?: string;
@@ -71,8 +73,9 @@ const emit = defineEmits<{
 }>();
 
 const draft = computed(() => props.draftData);
-const metaTitle = computed(() => draft.value?.title);
-const metaDescription = computed(() => draft.value?.metaDescription);
+const resolvedMeta = computed(() => resolveDraftTitleAndMeta(props.draftData, props.briefData));
+const metaTitle = computed(() => resolvedMeta.value.title);
+const metaDescription = computed(() => resolvedMeta.value.metaDescription);
 const promptVersion = computed(() => draft.value?.promptVersion);
 </script>
 

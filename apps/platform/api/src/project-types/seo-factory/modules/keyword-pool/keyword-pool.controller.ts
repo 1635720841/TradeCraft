@@ -48,6 +48,9 @@ export class KeywordPoolController {
     @Query('limit') limit?: string,
     @Query('status') status?: string,
     @Query('intent') intent?: string,
+    @Query('clusterId') clusterId?: string,
+    @Query('unclustered') unclustered?: string,
+    @Query('queueable') queueable?: string,
   ) {
     await this.projectService.assertAccessible(ctx.organizationId, projectId);
     const result = await this.keywordPoolService.findMany(ctx.organizationId, projectId, {
@@ -55,6 +58,9 @@ export class KeywordPoolController {
       limit: limit ? Number(limit) : 20,
       status,
       intent,
+      clusterId,
+      unclustered: unclustered === '1' || unclustered === 'true',
+      queueable: queueable === '1' || queueable === 'true',
     });
 
     return {

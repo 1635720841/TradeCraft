@@ -28,12 +28,21 @@ describe('resolveSemrushOptimizeRoundCap', () => {
     );
   });
 
-  it('adds retry rounds after resume when regular rounds exhausted', () => {
+  it('adds ultra near-miss rounds when score is 8.9/9.0', () => {
     assert.equal(
-      resolveSemrushOptimizeRoundCap(8.8, 4, true),
+      resolveSemrushOptimizeRoundCap(8.9, 0, false),
+      SEMRUSH_MAX_OPTIMIZE_ROUNDS +
+        SEMRUSH_NEAR_MISS_EXTRA_ROUNDS +
+        2,
+    );
+  });
+
+  it('adds retry rounds on resume from completed count', () => {
+    assert.equal(
+      resolveSemrushOptimizeRoundCap(8.9, 6, true),
       Math.max(
-        SEMRUSH_MAX_OPTIMIZE_ROUNDS + SEMRUSH_NEAR_MISS_EXTRA_ROUNDS,
-        4 + SEMRUSH_RETRY_EXTRA_ROUNDS,
+        SEMRUSH_MAX_OPTIMIZE_ROUNDS + SEMRUSH_NEAR_MISS_EXTRA_ROUNDS + 2,
+        6 + SEMRUSH_RETRY_EXTRA_ROUNDS,
       ),
     );
   });

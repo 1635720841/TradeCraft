@@ -3,6 +3,11 @@ export interface BriefInput {
   serpContext: unknown;
   brandVoice?: string;
   contentLanguage?: string;
+  searchIntent?: string;
+  intentGuidelines?: string;
+  contentForm?: string;
+  contentFormGuidelines?: string;
+  clusterContext?: string;
 }
 
 export interface BriefOutput {
@@ -15,10 +20,17 @@ export interface DraftInput {
   brief: BriefOutput;
   brandVoice?: string;
   contentLanguage?: string;
+  searchIntent?: string;
+  intentGuidelines?: string;
+  contentForm?: string;
+  contentFormGuidelines?: string;
+  clusterContext?: string;
 }
 
 export interface DraftOutput {
+  title?: string;
   content: string;
+  metaDescription?: string;
   promptVersion: string;
 }
 
@@ -55,6 +67,8 @@ export interface OptimizeInput {
   pointsToGo?: number;
   /** 精确提分计划（英文） */
   scoreGapPlan?: string;
+  /** 关键词与 SERP 实体已满分，本轮禁止扩写/凑词 */
+  contentCoverageMaxed?: boolean;
 }
 
 export interface OptimizeOutput {

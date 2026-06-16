@@ -16,6 +16,7 @@ const parserPath = pathToFileURL(
 ).href;
 const {
   parseOverallScore,
+  parseOverallScoreRelaxed,
   parseSemrushRecommendationsPayload,
   pickBestRecommendationsCapture,
   isSemrushRecommendationsPayload,
@@ -66,6 +67,13 @@ describe('parseOverallScore', () => {
   });
 });
 
+describe('parseOverallScoreRelaxed', () => {
+  it('reads score when data_ready is missing but score present', () => {
+    assert.equal(parseOverallScoreRelaxed({ score: 0.89 }), 8.9);
+    assert.equal(parseOverallScoreRelaxed({ data_ready: false, score: 0.89 }), undefined);
+  });
+});
+
 describe('parseSemrushRecommendationsPayload', () => {
   it('extracts keywords and synthesizes tips when data_ready', () => {
     const parsed = parseSemrushRecommendationsPayload({
@@ -96,6 +104,21 @@ describe('parseSemrushRecommendationsPayload', () => {
     assert.equal(parsed.overall, undefined);
     assert.deepEqual(parsed.recommendedKeywords, ['seo tool']);
     assert.ok(parsed.details.seo?.some((tip) => tip.includes('seo tool')));
+  });
+
+  it('synthesizes tone and split-paragraph tips for near-miss 8.9 score', () => {
+    const parsed = parseSemrushRecommendationsPayload({
+      data_ready: true,
+      score: 0.89,
+      score_quality: 'good',
+      readability: 85,
+      original_length: 1400,
+      length: 1500,
+    });
+
+    assert.equal(parsed.overall, 8.9);
+    assert.ok(parsed.details.tone?.includes('重写非常随意的句子。'));
+    assert.ok(parsed.details.readability?.includes('拆分长段。'));
   });
 });
 

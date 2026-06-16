@@ -10,6 +10,8 @@ import type {
   SitePageSyncResult,
   CreateSitePayload,
   UpdateSitePayload,
+  ShopifyBlogItem,
+  ShopifyProductItem,
   WmApiResponse
 } from "./types";
 
@@ -49,6 +51,18 @@ export async function updateSite(
   return res.data;
 }
 
+/** 清除本项目下 Google 搜索缓存（管理员） */
+export async function clearSiteSerpCache(
+  projectId: string,
+  siteId: string
+): Promise<{ deleted: number }> {
+  const res = await http.request<WmApiResponse<{ deleted: number }>>(
+    "post",
+    `/api/v1/projects/${projectId}/sites/${siteId}/serp-cache/clear`
+  );
+  return res.data ?? { deleted: 0 };
+}
+
 /** 预览站点采集到的 SEO 文章（sitemap） */
 export async function listSiteSeoArticles(
   projectId: string,
@@ -60,6 +74,40 @@ export async function listSiteSeoArticles(
     "get",
     `/api/v1/projects/${projectId}/sites/${siteId}/seo-articles`,
     { params: { limit, seoArticlesOnly } }
+  );
+  return res.data ?? [];
+}
+
+/** 从 Shopify Admin API 拉取 Blog 列表（新建/编辑站点表单用） */
+export async function listShopifyBlogs(
+  projectId: string,
+  payload: {
+    siteId?: string;
+    shopDomain?: string;
+    accessToken?: string;
+  }
+): Promise<ShopifyBlogItem[]> {
+  const res = await http.request<WmApiResponse<ShopifyBlogItem[]>>(
+    "post",
+    `/api/v1/projects/${projectId}/sites/shopify/blogs`,
+    { data: payload }
+  );
+  return res.data ?? [];
+}
+
+/** 从 Shopify Admin API 拉取 Product 列表（产品详情页推送用） */
+export async function listShopifyProducts(
+  projectId: string,
+  payload: {
+    siteId?: string;
+    shopDomain?: string;
+    accessToken?: string;
+  }
+): Promise<ShopifyProductItem[]> {
+  const res = await http.request<WmApiResponse<ShopifyProductItem[]>>(
+    "post",
+    `/api/v1/projects/${projectId}/sites/shopify/products`,
+    { data: payload }
   );
   return res.data ?? [];
 }
@@ -86,4 +134,18 @@ export async function syncSitePages(
     `/api/v1/projects/${projectId}/sites/${siteId}/pages/sync`
   );
   return res.data ?? { discovered: 0, upserted: 0 };
+}
+
+export async function patchSitePage(
+  projectId: string,
+  siteId: string,
+  pageId: string,
+  payload: { primaryKeyword?: string | null }
+): Promise<SitePageItem> {
+  const res = await http.request<WmApiResponse<SitePageItem>>(
+    "patch",
+    `/api/v1/projects/${projectId}/sites/${siteId}/pages/${pageId}`,
+    { data: payload }
+  );
+  return res.data;
 }

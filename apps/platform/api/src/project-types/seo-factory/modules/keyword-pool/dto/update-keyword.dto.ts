@@ -16,6 +16,15 @@ export class UpdateKeywordDto {
   siteId?: string | null;
 
   @IsOptional()
+  @IsUUID()
+  clusterId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  clusterName?: string;
+
+  @IsOptional()
   @IsString()
   @IsIn(['INFORMATIONAL', 'COMMERCIAL', 'TRANSACTIONAL', 'BRAND', 'COMPETITOR'])
   intent?: string;

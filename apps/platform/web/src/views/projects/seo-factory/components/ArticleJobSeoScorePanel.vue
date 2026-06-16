@@ -7,13 +7,23 @@
 <template>
   <div>
     <el-alert
+      v-if="manualCheckWarning"
+      class="mb-4"
+      type="warning"
+      :closable="false"
+      show-icon
+      title="Semrush 终检未完成"
+      :description="manualCheckWarning"
+    />
+
+    <el-alert
       v-if="failedStepLabel"
       class="mb-4"
       type="warning"
       :closable="false"
       show-icon
       :title="`任务失败于「${failedStepLabel}」步骤`"
-      description="点「续跑任务」将从该步骤继续，不会重头跑 SERP / 初稿。"
+      description="点「重新生成」将从该步骤继续，不会重头生成。"
     />
 
     <el-alert
@@ -29,10 +39,11 @@
     <el-alert
       v-if="hasData || canCheck"
       class="mb-4"
-      type="info"
+      :type="semrushSkipped ? 'success' : 'info'"
       :closable="false"
       show-icon
-      :title="`评分流程：本地预检（规则对齐 Semrush）≥ ${LOCAL_SEO_PASS_THRESHOLD} 分 → Semrush 终检（权威分 ≥ ${SEMRUSH_PASS_THRESHOLD}）`"
+      :title="publishStandardTitle"
+      :description="publishStandardDescription"
     />
 
     <div class="mb-4 flex flex-wrap items-center gap-2">
@@ -46,6 +57,13 @@
       </el-button>
       <el-button v-if="checking" @click="emit('cancel-semrush-check')">
         取消 / 解除卡住
+      </el-button>
+      <el-button
+        :disabled="!canRerunOptimization || rerunningOptimization"
+        :loading="rerunningOptimization"
+        @click="emit('rerun-optimization')"
+      >
+        重新优化评分
       </el-button>
       <el-button
         :disabled="!canRewrite || rewriting"
@@ -74,6 +92,16 @@
     </div>
 
     <el-alert
+      v-if="localBreakdownStale"
+      class="mb-4"
+      type="success"
+      :closable="false"
+      show-icon
+      :title="`本地预检已通过（${localScore} 分）`"
+      description="下方分项为优化过程中的快照；Semrush 终检完成后将同步最新明细。规则拆段后的正文已写回稿件。"
+    />
+
+    <el-alert
       v-if="localNearMiss"
       class="mb-4"
       type="warning"
@@ -90,10 +118,23 @@
       :closable="false"
       show-icon
       :title="`Semrush ${semrushScore} / 10，距 ${SEMRUSH_PASS_THRESHOLD} 还差 ${semrushPointsToGo} 分`"
-      description="续跑任务将从上次 Semrush 分数继续优化，不会重跑本地预检。"
+      description="重新生成将从上次 Semrush 分数继续优化，不会重跑本地预检。"
     />
 
     <el-descriptions v-if="hasData" :column="2" border>
+      <el-descriptions-item label="发布标准" :span="2">
+        <template v-if="semrushSkipped">
+          <el-tag type="success">本地预检 ≥ {{ LOCAL_SEO_PASS_THRESHOLD }} 分即可发布</el-tag>
+          <span class="ml-2 text-sm text-gray-500">
+            当前环境未启用 Semrush 终检，以本地预检为唯一权威门槛
+          </span>
+        </template>
+        <template v-else>
+          <span class="text-sm text-gray-700">
+            本地预检 ≥ {{ LOCAL_SEO_PASS_THRESHOLD }} 分 → Semrush 终检 ≥ {{ SEMRUSH_PASS_THRESHOLD }} 分
+          </span>
+        </template>
+      </el-descriptions-item>
       <el-descriptions-item label="Semrush 终检">
         <template v-if="semrushSkipped">
           <span class="text-gray-500">未启用（SEMRUSH_ENABLED）</span>
@@ -177,7 +218,7 @@
       <el-descriptions-item v-if="metrics?.keywordDensity != null" label="关键词密度">
         {{ metrics.keywordDensity }}%
       </el-descriptions-item>
-      <el-descriptions-item v-if="metrics" label="SERP 词对齐">
+      <el-descriptions-item v-if="metrics" label="搜索词对齐">
         {{ metrics.matchedSerpTerms }} / {{ metrics.totalSerpTerms }}
       </el-descriptions-item>
       <el-descriptions-item
@@ -219,6 +260,54 @@
           </el-card>
         </el-col>
       </el-row>
+    </div>
+
+    <div v-if="longParagraphSamples.length" class="mt-4">
+      <div class="mb-2 font-medium">
+        超长段定位（须压至 ≤1 段，每段 ≤80 词）
+      </div>
+      <el-alert
+        class="mb-3"
+        type="warning"
+        :closable="false"
+        show-icon
+        title="优先拆分以下段落"
+        description="在「稿件正文」Tab 按空行拆段后保存，或点「重新优化评分」由系统自动拆分。"
+      />
+      <ul class="space-y-2 text-sm">
+        <li
+          v-for="(sample, i) in longParagraphSamples"
+          :key="`p-${i}`"
+          class="rounded border border-red-200 bg-red-50 px-3 py-2"
+        >
+          <span class="text-red-700 font-medium">{{ sample.wordCount }} 词 · </span>
+          <span class="text-gray-800 line-clamp-3">{{ sample.text }}</span>
+        </li>
+      </ul>
+    </div>
+
+    <div v-if="longSentenceSamples.length" class="mt-4">
+      <div class="mb-2 font-medium">
+        超长句定位（须压至 ≤2 条，每条 ≤22 词）
+      </div>
+      <el-alert
+        class="mb-3"
+        type="warning"
+        :closable="false"
+        show-icon
+        title="优先修复以下句子"
+        description="在「稿件正文」Tab 拆句或删填充词后保存，系统将自动重算本地预检分。重新生成也会自动规则拆句。"
+      />
+      <ul class="space-y-2 text-sm">
+        <li
+          v-for="(sample, i) in longSentenceSamples"
+          :key="i"
+          class="rounded border border-amber-200 bg-amber-50 px-3 py-2"
+        >
+          <span class="text-amber-700 font-medium">{{ sample.wordCount }} 词 · </span>
+          <span class="text-gray-800">{{ sample.text }}</span>
+        </li>
+      </ul>
     </div>
 
     <div v-if="localSuggestions.length" class="mt-4">
@@ -380,7 +469,7 @@
             <div class="text-sm font-medium text-gray-700 mb-1">评分明细（优化后）</div>
             <div class="flex flex-wrap gap-2 text-xs">
               <el-tag size="small" type="info">关键词 {{ item.breakdownAfter.keywordCoverage }}</el-tag>
-              <el-tag size="small" type="info">SERP {{ item.breakdownAfter.serpTermAlignment }}</el-tag>
+              <el-tag size="small" type="info">搜索词 {{ item.breakdownAfter.serpTermAlignment }}</el-tag>
               <el-tag size="small" type="info">结构 {{ item.breakdownAfter.structure }}</el-tag>
               <el-tag size="small" type="info">可读 {{ item.breakdownAfter.readability }}</el-tag>
               <el-tag size="small" type="info">深度 {{ item.breakdownAfter.contentDepth }}</el-tag>
@@ -446,23 +535,43 @@ const props = defineProps<{
   canRewrite?: boolean;
   rewriting?: boolean;
   rewriteBlockedReason?: string;
+  canRerunOptimization?: boolean;
+  rerunningOptimization?: boolean;
 }>();
 
 const emit = defineEmits<{
   "run-semrush-check": [];
   "cancel-semrush-check": [];
   rewrite: [];
+  "rerun-optimization": [];
 }>();
 
 const local = computed(() => props.seoCheckData?.local);
 const semrush = computed(() => props.seoCheckData?.semrush);
+const manualCheckWarning = computed(() => semrush.value?.lastManualCheckError?.trim() || null);
+const workflowProgress = computed(() => props.seoCheckData?.workflowProgress);
 
 const failedStepLabel = computed(() => {
   const step = props.seoCheckData?.workflow?.failedStep;
   return step ? workflowStepLabel(step) : null;
 });
 
-const localScore = computed(() => props.localSeoScore ?? local.value?.score ?? null);
+const localScore = computed(() => {
+  const candidates = [
+    props.localSeoScore,
+    local.value?.score,
+    workflowProgress.value?.localScore,
+  ].filter((v): v is number => typeof v === "number");
+  if (candidates.length === 0) return null;
+  return Math.max(...candidates);
+});
+
+const localBreakdownStale = computed(() => {
+  const score = localScore.value;
+  const persisted = local.value?.score;
+  if (score == null || persisted == null) return false;
+  return score >= LOCAL_SEO_PASS_THRESHOLD && score > persisted;
+});
 const localPassed = computed(() => {
   if (local.value?.passed != null) return local.value.passed;
   if (localScore.value != null) return localScore.value >= LOCAL_SEO_PASS_THRESHOLD;
@@ -474,7 +583,11 @@ const localPointsToGo = computed(() => {
 });
 
 const localNearMiss = computed(
-  () => localPointsToGo.value > 0 && localPointsToGo.value <= 5 && localScore.value != null,
+  () =>
+    localPassed.value !== true &&
+    localPointsToGo.value > 0 &&
+    localPointsToGo.value <= 5 &&
+    localScore.value != null,
 );
 
 const localNearMissHint = computed(() => {
@@ -490,9 +603,9 @@ const localNearMissHint = computed(() => {
     parts.push(`被动语态 ${m.passiveVoiceHits} 处（须 ≤6）`);
   }
   if (parts.length > 0) {
-    return `优先修复：${parts.join("；")}。续跑任务将自动追加优化轮次。`;
+    return `优先修复：${parts.join("；")}。重新生成将自动追加优化轮次。`;
   }
-  return "请按下方「本地评分建议」逐项修复，或点「续跑任务」继续自动优化。";
+  return "请按下方「本地评分建议」逐项修复，或点「重新生成」继续自动优化。";
 });
 
 const semrushScore = computed(() => props.semrushScore ?? semrush.value?.overall ?? null);
@@ -511,9 +624,30 @@ const semrushNearMiss = computed(
 );
 
 const semrushSkipped = computed(() => semrush.value?.skipped === true);
+
+const publishStandardTitle = computed(() => {
+  if (semrushSkipped.value) {
+    return `发布标准：本地预检 ≥ ${LOCAL_SEO_PASS_THRESHOLD} 分（Semrush 未启用）`;
+  }
+  return `评分流程：本地预检 ≥ ${LOCAL_SEO_PASS_THRESHOLD} 分 → Semrush 终检 ≥ ${SEMRUSH_PASS_THRESHOLD} 分`;
+});
+
+const publishStandardDescription = computed(() => {
+  if (semrushSkipped.value) {
+    return "当前环境未配置 Semrush RPA，达到本地预检门槛后即可导出与推送 CMS。若日后启用 Semrush，终检分将成为额外权威门槛。";
+  }
+  return "本地预检为进门闸（规则对齐 Semrush Writing Assistant）；Semrush 终检为权威分，任务是否通过以此为准。";
+});
+
 const optimizeRounds = computed(() => local.value?.optimizeRounds);
 const semrushOptimizeRounds = computed(() => semrush.value?.optimizeRounds);
 const metrics = computed(() => local.value?.metrics);
+const longSentenceSamples = computed(
+  () => local.value?.metrics?.longSentenceSamples ?? [],
+);
+const longParagraphSamples = computed(
+  () => local.value?.metrics?.longParagraphSamples ?? [],
+);
 const breakdown = computed(() => local.value?.breakdown);
 const localSuggestions = computed(() => local.value?.suggestions ?? []);
 const semrushSuggestions = computed(() => semrush.value?.suggestions ?? []);
@@ -642,10 +776,10 @@ function formatRollbackReason(row: ArticleJobOptimizeRound): string {
     return "本地分未提升";
   }
   if (row.rollbackReason === "local_below_threshold") {
-    return `本地分 ${row.candidateLocalScoreAfter ?? "?"} 低于保留门槛（允许 Semrush 提升时降 1 分）`;
+    return `本地分 ${row.candidateLocalScoreAfter ?? "?"} 低于保留门槛（历史策略，已改为 Semrush 优先）`;
   }
   if (row.rollbackReason === "both") {
-    return `Semrush 未提升且本地分 ${row.candidateLocalScoreAfter ?? "?"} 未达 ${LOCAL_SEO_PASS_THRESHOLD}`;
+    return `Semrush 未提升且本地分 ${row.candidateLocalScoreAfter ?? "?"} 未达 ${LOCAL_SEO_PASS_THRESHOLD}（历史策略）`;
   }
   return "Semrush 分未提升";
 }
@@ -666,7 +800,7 @@ function formatRollbackDetail(item: ArticleJobOptimizeRound): string {
       ? `${item.candidateLocalScoreAfter} / 100`
       : "—";
   if (item.rollbackReason === "local_below_threshold") {
-    return `Semrush 候选 ${candidate}，但本地分 ${candidateLocal} 低于保留门槛（Semrush 提升时最多允许降 1 分），已保留 Semrush ${kept}、本地 ${keptLocal} 的最优稿。`;
+    return `Semrush 候选 ${candidate}，但本地分 ${candidateLocal} 低于历史保留门槛，已保留 Semrush ${kept}、本地 ${keptLocal} 的最优稿（当前策略：Semrush 优先）。`;
   }
   if (item.rollbackReason === "both") {
     return `Semrush 候选 ${candidate} 未提升，且本地分 ${candidateLocal} 低于门槛 ${LOCAL_SEO_PASS_THRESHOLD}，已保留 Semrush ${kept}、本地 ${keptLocal} 的最优稿。`;
@@ -769,7 +903,7 @@ const breakdownItems = computed(() => {
   if (!b) return [];
   const items = [
     { key: "keyword", label: "关键词", value: b.keywordCoverage, max: BREAKDOWN_MAX.keyword },
-    { key: "serp", label: "SERP 词", value: b.serpTermAlignment, max: BREAKDOWN_MAX.serp },
+    { key: "serp", label: "搜索词", value: b.serpTermAlignment, max: BREAKDOWN_MAX.serp },
     { key: "structure", label: "结构", value: b.structure, max: BREAKDOWN_MAX.structure },
     { key: "readability", label: "可读性", value: b.readability ?? 0, max: BREAKDOWN_MAX.readability },
     { key: "depth", label: "深度", value: b.contentDepth, max: BREAKDOWN_MAX.depth },

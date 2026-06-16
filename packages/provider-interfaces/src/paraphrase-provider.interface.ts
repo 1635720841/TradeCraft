@@ -3,8 +3,15 @@ export interface ParaphraseInput {
   content: string;
   brandVoice?: string;
   contentLanguage?: string;
-  /** Brief 推荐实体词，改写时须保留 */
+  /** Brief + Semrush + 站点 + 正文规格，改写时须保留 */
   protectedTerms?: string[];
+  searchIntent?: string;
+  briefSummary?: string;
+  semrushCurrentWordCount?: number;
+  semrushCompetitorWordCount?: number;
+  semrushWordCountCap?: number;
+  /** 分块润色时的段落说明（注入 Prompt） */
+  chunkHint?: string;
 }
 
 export interface ParaphraseOutput {

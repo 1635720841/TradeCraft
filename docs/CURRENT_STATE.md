@@ -5,7 +5,7 @@
 
 ## 阶段
 
-**Phase 4 进行中 — 产品壳 + 企业配额 + 关键词池 + QuillBot 润色已接入**
+**Phase 4 进行中 — 运营链路（Brief / CMS / 批量 / 内链编辑 / 站点 Profile）已接入**
 
 ## 已完成
 
@@ -13,142 +13,131 @@
 
 - [x] Monorepo（pnpm workspace）+ `packages/`（shared-core、platform-sdk、provider-interfaces）
 - [x] NestJS API + Prisma + Core（guards、exceptions、logger、redis、queue、storage、**按 org 限流**）
-- [x] Prisma migration 历史已与 schema 对齐（`20260614120000_sync_quota_prompt_keyword_cms`，共 8 条）
+- [x] Prisma migrations（含 `Site.settings`、`ArticleJob.searchIntent`）；部署用 `pnpm db:deploy`
 - [x] 对象存储：`S3_BUCKET` 配置后走 S3/MinIO，否则 `.data/exports` 本地 fallback
-- [x] E2E 冒烟：`e2e/article-job-smoke.test.mjs` + **`e2e/draft-edit.test.mjs`**（编辑 / stale / 回滚）
-- [x] 开发种子 `pnpm db:seed`；单元测试 **85** 项（`pnpm test`）；E2E `pnpm test:e2e`
-- [x] Auth：自建 JWT 登录/刷新 + **Logto OIDC 回调**（可选）+ `AuthGuard` + `@ReqCtx()` + RBAC（ADMIN / MEMBER）
-- [x] 项目 CRUD（org 隔离）+ 前端真实登录 / 401 跳转 / 项目创建
-- [x] 计费：`article.completed` 事件 → CreditUsage + 用量 API + 前端 `/platform/billing`
-- [x] **BILL-005** 配额：`Organization.monthlyArticleQuota` + `BillingService.assertArticleQuota()`（创建/批量任务前）
-- [x] 组织管理：`modules/organization/` + 前端 `/platform/organization`（套餐名、月配额、成员 CRUD，ADMIN）
-- [x] M12 Prompt：DB + Redis 1h + CRUD + 前端 `/platform/prompts`（ADMIN）
+- [x] E2E 冒烟：`e2e/article-job-smoke.test.mjs` + **`e2e/draft-edit.test.mjs`**
+- [x] Auth、项目 CRUD、计费、组织配额、M12 Prompt 管理
 
 ### seo-factory 引擎（M1–M12 编排）
 
-- [x] Serper + Redis 24h 缓存 → Brief + 初稿（Prompt 外置 / DB 热更新）；**竞品页面正文**写入 `serpData.organic[].scraped`
-- [x] M6 Semrush：RPA + **Playwright 专用队列** + **浏览器池复用** + 本地预检循环 + AI 优化（门槛 **9.0**）
-- [x] M8 内链：`SitePage` 页面库 + sitemap 同步 + `linking` 步骤
-- [x] M9 配图：BFL Provider + `images` 步骤
-- [x] **QuillBot 润色**：工作流 `paraphrasing` 步骤 + `modules/paraphrase/` + Prompt `seo_quillbot_v1`；`QUILLBOT_DISABLED=true` 可跳过
-- [x] YMYL：`content-review` + `ymyl` 步骤 + 前端警告 + **待审核队列** `/reviews`
-- [x] M10 导出：HTML / JSON-LD 本地存储 + API 下载 + **zip 资产包**（HTML + images/ + meta.txt）
-- [x] article-job：202 入队、批量创建、失败续跑、手动 Semrush、AI 改写、**稿件手动编辑**
-- [x] 站点：CRUD + 页面库 sync/list（供内链）
+- [x] Serper → Brief → 初稿 → 内链 → 配图 → Semrush 优化 → QuillBot → YMYL → 导出 → 计费
+- [x] **Brief 人工确认**：`Site.settings.requireBriefApproval` 开启后工作流在 Brief 后暂停；`PATCH/approve/regenerate` API
+- [x] **搜索意图**：入队时写入 `ArticleJob.searchIntent`（关键词池 intent），驱动 Brief/Draft Prompt
+- [x] **站点写作素材**：行业/认证/起订量/文末询盘引导 + **高级素材**（产品线、差异化卖点、目标客户、禁用词、案例），写入 `Site.settings.contentProfile`
+- [x] M10 导出：单条 zip + **`POST .../batch/export`** 批量 zip（失败明细 `X-Export-Failures`）
+- [x] 稿件手动编辑：TipTap 编辑器 + stale / history / rollback
+- [x] **内链人工编辑**：`PATCH .../internal-links` + 重跑植入；支持增删链并同步 Markdown 正文
+
+### CMS 发布
+
+- [x] **WordPress**：`CmsPublishService` + 站点配置 + 单条/批量推送 + 列表发布状态
+- [x] **Shopify**：Blog 文章 / **产品详情页** 推送 + Blog/Product 下拉 + Files 图片上传
+- [x] **CMS 更新已发文章**：存在 `cmsPublish.postId` 时走 WordPress/Shopify PUT 更新
+- [x] **推送失败筛选**：`GET .../article-jobs?cmsPublishFailed=1`
+- [x] 前端 CMS UI 默认开启（`VITE_WORDPRESS_CMS_UI_ENABLED` 非 `false` 即显示）
 
 ### 产品壳（前端）
 
-- [x] 工作台：`SeoFactoryLayout` + Tab 壳（概览 / 文章任务 / 关键词池 / 站点 / 待审核）
-- [x] `SiteManageView` 站点 CRUD + 页面库
-- [x] `KeywordPoolView` 关键词池（CRUD、导入、优先级、AI 种子、Semrush 指标回填、一键建任务、**批量入队**）
-- [x] `ReviewQueueView` YMYL 人工审核
-- [x] `OrganizationSettingsView` 企业设置
+- [x] **SEO 工作台左侧导航**：概览 / 任务 / 词库 / 站点 + 设置（admin）
+- [x] **运营**：任务进度条、概览流水线 + **今日待办**、流程/名词说明、批量重新生成/推送/导出
+- [x] **任务阶段筛选**：`?stage=outlinePending|reviewPending|generating|...` 合并原独立队列入口
+- [x] **任务列表快捷操作**：待确认大纲（单行/批量确认）、敏感审核（行内通过/驳回）
+- [x] 新建任务可选搜索意图；列表展示任务级 `searchIntent`
+- [x] `KeywordPoolView` 关键词池（含意图字段、**主题集群**筛选与归入）
+- [x] `TopicClusterView` 主题集群进度看板 + **整组批量入队**
+- [x] `ProjectSettingsView`：CMS、页面库、大纲需确认、Google 搜索表现（原管理端 + GSC）
+- [x] `SiteManageView`：运营向站点配置（域名、语气、公司卖点）
+- [x] **稿件待处理**：`?staleDraft=1` 筛选 + 概览待办
+- [x] **站点写作素材待办**：`sitesMissingProfileCount` + 概览提醒去填写公司卖点
+- [x] `JobDetailView`：Trace/任务 ID 折叠至「高级信息」；「重新生成」统一文案
+- [x] **GSC**：嵌入设置页（admin）；概览 GSC 待办仅 admin 可见；`/gsc` 重定向至设置 `#gsc`
+- [x] **概览主题进度**：展示待写最多的 3 个主题集群进度条
+- [x] **站点卖点筛选**：`?profile=missing` 高亮未填写作素材的站点
+- [x] **关键词快捷筛选**：可入队 / 未分组（`?queueable=1`、`?unclustered=1`）
+- [x] **按站点筛选**：任务列表支持 `?siteId=`，列表展示站点列
+- [x] **GSC 定时同步**：`GSC_AUTO_SYNC_ENABLED=true` 时每日 4:00 BullMQ 拉取过期数据
 
-### WordPress CMS（刻意延后产品化）
+### SEO 外贸优化 P0（2026-06-14）
 
-- [x] **后端**：`Site.cmsType` / `cmsConfig`、`CmsPublishService`、`POST .../publish`
-- [ ] **前端 UI**：已通过 `WORDPRESS_CMS_UI_ENABLED = false` 隐藏（站点 WordPress 配置、任务详情「推送到 WordPress」）
-- 启用方式：改 `apps/platform/web/src/constants/feature-flags.ts` 为 `true`
+- [x] **站点 Profile 扩展**：`productLines` / `differentiators` / `targetBuyerType` / `forbiddenTerms` / `caseHighlights`；`enrichBrandVoiceForPrompt` 补齐改写/种子生成路径
+- [x] **发布前检查清单**：`JobDetailView` 完成任务后展示标题/Meta/内链/配图/YMYL/导出/CTA/CMS 检查项（`buildPrePublishChecklist`）
+- [x] **GSC 改稿待办**：`stats/summary` 返回 `gscUnderperformingJobs`；概览「去改稿」链至任务详情 `?tab=draft`
+- [x] **Brief FAQ + Snippet**：`seo_brief_v1` 增加 `faqCandidates` / `featuredSnippetTarget`；修复 Brief `{{serpContext}}` 渲染；大纲 UI 可编辑
+- [x] **关键词同质化警告**：`GET .../sites/:siteId/keyword-conflicts`；入队返回 `warnings`；`JobCreateView` / `KeywordPoolView` 提交前提示
+
+### SEO 外贸优化 P1 + 稳定性（2026-06-14）
+
+- [x] **内容形态**：`ArticleJob.contentForm`（标准文 / 产品增强 / FAQ 页）；`JobCreateView` 选择；Brief/Draft Prompt 注入 `contentFormGuidelines`
+- [x] **CTA UTM + Inquiry 导出**：站点 Profile `utmSource/Medium/Campaign`；导出 HTML 文末 Inquiry 块 + UTM 拼接（`utm_term=目标词`）
+- [x] **页面库主关键词**：`SitePage.primaryKeyword`；`PATCH .../pages/:id`；内链匹配加权；按意图/形态过滤 PageType
+- [x] **主题集群支柱页**：`KeywordCluster.pillarKeywordId`；`TopicClusterView` 编辑；Brief/Draft 注入 cluster 上下文
+- [x] **FAQ JSON-LD**：导出时 `@graph` 合并 `Article` + `FAQPage`（从 Brief `faqCandidates` + 正文 `## FAQ` 解析答案）
+- [x] **竞品 Playwright 回退**：`SCRAPER_COMPETITOR_BROWSER_ENABLED=true` 时 HTTP 失败/空正文尝试浏览器渲染
+- [x] **Brief JSON 重试**：`chatJson` 解析失败自动重试一次（更严格 system prompt）
+- [x] **竞品分析 Tab / refresh-serp / GSC 重优化 / parse-llm-json**：见上轮短中期项（`ArticleJobCompetitorPanel`、`POST refresh-serp`、`POST rerun-optimization`）
+
+### 已废弃 / redirect 的旧入口
+
+- `/brief-reviews`、`/reviews` → 任务列表 `?stage=outlinePending|reviewPending`
+- `/content/*`、`/scheduling/*`、`/gsc`、`/sites/admin` → 新路径 redirect
 
 ## 未实现 / 进行中
 
 | 项 | 说明 |
 |----|------|
-| WordPress 产品 UI | 后端就绪，前端 feature flag 关闭（**刻意延后**） |
+| 新功能测试 | 部分 E2E 依赖本地已完成任务，无任务时会 skip |
+| GSC OAuth | 需配置 `GOOGLE_GSC_CLIENT_ID/SECRET/REDIRECT_URI` 与 `WEB_APP_ORIGIN`；定时同步需 `GSC_AUTO_SYNC_ENABLED=true` |
+| P2 大包 | i18n / CRM 归因 / Technical SEO / 外链 / 协作 / S3 `outputUrl` / 本地 SEO 预检增强等见 `task.md` P2-001 |
+| 竞品浏览器抓取 | 默认关闭；需 `SCRAPER_COMPETITOR_BROWSER_ENABLED=true` 且本机 Playwright 可用 |
 
-## 工作流现状（代码真实顺序）
+## 工作流现状
 
 ```
-SERP → Brief → 初稿 → 内链 → 配图 → Semrush 优化 → QuillBot 润色 → YMYL → 导出 → COMPLETED → 计费入账
+SERP → Brief → [人工确认?] → 初稿 → 内链 → 配图 → Semrush → QuillBot → YMYL → 导出 → COMPLETED
 ```
 
-| 步骤 | workflow key | 状态 |
-|------|--------------|------|
-| M1–M3 SERP | `serp` | ✅ |
-| M4 Brief | `brief` | ✅ |
-| M5 初稿 | `draft` | ✅ |
-| M8 内链 | `linking` | ✅ |
-| M9 配图 | `images` | ✅ |
-| M6 Semrush | `optimizing` | ✅（≥9.0） |
-| QuillBot | `paraphrasing` | ✅（可 env 跳过） |
-| YMYL | `ymyl` | ✅ |
-| M10 导出 | export 模块 | ✅（本地 + 单文件下载 + zip 资产包） |
-| M11 计费 | `article.completed` | ✅ |
-| M12 Prompt | DB 热更新 | ✅ |
-| **稿件手动编辑** | PATCH draft + stale + history + rollback | ✅ |
-
-编排常量：`project-types/seo-factory/constants/workflow-resume.ts`
-
-## 稿件手动编辑（M 扩展）
-
-| 能力 | 说明 |
+| 扩展 | 说明 |
 |------|------|
-| API | `PATCH .../draft`、`GET .../draft/history`、`POST .../draft/rollback`、`POST .../draft/resolve-stale` |
-| 可编辑字段 | 标题、Meta Description、正文 Markdown（**分屏实时预览**） |
-| 乐观锁 | `draftData.contentVersion`，冲突 → 409 `DRAFT_VERSION_CONFLICT` |
-| 失效联动 | 保存后按 staleness 矩阵清空 SEO 分 / outputUrl / 重置 YMYL pending |
-| postSave | `none` \| `refresh_local`（默认）\| `rerun_from_optimizing` |
-| 前端入口 | 任务详情「初稿预览」预览/编辑；YMYL 队列「编辑后再审」 |
-| 规格 | [`docs/specs/draft-manual-edit.md`](specs/draft-manual-edit.md) |
-| 后端 | `article-job-draft-edit.service.ts`、`draft-edit.util.ts` |
-| 测试 | `pnpm test:draft-edit`；E2E `e2e/draft-edit.test.mjs` |
+| Brief 暂停 | `requireBriefApproval=true` 时 `approvalStatus=pending`，续跑前须 approve |
+| CMS 推送 | 完成后 `POST .../publish`；已推送可「更新 CMS 内容」；状态存 `seoCheckData.cmsPublish` |
+| 内链编辑 | 植入后可 PATCH 链接元数据并重跑 M8 |
 
 ## 关键路径
 
 | 能力 | 位置 |
 |------|------|
 | 开发任务清单 | `task.md` |
-| 工作流编排 | `project-types/seo-factory/modules/workflow/` |
-| QuillBot 润色 | `project-types/seo-factory/modules/paraphrase/` |
-| 关键词池 | `project-types/seo-factory/modules/keyword-pool/` |
-| 组织/配额 | `modules/organization/`、`modules/billing/` |
-| WordPress 发布（API） | `project-types/seo-factory/modules/export/cms-publish.service.ts` |
+| Brief 确认 | `article-job-brief.service.ts`、`JobListView.vue?stage=outlinePending` |
+| 搜索意图 | `constants/search-intent.ts`、`llm.service.ts` |
+| 站点 Profile | `SiteManageView` →「公司卖点（AI 写作素材）」 |
+| 内链编辑 | `article-job-internal-links.service.ts`、`ArticleJobInternalLinksPanel.vue` |
+| CMS 发布/更新 | `cms-publish.service.ts`、`shopify-files.service.ts` |
+| 批量导出 | `export.service.ts` → `buildBatchExportPackage` |
+| 任务列表筛选 | `?stage=outlinePending|reviewPending|...`、`?briefPending=1`、`?reviewPending=1`、`?siteId=` |
+| 主题集群 | `keyword-cluster.service.ts`、`TopicClusterView.vue`（含 `POST .../create-jobs`） |
+| GSC 搜索表现 | `gsc.service.ts`、`ProjectSettingsView.vue`（嵌入 GSC、自动同步） |
+| GSC 偏弱改稿待办 | `gsc-underperform.util.ts`、`WorkbenchOverviewView.vue` |
+| 发布前清单 | `draft-edit-preview.ts`、`ArticleJobDraftPublishChecklist.vue` |
+| 关键词冲突检测 | `keyword-cannibalization.util.ts`、`GET .../keyword-conflicts` |
+| 内容形态 / 支柱集群 | `constants/content-form.ts`、`TopicClusterView.vue`、`cluster-prompt-context.util.ts` |
+| 导出 FAQ JSON-LD | `article-json-ld.util.ts`、`export.service.ts` |
+| 竞品浏览器回退 | `competitor-browser.scraper.ts`（`SCRAPER_COMPETITOR_BROWSER_ENABLED`） |
 | 前端功能开关 | `apps/platform/web/src/constants/feature-flags.ts` |
-| 工作台路由 | `apps/platform/web/src/router/modules/remaining.ts` |
-| 单元测试 | `apps/platform/api/scripts/*.test.mjs`（含 `draft-edit.util.test.mjs`） |
-| 稿件手动编辑 | `project-types/seo-factory/modules/article-job/article-job-draft-edit.service.ts` |
-| E2E | `apps/platform/api/e2e/` |
-| Prisma migrations | `apps/platform/api/prisma/migrations/`（`pnpm db:deploy`） |
-| 对象存储 | `core/storage/`（`S3_BUCKET` → S3，否则本地） |
 
 ## 本地验证
 
 ```bash
 pnpm docker:up
-pnpm db:deploy   # 生产/空库；开发见 docs/SETUP.md 漂移修复
-pnpm db:seed
+cd apps/platform/api && pnpm db:deploy && pnpm db:seed
 pnpm dev:api
 pnpm dev:web
-
-# 单元测试
-cd apps/platform/api && pnpm test
-
-# 前端类型检查
-cd apps/platform/web && pnpm exec vue-tsc --noEmit
-
-# E2E 冒烟（需 API + Postgres + Redis + seed）
-pnpm test:e2e
 ```
-
-## 开发账号（seed）
-
-| 角色 | 邮箱 | 密码 |
-|------|------|------|
-| ADMIN | admin@dev.local | admin123 |
-| MEMBER | member@dev.local | member123 |
-
-## 本地环境
-
-安装与启动详见 **[docs/SETUP.md](SETUP.md)**。  
-基础设施：Docker PostgreSQL 16（5432）+ Redis 7（6379）。
 
 ## 文档维护约定
 
 | 事件 | 动作 |
 |------|------|
 | 完成功能 | 更新本文件 + `task.md` 对应 `[x]` |
-| 暂缓/隐藏功能 | 在本文件「未实现」写明原因与开关位置 |
 | 工作流变更 | 同步 `workflow-resume.ts` 与本节表格 |
-| 架构决策 | 可选 `docs/adr/ADR-NNN-标题.md` |
 
-*最后更新：2026-06-14*
+*最后更新：2026-06-14（P0 + P1 落地，Brief 稳定性与竞品浏览器回退）*

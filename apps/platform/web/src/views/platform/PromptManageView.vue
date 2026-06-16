@@ -213,7 +213,7 @@
               v-model="editorForm.description"
               type="textarea"
               :rows="2"
-              placeholder="给运营同事看的备注，如「2026-03 提升实体词覆盖率」"
+              placeholder="备注，如「2026-03 提升实体词覆盖率」"
             />
           </el-form-item>
           <el-form-item label="启用">

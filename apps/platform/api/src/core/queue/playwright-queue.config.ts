@@ -25,7 +25,8 @@ export function readPlaywrightQueueOptions(): PlaywrightQueueOptions {
     process.env.PLAYWRIGHT_QUEUE_RATE_LIMIT_DURATION_MS,
     60_000,
   );
-  const jobTimeoutMs = parsePositiveInt(process.env.PLAYWRIGHT_QUEUE_JOB_TIMEOUT_MS, 180_000);
+  /** Semrush RPA 含导航+设词+分析，最坏可超 3min；默认 6min 避免 BullMQ 先杀 worker */
+  const jobTimeoutMs = parsePositiveInt(process.env.PLAYWRIGHT_QUEUE_JOB_TIMEOUT_MS, 360_000);
 
   return {
     concurrency,

@@ -1,20 +1,30 @@
 /**
- * 改写后程序化安全检查（链接/关键词保留）。
+ * 改写后程序化安全检查（链接/关键词/保护词/结构/规格保留）。
  *
  * 边界：
  * - 不负责：LLM 语义复检（ParaphraseService）
  */
 
+import { normalizeContentLanguage } from '@wm/shared-core';
+
 export interface ParaphraseSafetyInput {
   keyword: string;
   originalContent: string;
   paraphrasedContent: string;
+  contentLanguage?: string;
+  protectedTerms?: string[];
+  recommendedKeywords?: string[];
+  /** 分块润色非首段时跳过「关键词须在前 200 字符」检查 */
+  skipKeywordHeadCheck?: boolean;
 }
 
 export interface ParaphraseSafetyResult {
   passed: boolean;
   issues: string[];
 }
+
+const SPEC_PATTERN =
+  /\d+(?:\.\d+)?\s*(?:mm|cm|m|kg|g|lb|lbs|bar|psi|kPa|MPa|V|A|W|kW|Hz|°C|℃|%|inch|in|ft)\b/gi;
 
 function extractMarkdownLinkUrls(content: string): string[] {
   const urls: string[] = [];
@@ -27,11 +37,90 @@ function extractMarkdownLinkUrls(content: string): string[] {
   return urls;
 }
 
+function extractImageUrls(content: string): string[] {
+  const urls: string[] = [];
+  const pattern = /!\[[^\]]*\]\(([^)]+)\)/g;
+  let match = pattern.exec(content);
+  while (match) {
+    urls.push(match[1].trim());
+    match = pattern.exec(content);
+  }
+  return urls;
+}
+
+function countHeadings(content: string, level: 2 | 3): number {
+  const prefix = '#'.repeat(level);
+  return (content.match(new RegExp(`^${prefix} `, 'gm')) ?? []).length;
+}
+
+function extractNumericSpecs(content: string): string[] {
+  return (content.match(SPEC_PATTERN) ?? []).map((item) => item.replace(/\s+/g, ' ').trim().toLowerCase());
+}
+
 function countKeywordOccurrences(content: string, keyword: string): number {
   if (!keyword.trim()) return 0;
   const escaped = keyword.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const pattern = new RegExp(escaped, 'gi');
   return (content.match(pattern) ?? []).length;
+}
+
+function measureContentLength(content: string, contentLanguage?: string): number {
+  const lang = normalizeContentLanguage(contentLanguage);
+  if (lang === 'zh-CN') {
+    const cjk = (content.match(/[\u4e00-\u9fff]/g) ?? []).length;
+    const latinWords = content.split(/\s+/).filter((item) => /[a-zA-Z0-9]/.test(item)).length;
+    return cjk + latinWords;
+  }
+  return content.split(/\s+/).filter(Boolean).length;
+}
+
+function checkProtectedTerms(
+  original: string,
+  paraphrased: string,
+  terms: string[] | undefined,
+): string[] {
+  if (!terms?.length) return [];
+
+  const issues: string[] = [];
+  const lowerOriginal = original.toLowerCase();
+  const lowerParaphrased = paraphrased.toLowerCase();
+
+  for (const term of terms) {
+    const trimmed = term.trim();
+    if (!trimmed || trimmed.length < 2) continue;
+    const lower = trimmed.toLowerCase();
+    if (lowerOriginal.includes(lower) && !lowerParaphrased.includes(lower)) {
+      issues.push(`保护词丢失：${trimmed}`);
+    }
+  }
+
+  return issues;
+}
+
+function checkRecommendedKeywords(
+  original: string,
+  paraphrased: string,
+  keywords: string[] | undefined,
+  mainKeyword: string,
+): string[] {
+  if (!keywords?.length) return [];
+
+  const issues: string[] = [];
+  const main = mainKeyword.trim().toLowerCase();
+  const lowerOriginal = original.toLowerCase();
+  const lowerParaphrased = paraphrased.toLowerCase();
+
+  for (const keyword of keywords) {
+    const trimmed = keyword.trim();
+    if (!trimmed || trimmed.length < 2) continue;
+    const lower = trimmed.toLowerCase();
+    if (lower === main) continue;
+    if (lowerOriginal.includes(lower) && !lowerParaphrased.includes(lower)) {
+      issues.push(`推荐词丢失：${trimmed}`);
+    }
+  }
+
+  return issues;
 }
 
 export function checkParaphraseSafety(input: ParaphraseSafetyInput): ParaphraseSafetyResult {
@@ -46,12 +135,37 @@ export function checkParaphraseSafety(input: ParaphraseSafetyInput): ParaphraseS
 
   const originalUrls = extractMarkdownLinkUrls(original);
   const paraphrasedUrls = new Set(extractMarkdownLinkUrls(paraphrased));
-
   for (const url of originalUrls) {
     if (!paraphrasedUrls.has(url)) {
       issues.push(`内链 URL 丢失：${url}`);
     }
   }
+
+  const originalImages = extractImageUrls(original);
+  const paraphrasedImages = new Set(extractImageUrls(paraphrased));
+  for (const url of originalImages) {
+    if (!paraphrasedImages.has(url)) {
+      issues.push(`配图 URL 丢失：${url}`);
+    }
+  }
+
+  if (countHeadings(original, 2) !== countHeadings(paraphrased, 2)) {
+    issues.push('H2 标题数量发生变化');
+  }
+  if (countHeadings(original, 3) !== countHeadings(paraphrased, 3)) {
+    issues.push('H3 标题数量发生变化');
+  }
+
+  const originalSpecs = extractNumericSpecs(original);
+  const paraphrasedSpecs = new Set(extractNumericSpecs(paraphrased));
+  for (const spec of originalSpecs) {
+    if (!paraphrasedSpecs.has(spec)) {
+      issues.push(`技术规格丢失：${spec}`);
+    }
+  }
+
+  issues.push(...checkProtectedTerms(original, paraphrased, input.protectedTerms));
+  issues.push(...checkRecommendedKeywords(original, paraphrased, input.recommendedKeywords, keyword));
 
   if (keyword) {
     const originalCount = countKeywordOccurrences(original, keyword);
@@ -64,13 +178,13 @@ export function checkParaphraseSafety(input: ParaphraseSafetyInput): ParaphraseS
     }
 
     const head = paraphrased.slice(0, 200).toLowerCase();
-    if (!head.includes(keyword.toLowerCase())) {
+    if (!input.skipKeywordHeadCheck && !head.includes(keyword.toLowerCase())) {
       issues.push('目标关键词未出现在正文前 200 字符内');
     }
   }
 
-  const originalLen = original.split(/\s+/).filter(Boolean).length;
-  const paraphrasedLen = paraphrased.split(/\s+/).filter(Boolean).length;
+  const originalLen = measureContentLength(original, input.contentLanguage);
+  const paraphrasedLen = measureContentLength(paraphrased, input.contentLanguage);
   if (originalLen > 0) {
     const ratio = paraphrasedLen / originalLen;
     if (ratio < 0.85 || ratio > 1.15) {

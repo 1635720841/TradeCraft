@@ -16,14 +16,19 @@ import { ArticleJobDraftEditService } from './article-job-draft-edit.service';
 import { ArticleJobDraftImageService } from './article-job-draft-image.service';
 import { ArticleJobRewriteService } from './article-job-rewrite.service';
 import { ArticleJobReviewService } from './article-job-review.service';
+import { ArticleJobBriefService } from './article-job-brief.service';
 import { ArticleJobController } from './article-job.controller';
 import { ArticleJobService } from './article-job.service';
+import { LinkingModule } from '../linking/linking.module';
 import { ExportModule } from '../export/export.module';
+import { GscModule } from '../gsc/gsc.module';
+import { ScraperModule } from '../scraper/scraper.module';
+import { ArticleJobInternalLinksService } from './article-job-internal-links.service';
 
 @Module({
-  imports: [ProjectModule, BillingModule, SeoFactoryQueueModule, SeoCheckerModule, LlmModule, SiteModule, ExportModule],
+  imports: [ProjectModule, BillingModule, SeoFactoryQueueModule, SeoCheckerModule, LlmModule, SiteModule, ExportModule, LinkingModule, GscModule, ScraperModule],
   controllers: [ArticleJobController],
-  providers: [ArticleJobService, ArticleJobRewriteService, ArticleJobDraftEditService, ArticleJobDraftImageService, ArticleJobReviewService],
+  providers: [ArticleJobService, ArticleJobBriefService, ArticleJobInternalLinksService, ArticleJobRewriteService, ArticleJobDraftEditService, ArticleJobDraftImageService, ArticleJobReviewService],
   exports: [ArticleJobService],
 })
 export class ArticleJobModule {}

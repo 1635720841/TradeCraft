@@ -24,6 +24,9 @@ import {
   resolveFailedStep,
   type WorkflowResumeStep,
 } from '../../constants/workflow-resume';
+import { enrichBrandVoiceForPrompt } from '../../constants/site-settings';
+import { isBriefApprovalPending } from '../../constants/brief-approval';
+import { resolveSerpResearchOptions } from '../../constants/serp-research-settings';
 import { ContentReviewService } from '../content-review/content-review.service';
 import { IllustrationService } from '../illustration/illustration.service';
 import { LinkingService } from '../linking/linking.service';
@@ -74,6 +77,7 @@ export class WorkflowService {
             brandVoice: true,
             targetMarket: true,
             contentLanguage: true,
+            settings: true,
           },
         },
       },
@@ -90,7 +94,7 @@ export class WorkflowService {
       organizationId,
       projectId,
       targetKeyword: job.targetKeyword,
-      brandVoice: job.site.brandVoice ?? undefined,
+      brandVoice: enrichBrandVoiceForPrompt(job.site.brandVoice, job.site.settings),
       targetMarket: job.site.targetMarket ?? 'US',
       contentLanguage: job.contentLanguage ?? job.site.contentLanguage ?? 'en',
     };
@@ -100,6 +104,7 @@ export class WorkflowService {
     const steps: Record<WorkflowResumeStep, () => Promise<void>> = {
       serp: async () => {
         await this.updateStatus(jobId, 'RESEARCHING');
+        const serp = resolveSerpResearchOptions(job.site.settings, scraperOptions);
         await this.scraperService.researchSerp({
           jobId: ctx.jobId,
           traceId: ctx.traceId,
@@ -108,8 +113,11 @@ export class WorkflowService {
           targetKeyword: ctx.targetKeyword,
           targetMarket: ctx.targetMarket,
           contentLanguage: ctx.contentLanguage,
-          serpArticleLimit: scraperOptions?.serpArticleLimit,
-          serpArticlesOnly: scraperOptions?.serpArticlesOnly,
+          serpArticleLimit: serp.serpArticleLimit,
+          serpArticlesOnly: serp.serpArticlesOnly,
+          organicFetchNum: serp.organicFetchNum,
+          minArticleCandidates: serp.minArticleCandidates,
+          cacheTtlSeconds: serp.cacheTtlSeconds,
         });
       },
       brief: async () => {
@@ -162,7 +170,22 @@ export class WorkflowService {
     };
 
     for (let i = startIdx; i < WORKFLOW_STEPS.length; i++) {
-      await steps[WORKFLOW_STEPS[i]]();
+      const step = WORKFLOW_STEPS[i];
+      await steps[step]();
+
+      if (step === 'brief') {
+        const paused = await this.shouldPauseForBriefApproval(jobId);
+        if (paused) {
+          this.logger.info('Workflow paused for brief approval', {
+            traceId,
+            organizationId,
+            projectId,
+            jobId,
+            action: 'workflow.brief_paused',
+          });
+          return;
+        }
+      }
     }
 
     const outputUrl = await this.exportService.exportForJob({
@@ -234,6 +257,14 @@ export class WorkflowService {
       errorMessage,
       failedStep,
     });
+  }
+
+  private async shouldPauseForBriefApproval(jobId: string): Promise<boolean> {
+    const job = await this.prisma.articleJob.findFirst({
+      where: { id: jobId },
+      select: { briefData: true },
+    });
+    return isBriefApprovalPending(job?.briefData);
   }
 
   private async updateStatus(jobId: string, status: JobStatus | 'REVIEWING'): Promise<void> {

@@ -1,5 +1,5 @@
 /**
- * SEO 优化流水线纯函数：续跑判定、轮次上限、Semrush 本地分保护。
+ * SEO 优化流水线纯函数：续跑判定、轮次上限、Semrush 验收判定。
  * 供 SeoCheckerService 与单元测试共用。
  */
 import {
@@ -13,6 +13,8 @@ import {
   SEMRUSH_NEAR_MISS_MARGIN,
   SEMRUSH_PASS_THRESHOLD,
   SEMRUSH_RETRY_EXTRA_ROUNDS,
+  SEMRUSH_ULTRA_NEAR_MISS_EXTRA_ROUNDS,
+  SEMRUSH_ULTRA_NEAR_MISS_MARGIN,
 } from '../constants/seo-score';
 
 export interface SeoOptimizeHistoryEntry {
@@ -54,6 +56,14 @@ export function shouldSkipLocalOptimization(
   return (localSeoScore ?? 0) >= LOCAL_SEO_PASS_THRESHOLD || seoCheck.local?.passed === true;
 }
 
+/** 续跑 Semrush 时跳过本地优化与进门闸（Semrush 优先下本地分可能已下降） */
+export function shouldSkipLocalPipeline(
+  localAlreadyPassed: boolean,
+  semrushResumable: boolean,
+): boolean {
+  return localAlreadyPassed || semrushResumable;
+}
+
 /** Semrush 未达标且有初检基线时可续跑，不重复 RPA 初检 */
 export function canResumeSemrushOptimization(
   semrushScore: number | null | undefined,
@@ -93,33 +103,19 @@ export function resolveSemrushOptimizeRoundCap(
   if (bestScore >= SEMRUSH_PASS_THRESHOLD - SEMRUSH_NEAR_MISS_MARGIN) {
     cap += SEMRUSH_NEAR_MISS_EXTRA_ROUNDS;
   }
-  if (isSemrushResume && completedRounds >= SEMRUSH_MAX_OPTIMIZE_ROUNDS) {
+  if (bestScore >= SEMRUSH_PASS_THRESHOLD - SEMRUSH_ULTRA_NEAR_MISS_MARGIN) {
+    cap += SEMRUSH_ULTRA_NEAR_MISS_EXTRA_ROUNDS;
+  }
+  if (isSemrushResume) {
     cap = Math.max(cap, completedRounds + SEMRUSH_RETRY_EXTRA_ROUNDS);
   }
   return cap;
 }
 
-/** Semrush 优化轮：Semrush 已达标直接保留；否则本地须达标，或 Semrush 提升时允许本地降 1 分 */
-export function meetsSemrushLocalGuard(
-  candidateLocalScore: number,
-  baselineLocalScore: number,
+/** Semrush 优化轮：Semrush 提升或达标即保留；本地分仅作参考，不参与回滚判定 */
+export function shouldAcceptSemrushCandidate(
   semrushImproved: boolean,
   semrushPassing: boolean,
 ): boolean {
-  if (semrushPassing) return true;
-  if (candidateLocalScore >= LOCAL_SEO_PASS_THRESHOLD) return true;
-  return (
-    semrushImproved &&
-    baselineLocalScore >= LOCAL_SEO_PASS_THRESHOLD &&
-    candidateLocalScore >= LOCAL_SEO_PASS_THRESHOLD - 1
-  );
-}
-
-export function resolveSemrushRollbackReason(
-  semrushImproved: boolean,
-  localGuard: boolean,
-): 'score_regressed' | 'local_below_threshold' | 'both' {
-  if (!semrushImproved && !localGuard) return 'both';
-  if (!localGuard) return 'local_below_threshold';
-  return 'score_regressed';
+  return semrushImproved || semrushPassing;
 }

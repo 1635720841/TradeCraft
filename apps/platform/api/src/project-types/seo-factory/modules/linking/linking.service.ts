@@ -13,6 +13,10 @@ import { PrismaService } from '../../../../core/database/prisma.service';
 import { LoggerService } from '../../../../core/logger/logger.service';
 import { injectInternalLinks } from './link-match.util';
 import { SitePageService } from './site-page.service';
+import {
+  filterPagesByPreferredTypes,
+  resolvePreferredPageTypes,
+} from '../../constants/content-form-link-routing.util';
 
 export interface LinkingJobContext {
   jobId: string;
@@ -33,7 +37,7 @@ export class LinkingService {
   async injectInternalLinksForJob(ctx: LinkingJobContext): Promise<void> {
     const job = await this.prisma.articleJob.findFirst({
       where: { id: ctx.jobId, organizationId: ctx.organizationId, projectId: ctx.projectId },
-      select: { draftData: true },
+      select: { draftData: true, searchIntent: true, contentForm: true, targetKeyword: true },
     });
 
     const draftData = (job?.draftData ?? {}) as {
@@ -77,7 +81,12 @@ export class LinkingService {
       return;
     }
 
-    const result = injectInternalLinks(content, candidates);
+    const preferredTypes = resolvePreferredPageTypes(job?.searchIntent, job?.contentForm);
+    candidates = filterPagesByPreferredTypes(candidates, preferredTypes);
+
+    const result = injectInternalLinks(content, candidates, {
+      targetKeyword: job?.targetKeyword,
+    });
 
     await this.markLinkingApplied(ctx.jobId, draftData, result.content, result.links);
 

@@ -25,6 +25,7 @@ import {
 } from '../../constants/draft-edit';
 import { isRewriteStale, type RewritePending } from '../../constants/rewrite';
 import { isSemrushCheckStale, type SemrushCheckPending } from '../../constants/semrush-check';
+import { enrichBrandVoiceForPrompt } from '../../constants/site-settings';
 import { canPublishArticle, detectYmylContent, getYmylReview } from '../content-review/ymyl-detect.util';
 import { ExportService } from '../export/export.service';
 import type { LlmJobContext } from '../llm/llm.service';
@@ -190,7 +191,7 @@ export class ArticleJobDraftEditService {
         organizationId,
         projectId,
         targetKeyword: job.targetKeyword,
-        brandVoice: job.site.brandVoice ?? undefined,
+        brandVoice: enrichBrandVoiceForPrompt(job.site.brandVoice, job.site.settings) ?? undefined,
         contentLanguage: job.contentLanguage ?? job.site.contentLanguage ?? 'en',
       },
       postSaveAction,
@@ -219,7 +220,7 @@ export class ArticleJobDraftEditService {
       organizationId,
       projectId,
       targetKeyword: job.targetKeyword,
-      brandVoice: job.site.brandVoice ?? undefined,
+      brandVoice: enrichBrandVoiceForPrompt(job.site.brandVoice, job.site.settings) ?? undefined,
       contentLanguage: job.contentLanguage ?? job.site.contentLanguage ?? 'en',
     };
 
@@ -368,7 +369,7 @@ export class ArticleJobDraftEditService {
         seoCheckData: true,
         briefData: true,
         contentLanguage: true,
-        site: { select: { brandVoice: true, contentLanguage: true } },
+        site: { select: { brandVoice: true, contentLanguage: true, settings: true } },
       },
     });
 

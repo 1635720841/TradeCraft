@@ -8,6 +8,9 @@ export const SEMRUSH_UI_POLL_MS = Number(process.env.SEMRUSH_UI_POLL_MS ?? 2_000
 /** 点击展开、填表后的短暂停顿，等待 Angular 渲染 */
 export const SEMRUSH_UI_SETTLE_MS = Number(process.env.SEMRUSH_UI_SETTLE_MS ?? 2_500);
 
+/** 展开「设置新目标」后等待关键词输入框的轮询间隔（折叠区展开为同步 DOM，无需长 settle） */
+export const SEMRUSH_EXPAND_POLL_MS = Number(process.env.SEMRUSH_EXPAND_POLL_MS ?? 300);
+
 /** 侧栏分数连续相同读数达到此次数后才视为终态（避免分析未完成就退出） */
 export const SEMRUSH_SCORE_STABLE_POLLS = Number(process.env.SEMRUSH_SCORE_STABLE_POLLS ?? 3);
 

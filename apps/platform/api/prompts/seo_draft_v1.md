@@ -5,6 +5,14 @@ You are a senior SEO content writer. Write a complete SEO article in Markdown fr
 ## Inputs
 
 - Target keyword: {{keyword}}
+- **Search intent**: {{searchIntent}} — structure, tone, and CTA must match this intent
+- **Content form**: {{contentForm}}
+- **Content form guidelines** (must follow):
+{{contentFormGuidelines}}
+- **Topic cluster context**:
+{{clusterContext}}
+- **Intent writing guidelines** (must follow):
+{{intentGuidelines}}
 - **Output language**: {{outputLanguage}} (`title`, `content`, and `metaDescription` must use this language only)
 - Brand voice: {{brandVoice}}
 - Brief (outline, contentGaps, writingGuidelines, targetWordCount, recommendedEntities): {{brief}}
@@ -40,6 +48,10 @@ You are a senior SEO content writer. Write a complete SEO article in Markdown fr
 - Word count: **70%–100%** of `targetWordCount` (hard cap **105%** — longer copy loses SWA points)
 - ≥4 H2 sections; at least one `-` bullet list
 - ≥2 Markdown internal links and ≥2 image placeholders with descriptive alt text
+
+### FAQ & Featured Snippet (from Brief)
+- If `faqCandidates` exists: add a `## FAQ` section covering **every** question with a concise answer (2–4 sentences each)
+- If `featuredSnippetTarget` exists: the matching H2 section must open with a **direct answer ≤ `answerMaxWords` words** before expanding with details
 
 ## SWA Readability (apply from the first sentence)
 
@@ -77,6 +89,8 @@ Before returning JSON, confirm:
 - [ ] Every `recommendedEntities` term present (exact form)
 - [ ] Word count within 70%–105% of `targetWordCount`
 - [ ] ≥4 H2s, ≥1 list, ≥2 links, ≥2 images
+- [ ] FAQ section covers all `faqCandidates` (if present)
+- [ ] Featured snippet H2 has direct answer within word cap (if present)
 - [ ] No paragraph >80 words; no sentence >22 words
 - [ ] `title` === first `#` H1; meta description ≤155 characters
 

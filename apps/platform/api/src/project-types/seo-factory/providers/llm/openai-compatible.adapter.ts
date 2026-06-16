@@ -39,6 +39,7 @@ import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { LoggerService } from '../../../../core/logger/logger.service';
 import { PromptLoaderService } from '../prompt-loader.service';
 import { PromptBindingService } from '../../../../modules/prompt/prompt-binding.service';
+import { SEMRUSH_PASS_THRESHOLD } from '../../constants/seo-score';
 import type { PromptRuntimeSlotId } from '../../../../modules/prompt/prompt-slot-metadata';
 import {
   toEnglishPromptScoreBreakdown,
@@ -55,14 +56,60 @@ const BRIEF_SUMMARY_FALLBACK_EN =
 const SUGGESTION_FALLBACK_ZH = '（无具体条目，请按可读性、去 AI 感与原创性整体润色）';
 const KEYWORD_FALLBACK_ZH = '（无额外实体词，保持现有术语覆盖）';
 
+function buildContentCoverageMaxedBlock(input: OptimizeInput): string {
+  if (!input.contentCoverageMaxed) return '';
+  return [
+    '## CONTENT COVERAGE MAXED (do NOT add SERP sentences or keyword placements)',
+    '',
+    'Keyword coverage and SERP entities are already **25/25**. Adding new entity sentences will **hurt** readability and word count.',
+    '',
+    '**This round: readability + structure ONLY** — split long sentences (≤22 words), trim to 105% word cap, fix long paragraphs.',
+    'Do **not** add paragraphs, bullet lists, or new terminology unless required to fix structure.',
+  ].join('\n');
+}
+
 function buildReadabilityPriorityBlock(input: OptimizeInput): string {
   if (!input.readabilityPriority) return '';
-  const points =
-    typeof input.pointsToGo === 'number' ? String(input.pointsToGo) : '?';
-  const target = input.localScoreTarget ?? LOCAL_SEO_PASS_THRESHOLD;
   const audit =
     input.readabilityAudit?.trim() ||
     'Scan the body and split every sentence over 22 words and every paragraph over 80 words.';
+
+  if (input.optimizePhase === 'semrush') {
+    const gap =
+      typeof input.pointsToGo === 'number'
+        ? String(input.pointsToGo)
+        : '?';
+    const ultraNear = typeof input.pointsToGo === 'number' && input.pointsToGo <= 0.1;
+    const surgicalBlock = ultraNear
+      ? [
+          '',
+          '## ULTRA NEAR-MISS (8.9→9.0) — SURGICAL EDITS ONLY',
+          '',
+          '- Change **only** sentences explicitly listed in suggestions (casual tone quotes)',
+          '- Do **not** restructure H2s, delete sections, or rewrite unlisted sentences',
+          '- Word count ±3%; keep every link, image, and recommended keyword',
+          '',
+        ].join('\n')
+      : '';
+    return [
+      '## SEMRUSH READABILITY PRIORITY (this round ONLY)',
+      '',
+      `Semrush Overall is **${gap} points** below ${SEMRUSH_PASS_THRESHOLD}. **SWA sidebar fixes are mandatory this round.**`,
+      '',
+      '- Split **every** paragraph over **60 words** (2–3 sentences each); split sentences over **22 words**',
+      '- Rewrite **every** casual sentence flagged in suggestions; remove filler adverbs/phrases',
+      '- Weave **every** SWA recommended keyword at least once',
+      '- Do **not** add length — surgical fixes only unless sidebar says copy is too short',
+      '',
+      audit,
+      surgicalBlock,
+      '**Semrush Overall ≥9.0 overrides local pre-check score this round.**',
+    ].join('\n');
+  }
+
+  const points =
+    typeof input.pointsToGo === 'number' ? String(input.pointsToGo) : '?';
+  const target = input.localScoreTarget ?? LOCAL_SEO_PASS_THRESHOLD;
   return [
     '## READABILITY PRIORITY MODE (this round ONLY)',
     '',
@@ -97,7 +144,15 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
   async generateBrief(input: BriefInput): Promise<BriefOutput> {
     const promptVersion = await this.loadPromptVersion('brief');
     const template = await this.promptLoader.load(promptVersion);
-    const userContent = this.fillTemplate(template, this.buildPromptVars(input));
+    const userContent = this.fillTemplate(template, {
+      ...this.buildPromptVars(input),
+      searchIntent: input.searchIntent ?? 'informational',
+      intentGuidelines: input.intentGuidelines ?? '(Follow standard informational SEO structure.)',
+      contentForm: input.contentForm ?? 'standard SEO article',
+      contentFormGuidelines: input.contentFormGuidelines ?? '(Use standard article structure.)',
+      clusterContext: input.clusterContext ?? '(Not part of a topic cluster.)',
+      serpContext: this.formatSerpContext(input.serpContext),
+    });
 
     const outline = await this.chatJson(userContent, 'generateBrief', resolveLlmSampling('default'), 'brief');
     return { outline, promptVersion };
@@ -109,17 +164,24 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
     const userContent = this.fillTemplate(template, {
       ...this.buildPromptVars(input),
       brief: JSON.stringify(input.brief.outline),
+      searchIntent: input.searchIntent ?? 'informational',
+      intentGuidelines: input.intentGuidelines ?? '(Follow standard informational SEO structure.)',
+      contentForm: input.contentForm ?? 'standard SEO article',
+      contentFormGuidelines: input.contentFormGuidelines ?? '(Use standard article structure.)',
+      clusterContext: input.clusterContext ?? '(Not part of a topic cluster.)',
     });
 
-    const parsed = await this.chatJson<{ content?: string }>(
-      userContent,
-      'generateDraft',
-      resolveLlmSampling('default'),
-      'draft',
-    );
+    const parsed = await this.chatJson<{
+      title?: string;
+      content?: string;
+      metaDescription?: string;
+    }>(userContent, 'generateDraft', resolveLlmSampling('default'), 'draft');
     const content = typeof parsed.content === 'string' ? parsed.content : JSON.stringify(parsed);
+    const title = typeof parsed.title === 'string' ? parsed.title.trim() : undefined;
+    const metaDescription =
+      typeof parsed.metaDescription === 'string' ? parsed.metaDescription.trim() : undefined;
 
-    return { content, promptVersion };
+    return { title, content, metaDescription, promptVersion };
   }
 
   async generateOptimize(input: OptimizeInput): Promise<OptimizeOutput> {
@@ -166,6 +228,7 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
       input.focusDimensions?.trim() ||
       '(Address the lowest-scoring dimensions in the breakdown above.)';
     const readabilityPriorityBlock = buildReadabilityPriorityBlock(input);
+    const contentCoverageMaxedBlock = buildContentCoverageMaxedBlock(input);
     const scoreGapPlan =
       input.scoreGapPlan?.trim() ||
       '(Use the breakdown above — fix the smallest gap dimension first.)';
@@ -181,6 +244,7 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
       optimizeHistoryContext,
       focusDimensions,
       readabilityPriorityBlock,
+      contentCoverageMaxedBlock,
       semrushCompetitorWordCount: semrushWordTarget,
       semrushCurrentWordCount: semrushCurrentWords,
       semrushReadabilityScore: semrushReadability,
@@ -288,9 +352,26 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
 
     const userContent = this.fillTemplate(template, {
       keyword: input.keyword,
+      searchIntent: input.searchIntent ?? 'informational',
       outputLanguage: getContentLanguageLabel(contentLanguage),
       brandVoice: input.brandVoice ?? defaultBrandVoice(contentLanguage),
       protectedTerms,
+      briefSummary: input.briefSummary ?? '（无额外 Brief 约束）',
+      semrushCurrentWordCount:
+        typeof input.semrushCurrentWordCount === 'number'
+          ? String(input.semrushCurrentWordCount)
+          : 'unknown',
+      semrushCompetitorWordCount:
+        typeof input.semrushCompetitorWordCount === 'number'
+          ? String(input.semrushCompetitorWordCount)
+          : 'unknown',
+      semrushWordCountCap:
+        typeof input.semrushWordCountCap === 'number'
+          ? String(input.semrushWordCountCap)
+          : 'no cap',
+      chunkHint:
+        input.chunkHint?.trim() ||
+        'Full article — preserve keyword in the first 200 characters of the body.',
       content: input.content,
     });
 
@@ -338,7 +419,7 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
       : [];
 
     return {
-      passed: parsed.passed !== false,
+      passed: parsed.passed === true,
       warnings,
       promptVersion,
     };
@@ -355,6 +436,103 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
       outputLanguage: getContentLanguageLabel(contentLanguage),
       brandVoice: input.brandVoice ?? defaultBrandVoice(contentLanguage),
     };
+  }
+
+  private formatSerpContext(serpContext: unknown): string {
+    if (!serpContext || typeof serpContext !== 'object') {
+      return '(No SERP context available.)';
+    }
+
+    const data = serpContext as {
+      organic?: Array<{
+        position?: number;
+        title?: string;
+        snippet?: string;
+        link?: string;
+        scraped?: {
+          wordCount?: number;
+          headings?: string[];
+          excerpt?: string;
+          error?: string;
+        };
+      }>;
+    };
+
+    const organic = data.organic ?? [];
+    if (organic.length === 0) {
+      return '(No SERP organic results in context.)';
+    }
+
+    const lines = organic.map((item, index) => {
+      const pos = item.position ?? index + 1;
+      const title = item.title?.trim() || '(untitled)';
+      const snippet = item.snippet?.trim() || '';
+      const link = item.link?.trim() || '';
+      const scraped = item.scraped;
+      const parts = [`#${pos} ${title}`, `URL: ${link}`, `Snippet: ${snippet}`];
+
+      if (scraped && !scraped.error) {
+        parts.push(`Word count: ~${scraped.wordCount ?? 0}`);
+        if (scraped.headings?.length) {
+          parts.push(`Headings: ${scraped.headings.slice(0, 10).join(' | ')}`);
+        }
+        if (scraped.excerpt) {
+          parts.push(`Excerpt: ${scraped.excerpt.slice(0, 400)}`);
+        }
+      } else if (scraped?.error) {
+        parts.push(`(Page scrape failed: ${scraped.error})`);
+      }
+
+      return parts.join('\n');
+    });
+
+    return lines.join('\n\n').slice(0, 8000);
+  }
+
+  private buildJsonSystemPrompt(strict: boolean): string {
+    const base =
+      'You output valid JSON only. No Markdown code fences, XML tags, chain-of-thought, thinking blocks, or commentary outside the JSON object.';
+    if (!strict) return base;
+    return `${base} Start your response with { and end with }. Do not include any text before or after the JSON.`;
+  }
+
+  private async parseJsonWithRetry<T>(
+    raw: string,
+    retryFetch: () => Promise<string>,
+    action: string,
+    providerLabel: string,
+    model: string,
+  ): Promise<T> {
+    try {
+      return parseLlmJson<T>(raw);
+    } catch (error) {
+      if (!(error instanceof LlmJsonParseError)) {
+        throw error;
+      }
+
+      this.logger.warn('LLM JSON parse failed, retrying once', {
+        action,
+        provider: providerLabel,
+        model,
+        rawSnippet: error.rawSnippet,
+      });
+
+      try {
+        const retryRaw = await retryFetch();
+        return parseLlmJson<T>(retryRaw);
+      } catch (retryError) {
+        if (retryError instanceof LlmJsonParseError) {
+          this.logger.error('LLM JSON parse failed after retry', {
+            action,
+            provider: providerLabel,
+            model,
+            rawSnippet: retryError.rawSnippet,
+          });
+          throw new BusinessException(ErrorCodes.LLM_PARSE_ERROR, '大模型返回格式无效，请重试');
+        }
+        throw retryError;
+      }
+    }
   }
 
   private fillTemplate(template: string, vars: Record<string, string>): string {
@@ -394,7 +572,7 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
     const body: Record<string, unknown> = {
       model: config.model,
       messages: [
-        { role: 'system', content: 'You output valid JSON only. No Markdown code fences or extra commentary.' },
+        { role: 'system', content: this.buildJsonSystemPrompt(false) },
         { role: 'user', content: userContent },
       ],
     };
@@ -441,20 +619,46 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
         );
       }
 
-      try {
-        return parseLlmJson<T>(raw);
-      } catch (error) {
-        if (error instanceof LlmJsonParseError) {
-          this.logger.error('LLM JSON parse failed', {
-            action,
-            provider: config.providerLabel,
-            model: config.model,
-            rawSnippet: error.rawSnippet,
-          });
-          throw new BusinessException(ErrorCodes.LLM_PARSE_ERROR, '大模型返回格式无效，请重试');
+      return this.parseJsonWithRetry<T>(raw, async () => {
+        const retryBody = {
+          ...body,
+          messages: [
+            { role: 'system', content: this.buildJsonSystemPrompt(true) },
+            { role: 'user', content: `${userContent}\n\nREMINDER: Reply with ONE raw JSON object only.` },
+          ],
+        };
+
+        const retryResponse = await fetchWithRetry(
+          apiUrl,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${config.apiKey}`,
+            },
+            body: JSON.stringify(retryBody),
+            signal: controller.signal,
+          },
+          { label: config.providerLabel },
+        );
+
+        if (!retryResponse.ok) {
+          throw new BusinessException(
+            ErrorCodes.EXTERNAL_API_ERROR,
+            `${config.providerLabel} JSON 重试请求失败：HTTP ${retryResponse.status}`,
+          );
         }
-        throw error;
-      }
+
+        const retryData = (await retryResponse.json()) as OpenAiChatResponse;
+        const retryRaw = retryData.choices?.[0]?.message?.content;
+        if (!retryRaw) {
+          throw new BusinessException(
+            ErrorCodes.EXTERNAL_API_ERROR,
+            `${config.providerLabel} JSON 重试返回内容为空`,
+          );
+        }
+        return retryRaw;
+      }, action, config.providerLabel, config.model);
     } catch (error) {
       if (error instanceof BusinessException) {
         throw error;

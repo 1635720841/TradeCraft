@@ -22,6 +22,7 @@ import {
   type RewritePending,
 } from '../../constants/rewrite';
 import { isSemrushCheckStale, type SemrushCheckPending } from '../../constants/semrush-check';
+import { enrichBrandVoiceForPrompt } from '../../constants/site-settings';
 import type { LlmJobContext } from '../llm/llm.service';
 import { LlmService } from '../llm/llm.service';
 import { SeoCheckerService } from '../seo-checker/seo-checker.service';
@@ -66,7 +67,7 @@ export class ArticleJobRewriteService {
         draftData: true,
         seoCheckData: true,
         contentLanguage: true,
-        site: { select: { brandVoice: true, contentLanguage: true } },
+        site: { select: { brandVoice: true, contentLanguage: true, settings: true } },
       },
     });
 
@@ -125,7 +126,7 @@ export class ArticleJobRewriteService {
       organizationId,
       projectId,
       targetKeyword: job.targetKeyword,
-      brandVoice: job.site.brandVoice ?? undefined,
+      brandVoice: enrichBrandVoiceForPrompt(job.site.brandVoice, job.site.settings) ?? undefined,
       contentLanguage: job.contentLanguage ?? job.site.contentLanguage ?? 'en',
     };
 
@@ -166,7 +167,7 @@ export class ArticleJobRewriteService {
         targetKeyword: true,
         draftData: true,
         contentLanguage: true,
-        site: { select: { brandVoice: true, contentLanguage: true } },
+        site: { select: { brandVoice: true, contentLanguage: true, settings: true } },
       },
     });
 
@@ -212,7 +213,7 @@ export class ArticleJobRewriteService {
       organizationId,
       projectId,
       targetKeyword: job.targetKeyword,
-      brandVoice: job.site.brandVoice ?? undefined,
+      brandVoice: enrichBrandVoiceForPrompt(job.site.brandVoice, job.site.settings) ?? undefined,
       contentLanguage: job.contentLanguage ?? job.site.contentLanguage ?? 'en',
     };
 

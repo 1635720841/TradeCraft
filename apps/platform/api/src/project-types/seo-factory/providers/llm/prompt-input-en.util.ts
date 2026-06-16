@@ -47,6 +47,8 @@ const SUGGESTION_EXACT: Record<string, string> = {
     'Use images to enrich the text and engage readers.',
   '重写非常随意的句子。': 'Rewrite overly casual sentences.',
   '考虑移除或替换填充词。': 'Consider removing or replacing filler words.',
+  '[可读性·必做] 全文每段 ≤60 词（2–3 句）；技术枚举改列表，避免 SWA 编辑器标紫「段落太长」':
+    'Split every paragraph to ≤60 words (2–3 sentences); use lists for enumerations — avoid SWA “paragraph too long” highlights',
   '（无具体条目，请按可读性、去 AI 感与原创性整体润色）':
     '(No specific items — improve readability, reduce AI tone, and strengthen originality globally)',
   '（无额外实体词，保持现有术语覆盖）':
@@ -93,8 +95,39 @@ const SUGGESTION_PATTERNS: Array<{ pattern: RegExp; replace: (match: RegExpMatch
     replace: (m) => `Target keywords: ${m[1]}`,
   },
   {
+    pattern: /^\[可读性·必做\] 当前约 (\d+) 词，Semrush 竞品标杆约 (\d+) 词：须增补至 (\d+)–(\d+) 词（加案例\/FAQ\/对比表，禁止废话堆砌）$/,
+    replace: (m) =>
+      `[Readability·MUST] ~${m[1]} words now, competitor benchmark ~${m[2]}: expand to ${m[3]}–${m[4]} words (add cases/FAQ/comparison tables, no fluff)`,
+  },
+  {
     pattern: /^语气形式: (.+)$/,
     replace: (m) => `Formality level: ${m[1]}`,
+  },
+  {
+    pattern: /^\[语气·必做\] 改写此随意句: (.+)$/,
+    replace: (m) => `[Tone·MUST] Rewrite this casual sentence: ${m[1]}`,
+  },
+  {
+    pattern: /^\[SEO·必做\] SWA 推荐词须各至少出现 1 次（自然嵌入）: (.+)$/,
+    replace: (m) => `[SEO·MUST] Each SWA recommended term ≥1× (natural placement): ${m[1]}`,
+  },
+  {
+    pattern: /^\[可读性·必做\] 拆分超长段（(\d+) 词）: "(.+)"$/,
+    replace: (m) => `[Readability·MUST] Split long paragraph (${m[1]} words): "${m[2]}"`,
+  },
+  {
+    pattern: /^\[可读性·必做\] 将超长句从 (\d+) 条压到 ≤2 条（单句 ≤22 词）$/,
+    replace: (m) =>
+      `[Readability·MUST] Reduce long sentences from ${m[1]} to ≤2 (each sentence ≤22 words)`,
+  },
+  {
+    pattern: /^\[Semrush·必做\] Overall ([\d.]+)\/10，距 ([\d.]+) 仅差 ([\d.]+)：逐项落实侧栏所有红点，优先拆段与语气$/,
+    replace: (m) =>
+      `[Semrush·MUST] Overall ${m[1]}/10, only ${m[3]} below ${m[2]} — fix every sidebar red dot; split paragraphs and tone first`,
+  },
+  {
+    pattern: /^\[Semrush\] Overall ([\d.]+)\/10，目标 ≥([\d.]+)：按侧栏建议逐项修改$/,
+    replace: (m) => `[Semrush] Overall ${m[1]}/10, target ≥${m[2]} — implement every sidebar item`,
   },
 ];
 

@@ -3,13 +3,25 @@
  */
 
 import type {
+  ArticleJobBriefData,
+  ArticleJobDraftData,
   ArticleJobItem,
   ArticleJobYmylReview,
   DraftPostSaveAction,
   DraftStaleness,
   DraftStalenessAffected,
-  ManualEditHistoryEntry
+  ManualEditHistoryEntry,
+  SiteContentProfile,
 } from "@/api/seo-factory/types";
+import {
+  canPublishJobToCms,
+  isCmsConfigured,
+  resolveCmsPublishStatus,
+} from "@/utils/seo-factory/cms-publish-status";
+import {
+  buildPrePublishChecklistItems,
+  prePublishChecklistAllDone as sharedPrePublishAllDone,
+} from "@wm/shared-core";
 
 export interface DraftEditPreviewFields {
   title?: string;
@@ -17,15 +29,52 @@ export interface DraftEditPreviewFields {
   content?: string;
 }
 
+export function extractMarkdownH1(content: string): string {
+  const match = content.replace(/\r\n/g, "\n").match(/^#\s+(.+)$/m);
+  return match?.[1]?.trim() ?? "";
+}
+
+/** 编辑/预览用：draftData 缺 title/meta 时回退 Brief 或正文 H1 */
+export function resolveDraftTitleAndMeta(
+  draft?: ArticleJobDraftData | null,
+  brief?: ArticleJobBriefData | null
+): { title: string; metaDescription: string } {
+  const title =
+    draft?.title?.trim() ||
+    brief?.outline?.title?.trim() ||
+    extractMarkdownH1(draft?.content ?? "") ||
+    "";
+
+  return {
+    title,
+    metaDescription: draft?.metaDescription?.trim() ?? ""
+  };
+}
+
 export type PublishChecklistAction =
   | "refresh_local"
   | "rerun_semrush"
   | "regenerate_export"
   | "go_ymyl"
-  | "go_edit";
+  | "go_edit"
+  | "go_internal_links"
+  | "go_images"
+  | "publish_cms"
+  | "go_sites";
+
+export type PublishChecklistItemId =
+  | keyof DraftStalenessAffected
+  | "ymyl_review"
+  | "title"
+  | "meta"
+  | "internal_links"
+  | "images"
+  | "export_ready"
+  | "cta"
+  | "cms_ready";
 
 export interface PublishChecklistItem {
-  id: keyof DraftStalenessAffected | "ymyl_review";
+  id: PublishChecklistItemId;
   label: string;
   hint?: string;
   done: boolean;
@@ -224,6 +273,73 @@ export function buildPublishChecklist(input: {
   }
 
   return items;
+}
+
+function draftContainsCta(content: string, profile?: SiteContentProfile | null): boolean {
+  if (!profile?.ctaPrimaryUrl?.trim() && !profile?.ctaPrimaryText?.trim()) return true;
+  const haystack = content.toLowerCase();
+  const url = profile?.ctaPrimaryUrl?.trim().toLowerCase();
+  const text = profile?.ctaPrimaryText?.trim().toLowerCase();
+  if (url && haystack.includes(url.replace(/^https?:\/\//, ""))) return true;
+  if (text && haystack.includes(text)) return true;
+  return false;
+}
+
+/** 发布前检查清单（任务已完成、无编辑 stale 时） */
+export function buildPrePublishChecklist(input: {
+  job: ArticleJobItem;
+  siteContentProfile?: SiteContentProfile | null;
+  cmsUiEnabled?: boolean;
+  exportStale?: boolean;
+  resolvingAction?: string | null;
+  publishingCms?: boolean;
+}): PublishChecklistItem[] {
+  if (input.job.status !== "COMPLETED") return [];
+  if (input.job.draftData?.staleness) return [];
+
+  const { title, metaDescription } = resolveDraftTitleAndMeta(
+    input.job.draftData,
+    input.job.briefData
+  );
+  const content = input.job.draftData?.content ?? "";
+  const linkCount =
+    input.job.internalLinkCount ?? input.job.draftData?.internalLinks?.length ?? 0;
+  const ymylBlocked = ymylNeedsReview(input.job.seoCheckData?.ymylReview ?? null);
+  const cmsStatus = resolveCmsPublishStatus(input.job);
+  const cmsConfigured = isCmsConfigured(input.job);
+  const ctaRequired = Boolean(
+    input.siteContentProfile?.ctaPrimaryUrl?.trim() ||
+      input.siteContentProfile?.ctaPrimaryText?.trim()
+  );
+
+  const sharedItems = buildPrePublishChecklistItems({
+    status: input.job.status,
+    hasStaleness: Boolean(input.job.draftData?.staleness),
+    title,
+    metaDescription,
+    content,
+    internalLinksApplied: input.job.draftData?.internalLinksApplied,
+    internalLinkCount: linkCount,
+    imagesApplied: input.job.draftData?.imagesApplied,
+    outputUrl: input.job.outputUrl,
+    exportStale: input.exportStale,
+    ymylNeedsReview: ymylBlocked,
+    ctaRequired,
+    ctaPresent: draftContainsCta(content, input.siteContentProfile),
+    cmsConfigured,
+    cmsUiEnabled: Boolean(input.cmsUiEnabled),
+    cmsPublished: cmsStatus === "published" || cmsStatus === "draft",
+    canPublishCms: canPublishJobToCms(input.job),
+    cmsBlocked: !input.job.outputUrl || ymylBlocked || Boolean(input.exportStale),
+    resolvingAction: input.resolvingAction,
+    publishingCms: input.publishingCms
+  });
+
+  return sharedItems as PublishChecklistItem[];
+}
+
+export function prePublishChecklistAllDone(items: PublishChecklistItem[]): boolean {
+  return sharedPrePublishAllDone(items);
 }
 
 export function draftEditStatusLabel(job: Pick<ArticleJobItem, "draftData">): string | null {

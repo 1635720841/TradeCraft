@@ -10,13 +10,15 @@ import { BillingModule } from '../../../../modules/billing/billing.module';
 import { ProjectModule } from '../../../../modules/project/project.module';
 import { SeoFactoryProvidersModule } from '../../providers/seo-factory-providers.module';
 import { ArticleJobModule } from '../article-job/article-job.module';
+import { KeywordClusterController } from './keyword-cluster.controller';
+import { KeywordClusterService } from './keyword-cluster.service';
 import { KeywordPoolController } from './keyword-pool.controller';
 import { KeywordPoolService } from './keyword-pool.service';
 
 @Module({
   imports: [ProjectModule, BillingModule, ArticleJobModule, SeoFactoryProvidersModule],
-  controllers: [KeywordPoolController],
-  providers: [KeywordPoolService],
-  exports: [KeywordPoolService],
+  controllers: [KeywordPoolController, KeywordClusterController],
+  providers: [KeywordPoolService, KeywordClusterService],
+  exports: [KeywordPoolService, KeywordClusterService],
 })
 export class KeywordPoolModule {}

@@ -7,6 +7,8 @@ export type DictTagType = "success" | "warning" | "info" | "danger" | "primary";
 export type DictItem = {
   value: string;
   label: string;
+  /** 运营向说明，用于表单下拉/提示文案 */
+  description?: string;
   type?: DictTagType;
 };
 
@@ -22,6 +24,16 @@ export function dictLabel(
   fallback = "-"
 ): string {
   return findItem(dict, value)?.label ?? fallback;
+}
+
+/** 取运营向说明（无则回退 label） */
+export function dictDescription(
+  dict: readonly DictItem[],
+  value?: string | null,
+  fallback = ""
+): string {
+  const item = findItem(dict, value);
+  return item?.description ?? item?.label ?? fallback;
 }
 
 /** 取 el-tag 的 type */

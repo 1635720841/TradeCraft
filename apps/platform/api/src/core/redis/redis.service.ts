@@ -38,9 +38,34 @@ export class RedisService implements OnModuleDestroy {
     await this.client.del(key);
   }
 
-  /** SERP 缓存默认 TTL 24h */
-  async setSerpCache(key: string, value: string): Promise<void> {
-    await this.setex(key, SERP_CACHE_TTL_SECONDS, value);
+  /** 搜索缓存默认 TTL 24h；ttlSeconds ≤ 0 时由调用方决定不写入 */
+  async setSerpCache(key: string, value: string, ttlSeconds?: number): Promise<void> {
+    const ttl = ttlSeconds ?? SERP_CACHE_TTL_SECONDS;
+    if (ttl <= 0) return;
+    await this.setex(key, ttl, value);
+  }
+
+  /** 清除项目下全部 SERP 搜索缓存 */
+  async clearProjectSerpCache(organizationId: string, projectId: string): Promise<number> {
+    const pattern = `serp:${organizationId}:${projectId}:*`;
+    let cursor = '0';
+    let deleted = 0;
+
+    do {
+      const [nextCursor, keys] = await this.client.scan(
+        cursor,
+        'MATCH',
+        pattern,
+        'COUNT',
+        100,
+      );
+      cursor = nextCursor;
+      if (keys.length > 0) {
+        deleted += await this.client.del(...keys);
+      }
+    } while (cursor !== '0');
+
+    return deleted;
   }
 
   async onModuleDestroy(): Promise<void> {

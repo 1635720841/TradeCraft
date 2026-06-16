@@ -15,7 +15,13 @@ import {
   E2E_REQUIRED,
   E2E_SKIP,
 } from './helpers/config.mjs';
-import { apiRequest, E2eHttpError, isApiReachable, login } from './helpers/http.mjs';
+import { apiRequest, apiMultipartRequest, E2eHttpError, isApiReachable, login } from './helpers/http.mjs';
+
+/** 1×1 PNG，用于 E2E 图片上传 */
+const E2E_PNG_1X1 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
 
 /** @type {{ accessToken: string } | null} */
 let ctx = null;
@@ -173,6 +179,38 @@ describe('E2E draft manual edit', () => {
       assert.equal(error.status, 409);
       assert.equal(error.body?.error?.code ?? error.body?.code, 'DRAFT_VERSION_CONFLICT');
     }
+  });
+
+  it('uploads draft image and returns signed url', async (t) => {
+    const session = requireCtx(t);
+    if (!session) return;
+    const { accessToken } = session;
+    if (!targetJobId) {
+      t.skip('无目标任务');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append(
+      'file',
+      new Blob([E2E_PNG_1X1], { type: 'image/png' }),
+      'e2e-draft-image.png',
+    );
+
+    const uploaded = await apiMultipartRequest(
+      'POST',
+      `/api/v1/projects/${E2E_PROJECT_ID}/article-jobs/${targetJobId}/draft/images`,
+      { token: accessToken, formData },
+    );
+
+    assert.ok(uploaded.data?.url, '应返回图片 URL');
+    assert.match(
+      uploaded.data.url,
+      /^\/api\/v1\/projects\/.+\/article-jobs\/.+\/draft\/images\/.+\?exp=\d+&sig=[a-f0-9]+$/,
+    );
+    assert.equal(uploaded.data?.contentType, 'image/png');
+    assert.ok(uploaded.data?.filename);
+    assert.ok(uploaded.data?.size > 0);
   });
 
   it('rollbacks to pre-edit snapshot', async (t) => {

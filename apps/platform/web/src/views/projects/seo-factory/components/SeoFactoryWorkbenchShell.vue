@@ -1,50 +1,43 @@
 <!--
-  SEO 工厂工作台导航壳：项目上下文 + Tab 导航。
+  SEO 工厂工作台壳：项目上下文 + 左侧导航 + 内容区。
 
   边界：
-  - 不负责：子页面数据加载
+  - 不负责：各子页面数据加载
 -->
 <template>
   <div class="seo-factory-workbench">
-    <div class="workbench-header mb-4 rounded-lg border border-[var(--el-border-color-light)] bg-[var(--el-bg-color)] px-4 py-3">
+    <div
+      class="workbench-header mb-4 rounded-lg border border-[var(--el-border-color-light)] bg-[var(--el-bg-color)] px-4 py-3"
+    >
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div class="flex flex-wrap items-center gap-2">
             <el-button link type="primary" @click="goProjects">← 返回项目列表</el-button>
             <span class="text-gray-300">|</span>
             <span class="font-medium">{{ projectName || "SEO 内容工厂" }}</span>
-            <el-tag size="small" type="info">seo-factory</el-tag>
           </div>
           <p v-if="projectName" class="mt-1 text-sm text-gray-500">
-            管理站点、创建文章任务、处理 YMYL 审核与导出
+            创建文章 → 确认大纲 → 审核 → 发布到网站
           </p>
         </div>
-        <el-button type="primary" @click="goCreateJob">新建任务</el-button>
+        <el-tooltip
+          :disabled="siteCount > 0"
+          content="请先在「站点」创建站点"
+          placement="bottom"
+        >
+          <el-button type="primary" :disabled="siteCount === 0" @click="goCreateJob">
+            新建任务
+          </el-button>
+        </el-tooltip>
       </div>
     </div>
 
-    <el-menu
-      :default-active="activeMenu"
-      mode="horizontal"
-      class="workbench-menu mb-4 rounded-lg border border-[var(--el-border-color-light)]"
-      @select="handleMenuSelect"
-    >
-      <el-menu-item index="overview">概览</el-menu-item>
-      <el-menu-item index="jobs">文章任务</el-menu-item>
-      <el-menu-item index="keywords">关键词池</el-menu-item>
-      <el-menu-item index="sites">站点管理</el-menu-item>
-      <el-menu-item index="reviews">
-        待审核
-        <el-badge
-          v-if="pendingReviewCount > 0"
-          :value="pendingReviewCount"
-          class="ml-2"
-          type="warning"
-        />
-      </el-menu-item>
-    </el-menu>
-
-    <slot />
+    <div class="workbench-body flex gap-4">
+      <SeoFactoryWorkbenchNav />
+      <div class="workbench-content min-w-0 flex-1">
+        <slot />
+      </div>
+    </div>
   </div>
 </template>
 
@@ -53,6 +46,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { getProject } from "@/api/platform/project";
 import { getSeoFactoryProjectStats } from "@/api/seo-factory/article-job";
+import SeoFactoryWorkbenchNav from "./SeoFactoryWorkbenchNav.vue";
 
 defineOptions({ name: "SeoFactoryWorkbenchShell" });
 
@@ -60,16 +54,7 @@ const route = useRoute();
 const router = useRouter();
 const projectId = computed(() => route.params.projectId as string);
 const projectName = ref("");
-const pendingReviewCount = ref(0);
-
-const activeMenu = computed(() => {
-  const name = route.name as string | undefined;
-  if (name === "SeoFactoryOverview") return "overview";
-  if (name === "SeoFactorySites") return "sites";
-  if (name === "SeoFactoryReviews") return "reviews";
-  if (name === "SeoFactoryKeywords") return "keywords";
-  return "jobs";
-});
+const siteCount = ref(0);
 
 async function loadContext() {
   if (!projectId.value) return;
@@ -79,24 +64,11 @@ async function loadContext() {
       getSeoFactoryProjectStats(projectId.value)
     ]);
     projectName.value = project.name;
-    pendingReviewCount.value = stats.pendingReviewCount;
+    siteCount.value = stats.siteCount;
   } catch {
     projectName.value = "";
-    pendingReviewCount.value = 0;
+    siteCount.value = 0;
   }
-}
-
-function handleMenuSelect(index: string) {
-  const routes: Record<string, string> = {
-    overview: "SeoFactoryOverview",
-    jobs: "SeoFactoryJobs",
-    keywords: "SeoFactoryKeywords",
-    sites: "SeoFactorySites",
-    reviews: "SeoFactoryReviews"
-  };
-  const name = routes[index];
-  if (!name || route.name === name) return;
-  router.push({ name, params: { projectId: projectId.value } });
 }
 
 function goProjects() {
@@ -115,9 +87,3 @@ onMounted(() => {
   void loadContext();
 });
 </script>
-
-<style scoped>
-.workbench-menu :deep(.el-menu-item) {
-  height: 44px;
-}
-</style>

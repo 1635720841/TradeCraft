@@ -17,9 +17,6 @@
         <el-descriptions-item v-if="outline.targetWordCount" label="目标字数">
           {{ outline.targetWordCount }}
         </el-descriptions-item>
-        <el-descriptions-item v-if="promptVersion" label="Prompt 版本">
-          {{ promptVersion }}
-        </el-descriptions-item>
       </el-descriptions>
 
       <div v-if="sections.length" class="mb-4">
@@ -40,14 +37,29 @@
       </div>
 
       <div v-if="contentGaps.length">
-        <div class="mb-2 font-medium">内容差异化（Content Gaps）</div>
+        <div class="mb-2 font-medium">内容差异化</div>
         <ul class="list-disc pl-5 space-y-1 text-sm">
           <li v-for="(gap, i) in contentGaps" :key="i">{{ gap }}</li>
         </ul>
       </div>
+
+      <div v-if="faqCandidates.length" class="mt-4">
+        <div class="mb-2 font-medium">FAQ 规划</div>
+        <ul class="list-disc pl-5 space-y-1 text-sm">
+          <li v-for="(item, i) in faqCandidates" :key="i">{{ item }}</li>
+        </ul>
+      </div>
+
+      <div v-if="featuredSnippetTarget?.heading" class="mt-4">
+        <div class="mb-2 font-medium">精选摘要目标</div>
+        <p class="text-sm text-gray-700">
+          H2「{{ featuredSnippetTarget.heading }}」— 首段直接回答，≤
+          {{ featuredSnippetTarget.answerMaxWords ?? 55 }} 词
+        </p>
+      </div>
     </template>
 
-    <el-empty v-else description="暂无 Brief 数据（尚未进入撰写阶段）" />
+    <el-empty v-else description="暂无大纲数据（尚未进入撰写阶段）" />
   </div>
 </template>
 
@@ -62,7 +74,8 @@ const props = defineProps<{
 }>();
 
 const outline = computed(() => props.briefData?.outline);
-const promptVersion = computed(() => props.briefData?.promptVersion);
 const sections = computed(() => outline.value?.outline ?? []);
 const contentGaps = computed(() => outline.value?.contentGaps ?? []);
+const faqCandidates = computed(() => outline.value?.faqCandidates ?? []);
+const featuredSnippetTarget = computed(() => outline.value?.featuredSnippetTarget);
 </script>

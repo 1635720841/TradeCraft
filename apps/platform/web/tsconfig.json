@@ -28,6 +28,12 @@
       ],
       "@build/*": [
         "build/*"
+      ],
+      "@wm/shared-core": [
+        "../../../packages/shared-core/src/index.ts"
+      ],
+      "@wm/shared-core/*": [
+        "../../../packages/shared-core/src/*"
       ]
     },
     "types": [

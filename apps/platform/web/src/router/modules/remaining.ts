@@ -73,7 +73,7 @@ export default [
             component: () =>
               import("@/views/projects/seo-factory/WorkbenchOverviewView.vue"),
             meta: {
-              title: "工作台概览",
+              title: "概览",
               roles: ["admin", "common"],
               showLink: false
             }
@@ -83,17 +83,7 @@ export default [
             name: "SeoFactoryJobs",
             component: () => import("@/views/projects/seo-factory/JobListView.vue"),
             meta: {
-              title: "文章任务",
-              roles: ["admin", "common"],
-              showLink: false
-            }
-          },
-          {
-            path: "keywords",
-            name: "SeoFactoryKeywords",
-            component: () => import("@/views/projects/seo-factory/KeywordPoolView.vue"),
-            meta: {
-              title: "关键词池",
+              title: "任务",
               roles: ["admin", "common"],
               showLink: false
             }
@@ -119,24 +109,107 @@ export default [
             }
           },
           {
+            path: "brief-reviews",
+            redirect: "jobs?stage=outlinePending"
+          },
+          {
+            path: "reviews",
+            redirect: "jobs?stage=reviewPending"
+          },
+          {
+            path: "keywords",
+            component: () =>
+              import("@/views/projects/seo-factory/components/KeywordSchedulingLayout.vue"),
+            redirect: "pool",
+            children: [
+              {
+                path: "pool",
+                name: "SeoFactoryKeywords",
+                component: () => import("@/views/projects/seo-factory/KeywordPoolView.vue"),
+                meta: {
+                  title: "关键词池",
+                  roles: ["admin", "common"],
+                  showLink: false
+                }
+              },
+              {
+                path: "topic-clusters",
+                name: "SeoFactoryTopicClusters",
+                component: () => import("@/views/projects/seo-factory/TopicClusterView.vue"),
+                meta: {
+                  title: "主题集群",
+                  roles: ["admin", "common"],
+                  showLink: false
+                }
+              }
+            ]
+          },
+          {
             path: "sites",
             name: "SeoFactorySites",
             component: () => import("@/views/projects/seo-factory/SiteManageView.vue"),
             meta: {
-              title: "站点管理",
+              title: "站点",
               roles: ["admin", "common"],
               showLink: false
             }
           },
           {
-            path: "reviews",
-            name: "SeoFactoryReviews",
-            component: () => import("@/views/projects/seo-factory/ReviewQueueView.vue"),
+            path: "settings",
+            name: "SeoFactorySettings",
+            component: () => import("@/views/projects/seo-factory/ProjectSettingsView.vue"),
             meta: {
-              title: "待审核",
-              roles: ["admin", "common"],
+              title: "设置",
+              roles: ["admin"],
               showLink: false
             }
+          },
+          {
+            path: "gsc",
+            name: "SeoFactoryGsc",
+            component: () => import("@/views/projects/seo-factory/GscRedirectView.vue"),
+            meta: {
+              title: "搜索表现",
+              roles: ["admin"],
+              showLink: false
+            }
+          },
+          {
+            path: "sites/admin",
+            name: "SeoFactorySiteAdmin",
+            redirect: "settings"
+          },
+          {
+            path: "content/jobs",
+            redirect: "jobs"
+          },
+          {
+            path: "content/brief-reviews",
+            redirect: "brief-reviews"
+          },
+          {
+            path: "content/reviews",
+            redirect: "reviews"
+          },
+          {
+            path: "content",
+            redirect: "jobs"
+          },
+          {
+            path: "scheduling/keywords",
+            redirect: "keywords/pool"
+          },
+          {
+            path: "scheduling/topic-clusters",
+            redirect: "keywords/topic-clusters"
+          },
+          {
+            path: "scheduling",
+            redirect: "keywords/pool"
+          },
+          {
+            path: "sites/config",
+            redirect: "sites"
           }
         ]
       }

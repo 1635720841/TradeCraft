@@ -1,15 +1,15 @@
 <!--
-  站点与页面库管理：站点 CRUD、sitemap 同步供内链匹配。
+  站点运营配置：域名、语言、品牌语气与公司卖点（AI 写作素材）。
 
   边界：
-  - 不负责：内链植入（后端 LinkingService）
+  - 不负责：CMS、页面库、工作流（ProjectSettingsView 设置页）
 -->
 <template>
   <div class="p-4 space-y-4">
     <el-card shadow="never">
       <template #header>
         <div class="flex flex-wrap items-center justify-between gap-2">
-          <span class="font-medium">站点配置</span>
+          <span class="font-medium">站点</span>
           <div class="flex gap-2">
             <el-button type="primary" @click="openCreateDialog">新建站点</el-button>
             <el-button :loading="sitesLoading" @click="loadSites">刷新</el-button>
@@ -17,7 +17,21 @@
         </div>
       </template>
 
-      <el-table v-loading="sitesLoading" :data="sites" stripe>
+      <el-alert
+        v-if="profileMissingFilter"
+        class="mb-4"
+        type="warning"
+        :closable="false"
+        show-icon
+        title="仅显示未填写公司卖点的站点"
+      >
+        <template #default>
+          请编辑站点，补充行业、认证、起订量或文末询盘引导，提升 AI 写作质量。
+          <el-button link type="primary" @click="clearProfileFilter">查看全部站点</el-button>
+        </template>
+      </el-alert>
+
+      <el-table v-loading="sitesLoading" :data="displayedSites" stripe :row-class-name="siteRowClassName">
         <el-table-column prop="domain" label="域名" min-width="180" />
         <el-table-column prop="targetMarket" label="目标市场" width="100">
           <template #default="{ row }">
@@ -29,20 +43,15 @@
             {{ row.contentLanguage || "-" }}
           </template>
         </el-table-column>
-        <el-table-column
-          v-if="wordpressCmsUiEnabled"
-          prop="cmsType"
-          label="CMS"
-          width="110"
-        >
-          <template #default="{ row }">
-            <el-tag v-if="row.cmsType === 'wordpress'" size="small" type="success">WordPress</el-tag>
-            <span v-else class="text-gray-400">未配置</span>
-          </template>
-        </el-table-column>
         <el-table-column prop="brandVoice" label="品牌语气" min-width="160" show-overflow-tooltip>
           <template #default="{ row }">
             {{ row.brandVoice || "-" }}
+          </template>
+        </el-table-column>
+        <el-table-column label="写作素材" width="100">
+          <template #default="{ row }">
+            <el-tag v-if="hasWritingProfile(row as SiteItem)" size="small" type="success">已配置</el-tag>
+            <span v-else class="text-gray-400">未填</span>
           </template>
         </el-table-column>
         <el-table-column prop="createdAt" label="创建时间" min-width="170">
@@ -50,80 +59,20 @@
             {{ formatTime(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column label="操作" width="120" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link @click="openEditDialog(row as SiteItem)">编辑</el-button>
-            <el-button type="primary" link @click="selectSite(row.id)">页面库</el-button>
           </template>
         </el-table-column>
       </el-table>
 
-      <el-empty v-if="!sitesLoading && sites.length === 0" description="暂无站点，请先新建站点" />
-    </el-card>
-
-    <el-card v-if="selectedSite" shadow="never">
-      <template #header>
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <span class="font-medium">页面库 · {{ selectedSite.domain }}</span>
-          <div class="flex gap-2">
-            <el-button :loading="pagesLoading" @click="loadPages">刷新</el-button>
-            <el-button type="primary" :loading="syncing" @click="handleSync">
-              从 Sitemap 同步
-            </el-button>
-          </div>
-        </div>
-      </template>
-
-      <el-alert
-        class="mb-4"
-        type="info"
-        :closable="false"
-        show-icon
-        title="内链候选页"
-        description="同步后供 M8 内链模块自动匹配；任务运行中若库为空会自动触发一次同步。"
-      />
-
-      <el-table v-loading="pagesLoading" :data="pages" stripe>
-        <el-table-column prop="title" label="标题" min-width="160" show-overflow-tooltip />
-        <el-table-column prop="url" label="URL" min-width="260">
-          <template #default="{ row }">
-            <el-link :href="row.url" target="_blank" type="primary">
-              {{ row.url }}
-            </el-link>
-          </template>
-        </el-table-column>
-        <el-table-column prop="pageType" label="类型" width="110">
-          <template #default="{ row }">
-            <el-tag size="small" :type="dictTagType(sitePageTypeDict, row.pageType)">
-              {{ dictLabel(sitePageTypeDict, row.pageType) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="businessValue" label="业务权重" width="100">
-          <template #default="{ row }">
-            {{ formatWeight(row.businessValue) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="keywords" label="关键词" min-width="160">
-          <template #default="{ row }">
-            {{ (row.keywords ?? []).slice(0, 3).join("、") || "-" }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="source" label="来源" width="90" />
-        <el-table-column prop="updatedAt" label="更新时间" min-width="170">
-          <template #default="{ row }">
-            {{ formatTime(row.updatedAt) }}
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <el-empty v-if="!pagesLoading && pages.length === 0" description="页面库为空，请点击「从 Sitemap 同步」" />
+      <el-empty v-if="!sitesLoading && displayedSites.length === 0" :description="sitesEmptyHint" />
     </el-card>
 
     <el-dialog
       v-model="siteDialogVisible"
       :title="editingSiteId ? '编辑站点' : '新建站点'"
-      width="560px"
+      width="640px"
       destroy-on-close
     >
       <el-form ref="siteFormRef" :model="siteForm" :rules="siteRules" label-width="120px">
@@ -147,48 +96,139 @@
           <el-input
             v-model="siteForm.brandVoice"
             type="textarea"
-            :rows="4"
+            :rows="3"
             maxlength="2000"
             show-word-limit
-            placeholder="描述品牌调性，供 Brief 与初稿 Prompt 使用"
+            placeholder="例如：专业、务实，面向采购/工程师读者；与下方「公司卖点」一起影响 AI 写法"
           />
         </el-form-item>
 
-        <template v-if="wordpressCmsUiEnabled">
-        <el-divider content-position="left">WordPress 发布（可选）</el-divider>
-        <el-form-item label="启用 WordPress">
-          <el-switch v-model="siteForm.enableWordPress" />
-        </el-form-item>
-        <template v-if="siteForm.enableWordPress">
-          <el-form-item label="站点 URL" prop="wpBaseUrl">
-            <el-input v-model="siteForm.wpBaseUrl" placeholder="https://example.com" />
-          </el-form-item>
-          <el-form-item label="用户名" prop="wpUsername">
-            <el-input v-model="siteForm.wpUsername" placeholder="WordPress 用户名" />
-          </el-form-item>
-          <el-form-item label="应用密码" prop="wpAppPassword">
-            <el-input
-              v-model="siteForm.wpAppPassword"
-              type="password"
-              show-password
-              :placeholder="editingSiteId && siteForm.wpPasswordConfigured ? '留空则保留原密码' : 'WordPress Application Password'"
-            />
-          </el-form-item>
-          <el-form-item label="默认状态">
-            <el-select v-model="siteForm.wpDefaultStatus" class="w-full">
-              <el-option label="草稿（推荐）" value="draft" />
-              <el-option label="直接发布" value="publish" />
-            </el-select>
-          </el-form-item>
-          <el-alert
-            type="info"
-            :closable="false"
-            show-icon
-            title="说明"
-            description="需在 WordPress 启用 REST API 并创建 Application Password。任务完成后可在详情页一键推送。"
+        <el-divider content-position="left">公司卖点（AI 写作素材）</el-divider>
+        <el-alert class="mb-4" type="info" :closable="false" show-icon>
+          <template #title>这项是干什么的？</template>
+          <div class="text-sm leading-relaxed">
+            <p class="mb-2">
+              填一次，该站点下<strong>每篇新文章</strong>生成大纲 / 正文时都会自动带上，不用每单重复写。
+            </p>
+            <ul class="list-disc space-y-1 pl-5">
+              <li><strong>公司信息</strong>：行业、认证、起订量/交期 → 文章里写得更像你们公司、更有可信度</li>
+              <li><strong>文末询盘引导</strong>：统一按钮文案 + 链接（如「获取报价」跳到联系页）</li>
+            </ul>
+            <p class="mt-2 text-gray-600">可不填；做工业/B2B 外贸站建议填写。</p>
+          </div>
+        </el-alert>
+        <el-form-item label="主营行业 / 产品">
+          <el-input
+            v-model="siteForm.industry"
+            maxlength="200"
+            placeholder="例如：工业阀门制造商，面向石化、电力行业"
           />
-        </template>
-        </template>
+        </el-form-item>
+        <el-form-item label="认证资质">
+          <el-input
+            v-model="siteForm.certifications"
+            type="textarea"
+            :rows="2"
+            maxlength="500"
+            placeholder="例如：ISO 9001、CE、UL（写买家常看的资质即可）"
+          />
+        </el-form-item>
+        <el-form-item label="起订量 / 交期">
+          <el-input
+            v-model="siteForm.moqLeadTime"
+            maxlength="300"
+            placeholder="例如：MOQ 100 件，常规交期 15–25 天（没有固定数字可写区间或「支持定制」）"
+          />
+        </el-form-item>
+        <el-form-item label="文末引导按钮文案">
+          <el-input
+            v-model="siteForm.ctaPrimaryText"
+            maxlength="120"
+            placeholder="例如：获取报价、联系工程师、下载产品目录"
+          />
+          <p class="mt-1 text-xs text-gray-500">CTA = Call To Action，即文末让读者去询盘/联系的那句行动号召。</p>
+        </el-form-item>
+        <el-form-item label="引导按钮链接">
+          <el-input
+            v-model="siteForm.ctaPrimaryUrl"
+            maxlength="500"
+            placeholder="https://你的站点.com/contact 或询盘表单页"
+          />
+        </el-form-item>
+        <el-form-item label="UTM 来源 (utm_source)">
+          <el-input v-model="siteForm.utmSource" maxlength="80" placeholder="例如：seo-factory" />
+        </el-form-item>
+        <el-form-item label="UTM 媒介 (utm_medium)">
+          <el-input v-model="siteForm.utmMedium" maxlength="80" placeholder="例如：blog" />
+        </el-form-item>
+        <el-form-item label="UTM 活动 (utm_campaign)">
+          <el-input v-model="siteForm.utmCampaign" maxlength="120" placeholder="例如：industrial-valves" />
+        </el-form-item>
+
+        <el-collapse class="mt-2">
+          <el-collapse-item title="高级写作素材（可选）" name="advanced">
+            <el-form-item label="核心产品线">
+              <el-input
+                v-model="siteForm.productLines"
+                type="textarea"
+                :rows="2"
+                maxlength="500"
+                placeholder="例如：球阀、蝶阀、闸阀；石化、电力、水处理应用"
+              />
+            </el-form-item>
+            <el-form-item label="差异化卖点">
+              <div class="space-y-2 w-full">
+                <el-input
+                  v-model="siteForm.differentiator1"
+                  maxlength="200"
+                  placeholder="卖点 1：例如 15 年 OEM/ODM 经验"
+                />
+                <el-input
+                  v-model="siteForm.differentiator2"
+                  maxlength="200"
+                  placeholder="卖点 2（可选）"
+                />
+                <el-input
+                  v-model="siteForm.differentiator3"
+                  maxlength="200"
+                  placeholder="卖点 3（可选）"
+                />
+              </div>
+            </el-form-item>
+            <el-form-item label="目标客户">
+              <el-input
+                v-model="siteForm.targetBuyerType"
+                maxlength="120"
+                placeholder="例如：采购经理、工程承包商、OEM 品牌商"
+              />
+            </el-form-item>
+            <el-form-item label="案例 / 客户类型">
+              <el-input
+                v-model="siteForm.caseHighlights"
+                type="textarea"
+                :rows="2"
+                maxlength="500"
+                placeholder="例如：服务过北美石化分销商；支持匿名案例"
+              />
+            </el-form-item>
+            <el-form-item label="禁用词">
+              <el-input
+                v-model="siteForm.forbiddenTerms"
+                type="textarea"
+                :rows="2"
+                maxlength="500"
+                placeholder="每行或逗号分隔，例如：最便宜、100% 保证、No.1"
+              />
+              <p class="mt-1 text-xs text-gray-500">AI 生成时会避免使用这些词。</p>
+            </el-form-item>
+          </el-collapse-item>
+        </el-collapse>
+
+        <el-form-item v-if="contentProfilePreview" label="生成时会带上">
+          <div class="rounded bg-gray-50 px-3 py-2 text-sm leading-relaxed text-gray-700 whitespace-pre-wrap">
+            {{ contentProfilePreview }}
+          </div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="siteDialogVisible = false">取消</el-button>
@@ -200,33 +240,25 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import type { FormInstance, FormRules } from "element-plus";
-import { createSite, listSitePages, listSites, syncSitePages, updateSite } from "@/api/seo-factory/site";
-import type { SiteItem, SitePageItem } from "@/api/seo-factory/types";
+import { createSite, listSites, updateSite } from "@/api/seo-factory/site";
+import type { SiteItem } from "@/api/seo-factory/types";
 import {
   CONTENT_LANGUAGE_OPTIONS,
-  type ContentLanguageCode,
-  sitePageTypeDict
+  type ContentLanguageCode
 } from "@/constants/dicts/seo-factory";
-import { dictLabel, dictTagType } from "@/utils/dict";
-import { WORDPRESS_CMS_UI_ENABLED } from "@/constants/feature-flags";
 import { message } from "@/utils/message";
 
 defineOptions({ name: "SiteManageView" });
 
-const wordpressCmsUiEnabled = WORDPRESS_CMS_UI_ENABLED;
-
 const route = useRoute();
+const router = useRouter();
 const projectId = route.params.projectId as string;
 
 const sitesLoading = ref(false);
-const pagesLoading = ref(false);
-const syncing = ref(false);
 const siteSaving = ref(false);
 const sites = ref<SiteItem[]>([]);
-const pages = ref<SitePageItem[]>([]);
-const selectedSiteId = ref("");
 const siteDialogVisible = ref(false);
 const editingSiteId = ref("");
 const siteFormRef = ref<FormInstance>();
@@ -238,12 +270,21 @@ const siteForm = reactive({
   targetMarket: "",
   contentLanguage: "en" as ContentLanguageCode,
   brandVoice: "",
-  enableWordPress: false,
-  wpBaseUrl: "",
-  wpUsername: "",
-  wpAppPassword: "",
-  wpPasswordConfigured: false,
-  wpDefaultStatus: "draft" as "draft" | "publish"
+  industry: "",
+  certifications: "",
+  moqLeadTime: "",
+  ctaPrimaryText: "",
+  ctaPrimaryUrl: "",
+  utmSource: "",
+  utmMedium: "",
+  utmCampaign: "",
+  productLines: "",
+  differentiator1: "",
+  differentiator2: "",
+  differentiator3: "",
+  targetBuyerType: "",
+  caseHighlights: "",
+  forbiddenTerms: ""
 });
 
 const siteRules: FormRules = {
@@ -254,21 +295,101 @@ const siteRules: FormRules = {
   contentLanguage: [{ required: true, message: "请选择语言", trigger: "change" }]
 };
 
-const selectedSite = computed(() =>
-  sites.value.find((site) => site.id === selectedSiteId.value) ?? null
+const profileMissingFilter = computed(
+  () => route.query.profile === "missing" || route.query.profile === "1"
 );
+
+const displayedSites = computed(() => {
+  if (!profileMissingFilter.value) return sites.value;
+  return sites.value.filter((site) => !hasWritingProfile(site));
+});
+
+const sitesEmptyHint = computed(() =>
+  profileMissingFilter.value ? "所有站点均已填写公司卖点" : "暂无站点，请先新建站点"
+);
+
+const contentProfilePreview = computed(() => {
+  const lines: string[] = [];
+  if (siteForm.industry.trim()) lines.push(`主营：${siteForm.industry.trim()}`);
+  if (siteForm.productLines.trim()) lines.push(`产品线：${siteForm.productLines.trim()}`);
+  const diffs = [siteForm.differentiator1, siteForm.differentiator2, siteForm.differentiator3]
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (diffs.length) lines.push(`卖点：${diffs.join("；")}`);
+  if (siteForm.targetBuyerType.trim()) lines.push(`客户：${siteForm.targetBuyerType.trim()}`);
+  if (siteForm.certifications.trim()) lines.push(`资质：${siteForm.certifications.trim()}`);
+  if (siteForm.moqLeadTime.trim()) lines.push(`起订/交期：${siteForm.moqLeadTime.trim()}`);
+  if (siteForm.caseHighlights.trim()) lines.push(`案例：${siteForm.caseHighlights.trim()}`);
+  if (siteForm.ctaPrimaryText.trim()) {
+    const url = siteForm.ctaPrimaryUrl.trim();
+    lines.push(`文末引导：${siteForm.ctaPrimaryText.trim()}${url ? ` → ${url}` : ""}`);
+  }
+  if (siteForm.forbiddenTerms.trim()) {
+    lines.push(`禁用词：${parseForbiddenTerms(siteForm.forbiddenTerms).join("、")}`);
+  }
+  return lines.join("\n");
+});
+
+function parseForbiddenTerms(raw: string): string[] {
+  return raw
+    .split(/[,，\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 10);
+}
+
+function buildDifferentiators(): string[] | undefined {
+  const items = [siteForm.differentiator1, siteForm.differentiator2, siteForm.differentiator3]
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+  return items.length > 0 ? items : undefined;
+}
+
+function hasWritingProfile(site: SiteItem) {
+  const profile = site.contentProfile;
+  return Boolean(
+    profile?.industry?.trim() ||
+      profile?.certifications?.trim() ||
+      profile?.moqLeadTime?.trim() ||
+      profile?.ctaPrimaryText?.trim() ||
+      profile?.ctaPrimaryUrl?.trim() ||
+      profile?.productLines?.trim() ||
+      (profile?.differentiators?.length ?? 0) > 0 ||
+      profile?.targetBuyerType?.trim() ||
+      profile?.caseHighlights?.trim() ||
+      (profile?.forbiddenTerms?.length ?? 0) > 0
+  );
+}
+
+function siteRowClassName({ row }: { row: SiteItem }) {
+  return !hasWritingProfile(row) ? "site-row--profile-missing" : "";
+}
+
+function clearProfileFilter() {
+  router.replace({ name: "SeoFactorySites", params: { projectId } });
+}
 
 function resetSiteForm() {
   siteForm.domain = "";
   siteForm.targetMarket = "";
   siteForm.contentLanguage = "en";
   siteForm.brandVoice = "";
-  siteForm.enableWordPress = false;
-  siteForm.wpBaseUrl = "";
-  siteForm.wpUsername = "";
-  siteForm.wpAppPassword = "";
-  siteForm.wpPasswordConfigured = false;
-  siteForm.wpDefaultStatus = "draft";
+  siteForm.industry = "";
+  siteForm.certifications = "";
+  siteForm.moqLeadTime = "";
+  siteForm.ctaPrimaryText = "";
+  siteForm.ctaPrimaryUrl = "";
+  siteForm.utmSource = "";
+  siteForm.utmMedium = "";
+  siteForm.utmCampaign = "";
+  siteForm.productLines = "";
+  siteForm.differentiator1 = "";
+  siteForm.differentiator2 = "";
+  siteForm.differentiator3 = "";
+  siteForm.targetBuyerType = "";
+  siteForm.caseHighlights = "";
+  siteForm.forbiddenTerms = "";
 }
 
 function openCreateDialog() {
@@ -283,38 +404,49 @@ function openEditDialog(site: SiteItem) {
   siteForm.targetMarket = site.targetMarket ?? "";
   siteForm.contentLanguage = (site.contentLanguage === "zh-CN" ? "zh-CN" : "en") as ContentLanguageCode;
   siteForm.brandVoice = site.brandVoice ?? "";
-  siteForm.enableWordPress = site.cmsType === "wordpress";
-  siteForm.wpBaseUrl = site.cmsConfig?.baseUrl ?? "";
-  siteForm.wpUsername = site.cmsConfig?.username ?? "";
-  siteForm.wpAppPassword = "";
-  siteForm.wpPasswordConfigured = site.cmsConfig?.hasApplicationPassword ?? false;
-  siteForm.wpDefaultStatus = site.cmsConfig?.defaultStatus ?? "draft";
+  siteForm.industry = site.contentProfile?.industry ?? "";
+  siteForm.certifications = site.contentProfile?.certifications ?? "";
+  siteForm.moqLeadTime = site.contentProfile?.moqLeadTime ?? "";
+  siteForm.ctaPrimaryText = site.contentProfile?.ctaPrimaryText ?? "";
+  siteForm.ctaPrimaryUrl = site.contentProfile?.ctaPrimaryUrl ?? "";
+  siteForm.utmSource = site.contentProfile?.utmSource ?? "";
+  siteForm.utmMedium = site.contentProfile?.utmMedium ?? "";
+  siteForm.utmCampaign = site.contentProfile?.utmCampaign ?? "";
+  siteForm.productLines = site.contentProfile?.productLines ?? "";
+  siteForm.differentiator1 = site.contentProfile?.differentiators?.[0] ?? "";
+  siteForm.differentiator2 = site.contentProfile?.differentiators?.[1] ?? "";
+  siteForm.differentiator3 = site.contentProfile?.differentiators?.[2] ?? "";
+  siteForm.targetBuyerType = site.contentProfile?.targetBuyerType ?? "";
+  siteForm.caseHighlights = site.contentProfile?.caseHighlights ?? "";
+  siteForm.forbiddenTerms = site.contentProfile?.forbiddenTerms?.join("，") ?? "";
   siteDialogVisible.value = true;
 }
 
 function buildSitePayload() {
-  const payload = {
+  return {
     domain: siteForm.domain.trim(),
     targetMarket: siteForm.targetMarket.trim() || undefined,
     contentLanguage: siteForm.contentLanguage,
-    brandVoice: siteForm.brandVoice.trim() || undefined
+    brandVoice: siteForm.brandVoice.trim() || undefined,
+    contentProfile: {
+      industry: siteForm.industry.trim() || undefined,
+      certifications: siteForm.certifications.trim() || undefined,
+      moqLeadTime: siteForm.moqLeadTime.trim() || undefined,
+      ctaPrimaryText: siteForm.ctaPrimaryText.trim() || undefined,
+      ctaPrimaryUrl: siteForm.ctaPrimaryUrl.trim() || undefined,
+      utmSource: siteForm.utmSource.trim() || undefined,
+      utmMedium: siteForm.utmMedium.trim() || undefined,
+      utmCampaign: siteForm.utmCampaign.trim() || undefined,
+      productLines: siteForm.productLines.trim() || undefined,
+      differentiators: buildDifferentiators(),
+      targetBuyerType: siteForm.targetBuyerType.trim() || undefined,
+      caseHighlights: siteForm.caseHighlights.trim() || undefined,
+      forbiddenTerms: (() => {
+        const terms = parseForbiddenTerms(siteForm.forbiddenTerms);
+        return terms.length > 0 ? terms : undefined;
+      })()
+    }
   } as Parameters<typeof createSite>[1];
-
-  if (wordpressCmsUiEnabled && siteForm.enableWordPress) {
-    payload.cmsType = "wordpress";
-    payload.wordpress = {
-      baseUrl: siteForm.wpBaseUrl.trim(),
-      username: siteForm.wpUsername.trim(),
-      defaultStatus: siteForm.wpDefaultStatus,
-      ...(siteForm.wpAppPassword.trim()
-        ? { applicationPassword: siteForm.wpAppPassword.trim() }
-        : {})
-    };
-  } else if (editingSiteId.value) {
-    payload.cmsType = null;
-  }
-
-  return payload;
 }
 
 async function submitSiteForm() {
@@ -325,23 +457,11 @@ async function submitSiteForm() {
     try {
       const payload = buildSitePayload();
 
-      if (wordpressCmsUiEnabled && siteForm.enableWordPress) {
-        if (!payload.wordpress?.baseUrl || !payload.wordpress.username) {
-          message("请填写 WordPress 站点 URL 与用户名", { type: "warning" });
-          return;
-        }
-        if (!payload.wordpress.applicationPassword && !siteForm.wpPasswordConfigured) {
-          message("请填写 WordPress Application Password", { type: "warning" });
-          return;
-        }
-      }
-
       if (editingSiteId.value) {
         await updateSite(projectId, editingSiteId.value, payload);
         message("站点已更新", { type: "success" });
       } else {
-        const created = await createSite(projectId, payload);
-        selectedSiteId.value = created.id;
+        await createSite(projectId, payload);
         message("站点已创建", { type: "success" });
       }
 
@@ -357,10 +477,6 @@ async function loadSites() {
   sitesLoading.value = true;
   try {
     sites.value = await listSites(projectId);
-    if (!selectedSiteId.value && sites.value.length > 0) {
-      selectedSiteId.value = sites.value[0].id;
-      await loadPages();
-    }
   } catch (error) {
     const msg = error instanceof Error ? error.message : "加载站点失败";
     message(msg, { type: "error" });
@@ -369,56 +485,17 @@ async function loadSites() {
   }
 }
 
-async function loadPages() {
-  if (!selectedSiteId.value) {
-    pages.value = [];
-    return;
-  }
-
-  pagesLoading.value = true;
-  try {
-    pages.value = await listSitePages(projectId, selectedSiteId.value);
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : "加载页面库失败";
-    message(msg, { type: "error" });
-  } finally {
-    pagesLoading.value = false;
-  }
-}
-
-async function selectSite(siteId: string) {
-  selectedSiteId.value = siteId;
-  await loadPages();
-}
-
-async function handleSync() {
-  if (!selectedSiteId.value || syncing.value) return;
-
-  syncing.value = true;
-  try {
-    const result = await syncSitePages(projectId, selectedSiteId.value);
-    message(`同步完成：发现 ${result.discovered} 条，写入 ${result.upserted} 条`, {
-      type: "success"
-    });
-    await loadPages();
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : "同步失败";
-    message(msg, { type: "error" });
-  } finally {
-    syncing.value = false;
-  }
-}
-
 function formatTime(iso: string) {
   return new Date(iso).toLocaleString("zh-CN");
-}
-
-function formatWeight(value: number) {
-  if (typeof value !== "number") return "-";
-  return value.toFixed(2);
 }
 
 onMounted(() => {
   void loadSites();
 });
 </script>
+
+<style scoped>
+.site-row--profile-missing {
+  --el-table-tr-bg-color: var(--el-color-warning-light-9);
+}
+</style>

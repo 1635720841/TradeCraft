@@ -20,6 +20,7 @@ import { LoggerService } from '../../../../core/logger/logger.service';
 import {
   DEFAULT_SERP_ARTICLE_LIMIT,
   MAX_SERP_ARTICLE_LIMIT,
+  MIN_SERP_ARTICLE_CANDIDATES,
 } from '../../constants/serp-filter';
 import { CompetitorPageScraper } from './competitor-page.scraper';
 
@@ -33,6 +34,10 @@ export interface ScrapeJobContext {
   contentLanguage?: string;
   serpArticleLimit?: number;
   serpArticlesOnly?: boolean;
+  organicFetchNum?: number;
+  minArticleCandidates?: number;
+  cacheTtlSeconds?: number;
+  bypassCache?: boolean;
 }
 
 @Injectable()
@@ -53,6 +58,9 @@ export class ScraperService {
       country: ctx.targetMarket,
       organizationId: ctx.organizationId,
       projectId: ctx.projectId,
+      num: ctx.organicFetchNum,
+      cacheTtlSeconds: ctx.cacheTtlSeconds,
+      bypassCache: ctx.bypassCache,
     });
 
     const limit = Math.min(
@@ -60,9 +68,14 @@ export class ScraperService {
       MAX_SERP_ARTICLE_LIMIT,
     );
     const articlesOnly = ctx.serpArticlesOnly !== false;
+    const minArticleCandidates = Math.max(ctx.minArticleCandidates ?? MIN_SERP_ARTICLE_CANDIDATES, 1);
     const { filtered, meta } = filterSerpOrganicForSeoArticles(
       (serpResult.organic ?? []) as SerpOrganicItem[],
-      { limit, articlesOnly },
+      {
+        limit,
+        articlesOnly,
+        minArticleCandidates,
+      },
     );
 
     const { items: enrichedOrganic, scrapeMeta } = await this.competitorPageScraper.enrichOrganicItems(
@@ -80,6 +93,7 @@ export class ScraperService {
           competitorScrapeMeta: scrapeMeta,
           aiOverview: serpResult.aiOverview,
           fingerprint: serpResult.fingerprint,
+          fromCache: serpResult.fromCache === true,
         } as object,
       },
     });

@@ -14,6 +14,7 @@ import { ReqCtx } from '../../../../core/decorators/request-context.decorator';
 import { ProjectService } from '../../../../modules/project/project.service';
 import { CreateSiteDto } from './dto/create-site.dto';
 import { UpdateSiteDto } from './dto/update-site.dto';
+import { ListShopifyBlogsDto } from './dto/list-shopify-blogs.dto';
 import { SiteArticleCrawlerService } from './site-article-crawler.service';
 import { SiteService } from './site.service';
 
@@ -43,6 +44,53 @@ export class SiteController {
     return { data: site, meta: { traceId: ctx.traceId } };
   }
 
+  @Post('shopify/blogs')
+  async listShopifyBlogs(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Body() dto: ListShopifyBlogsDto,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const data = await this.siteService.listShopifyBlogs(
+      ctx.organizationId,
+      projectId,
+      dto,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Post('shopify/products')
+  async listShopifyProducts(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Body() dto: ListShopifyBlogsDto,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const data = await this.siteService.listShopifyProducts(
+      ctx.organizationId,
+      projectId,
+      dto,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Get(':siteId/keyword-conflicts')
+  async keywordConflicts(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('siteId') siteId: string,
+    @Query('keyword') keyword?: string,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const conflicts = await this.siteService.findKeywordConflicts(
+      ctx.organizationId,
+      projectId,
+      siteId,
+      keyword ?? '',
+    );
+    return { data: { conflicts }, meta: { traceId: ctx.traceId } };
+  }
+
   @Get(':siteId')
   async getOne(
     @ReqCtx() ctx: RequestContext,
@@ -64,6 +112,21 @@ export class SiteController {
     await this.projectService.assertAccessible(ctx.organizationId, projectId);
     const site = await this.siteService.update(ctx.organizationId, projectId, siteId, dto);
     return { data: site, meta: { traceId: ctx.traceId } };
+  }
+
+  @Post(':siteId/serp-cache/clear')
+  async clearSerpCache(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('siteId') siteId: string,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const result = await this.siteService.clearSerpCache(
+      ctx.organizationId,
+      projectId,
+      siteId,
+    );
+    return { data: result, meta: { traceId: ctx.traceId } };
   }
 
   @Get(':siteId/seo-articles')

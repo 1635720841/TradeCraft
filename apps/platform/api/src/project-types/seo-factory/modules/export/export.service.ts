@@ -14,11 +14,19 @@ import { BusinessException } from '../../../../core/exceptions/business.exceptio
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { canPublishArticle } from '../content-review/ymyl-detect.util';
 import type { ArticleImageRecord } from '../illustration/article-image.util';
-import { buildArticleJsonLd } from './article-json-ld.util';
+import {
+  buildArticleJsonLd,
+  buildFaqPageJsonLd,
+  extractFaqItemsFromBriefAndDraft,
+  mergeJsonLdGraph,
+} from './article-json-ld.util';
+import { appendUtmToUrl, buildInquiryHtmlBlock } from '../../constants/cta-utm.util';
+import { parseSiteSettings } from '../../constants/site-settings';
 import {
   buildExportPackageZip,
   slugifyExportBaseName,
 } from './export-package.util';
+import { unzipSync, zipSync, strToU8 } from 'fflate';
 import {
   buildExportHtmlDocument,
   buildExportHtmlUrl,
@@ -53,7 +61,7 @@ export class ExportService {
         projectId: ctx.projectId,
       },
       include: {
-        site: { select: { domain: true } },
+        site: { select: { domain: true, settings: true } },
       },
     });
 
@@ -96,7 +104,7 @@ export class ExportService {
       return null;
     }
 
-    const html = this.buildHtmlDocument(job, exported, exportedAt);
+    const html = this.buildHtmlDocument(exported);
 
     await Promise.all([
       this.storage.putObject(`${prefix}/article.html`, Buffer.from(html, 'utf8'), 'text/html'),
@@ -143,7 +151,7 @@ export class ExportService {
       throw new BusinessException(ErrorCodes.NOT_FOUND, '正文为空，无法导出');
     }
 
-    const html = this.buildHtmlDocument(job, exported);
+    const html = this.buildHtmlDocument(exported);
     return { body: Buffer.from(html, 'utf8'), contentType: 'text/html; charset=utf-8' };
   }
 
@@ -194,7 +202,7 @@ export class ExportService {
 
     const exported = this.resolveExportContent(job);
     const exportedAt = new Date().toISOString();
-    const html = this.buildHtmlDocument(job, exported, exportedAt);
+    const html = this.buildHtmlDocument(exported);
 
     let manifestText: string | undefined;
     try {
@@ -234,6 +242,81 @@ export class ExportService {
     });
 
     return result;
+  }
+
+  /** 多任务资产包：每个任务一个子目录，合并为单个 zip */
+  async buildBatchExportPackage(
+    organizationId: string,
+    projectId: string,
+    jobIds: string[],
+  ): Promise<{ buffer: Buffer; fileName: string; exported: number; failed: number; failures: Array<{ jobId: string; targetKeyword: string; error: string }> }> {
+    const zipEntries: Record<string, Uint8Array> = {};
+    const usedFolders = new Map<string, number>();
+    const manifestLines: string[] = ['SEO 批量导出', `Exported at: ${new Date().toISOString()}`, ''];
+    const failures: Array<{ jobId: string; targetKeyword: string; error: string }> = [];
+    let exported = 0;
+    let failed = 0;
+
+    for (const jobId of jobIds) {
+      const job = await this.prisma.articleJob.findFirst({
+        where: { id: jobId, organizationId, projectId },
+        select: { targetKeyword: true },
+      });
+
+      if (!job) {
+        failed += 1;
+        const error = '任务不存在';
+        failures.push({ jobId, targetKeyword: jobId, error });
+        manifestLines.push(`[FAIL] ${jobId}: ${error}`);
+        continue;
+      }
+
+      try {
+        const pack = await this.buildExportPackage(organizationId, projectId, jobId);
+        const baseSlug = slugifyExportBaseName(job.targetKeyword);
+        const seen = usedFolders.get(baseSlug) ?? 0;
+        usedFolders.set(baseSlug, seen + 1);
+        const folder = seen === 0 ? baseSlug : `${baseSlug}-${seen + 1}`;
+
+        const inner = unzipSync(new Uint8Array(pack.buffer));
+        for (const [path, data] of Object.entries(inner)) {
+          zipEntries[`${folder}/${path}`] = data;
+        }
+
+        exported += 1;
+        manifestLines.push(`[OK] ${job.targetKeyword} → ${folder}/`);
+      } catch (error) {
+        failed += 1;
+        const message = error instanceof Error ? error.message : '导出失败';
+        failures.push({ jobId, targetKeyword: job.targetKeyword, error: message });
+        manifestLines.push(`[FAIL] ${job.targetKeyword}: ${message}`);
+      }
+    }
+
+    if (exported === 0) {
+      throw new BusinessException(
+        ErrorCodes.VALIDATION_ERROR,
+        failed > 0 ? '所选任务均无法导出（未完成、未过 YMYL 或正文为空）' : '没有可导出的任务',
+      );
+    }
+
+    manifestLines.push('', `成功: ${exported}`, `失败: ${failed}`);
+    zipEntries['export-manifest.txt'] = strToU8(`${manifestLines.join('\n')}\n`);
+
+    const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const fileName = `batch-export-${stamp}.zip`;
+    const buffer = Buffer.from(zipSync(zipEntries));
+
+    this.logger.info('Batch export package built', {
+      organizationId,
+      projectId,
+      action: 'export.batch_built',
+      exported,
+      failed,
+      fileName,
+    });
+
+    return { buffer, fileName, exported, failed, failures };
   }
 
   private async fetchDraftImageForExport(
@@ -280,11 +363,12 @@ export class ExportService {
     briefData: unknown;
     draftData: unknown;
     seoCheckData: unknown;
-    site: { domain: string };
+    site: { domain: string; settings?: unknown };
   }) {
     const briefData = job.briefData as {
       title?: string;
       metaDescription?: string;
+      outline?: Record<string, unknown>;
     } | null;
     const draftData = job.draftData as {
       title?: string;
@@ -297,7 +381,8 @@ export class ExportService {
     const content = draftData?.content?.trim() ?? '';
     const publishable = canPublishArticle(job.seoCheckData) && content.length > 0;
     const publishedAt = new Date().toISOString();
-    const jsonLd = buildArticleJsonLd({
+
+    const articleJsonLd = buildArticleJsonLd({
       title,
       description: metaDescription,
       content,
@@ -306,31 +391,46 @@ export class ExportService {
       publishedAt,
     });
 
-    return { title, metaDescription, content, publishable, jsonLd };
+    const faqItems = extractFaqItemsFromBriefAndDraft(job.briefData, content);
+    const faqJsonLd = buildFaqPageJsonLd(faqItems);
+    const jsonLd = mergeJsonLdGraph(articleJsonLd, faqJsonLd);
+
+    const profile = parseSiteSettings(job.site.settings).contentProfile;
+    const suffixHtml = this.buildExportSuffixHtml(profile, job.targetKeyword);
+
+    return { title, metaDescription, content, publishable, jsonLd, suffixHtml };
   }
 
-  private buildHtmlDocument(
-    job: { targetKeyword: string; site: { domain: string }; seoCheckData: unknown },
-    exported: ReturnType<ExportService['resolveExportContent']>,
-    publishedAt?: string,
-  ) {
-    const jsonLd =
-      publishedAt != null
-        ? buildArticleJsonLd({
-            title: exported.title,
-            description: exported.metaDescription,
-            content: exported.content,
-            siteDomain: job.site.domain,
-            targetKeyword: job.targetKeyword,
-            publishedAt,
-          })
-        : exported.jsonLd;
+  private buildExportSuffixHtml(
+    profile: ReturnType<typeof parseSiteSettings>['contentProfile'],
+    targetKeyword: string,
+  ): string | undefined {
+    const ctaText = profile?.ctaPrimaryText?.trim();
+    const ctaUrl = profile?.ctaPrimaryUrl?.trim();
+    if (!ctaText || !ctaUrl) return undefined;
 
+    const withUtm = appendUtmToUrl(
+      ctaUrl,
+      {
+        utmSource: profile?.utmSource,
+        utmMedium: profile?.utmMedium,
+        utmCampaign: profile?.utmCampaign,
+        utmContent: profile?.utmContent,
+      },
+      targetKeyword,
+    );
+
+    const block = buildInquiryHtmlBlock(ctaText, withUtm);
+    return block.trim() ? block : undefined;
+  }
+
+  private buildHtmlDocument(exported: ReturnType<ExportService['resolveExportContent']>) {
     return buildExportHtmlDocument({
       title: exported.title,
       metaDescription: exported.metaDescription,
       contentMarkdown: exported.content,
-      jsonLd,
+      jsonLd: exported.jsonLd,
+      suffixHtml: exported.suffixHtml,
     });
   }
 }

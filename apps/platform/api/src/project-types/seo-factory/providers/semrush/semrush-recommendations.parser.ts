@@ -62,6 +62,10 @@ function synthesizeReadabilityTips(body: SemrushRecommendationsPayload): string[
     tips.push('您的标题超过 60 个字符。在搜索结果中显示时，标题能被截断。');
   }
 
+  if (isNearMissSemrushScore(body) && !tips.some((t) => /拆分长段|段落/.test(t))) {
+    tips.push('拆分长段。');
+  }
+
   return tips;
 }
 
@@ -93,7 +97,11 @@ function synthesizeSeoTips(
 function synthesizeToneTips(body: SemrushRecommendationsPayload): string[] {
   const tips: string[] = [];
 
-  if (isWeakScore(body) || (typeof body.readability === 'number' && body.readability < 70)) {
+  if (
+    isWeakScore(body) ||
+    isNearMissSemrushScore(body) ||
+    (typeof body.readability === 'number' && body.readability < 70)
+  ) {
     tips.push('重写非常随意的句子。');
     tips.push('考虑移除或替换填充词。');
   }
@@ -228,6 +236,24 @@ export function parseOverallScore(body: SemrushRecommendationsPayload): number |
   }
 
   return undefined;
+}
+
+/**
+ * 侧栏已展示建议但 data_ready 未及时置 true（常见于 WebSocket 异常）时，仍尝试解析 score。
+ * 仅当 data_ready 未显式为 false 且 score 合法时使用。
+ */
+export function parseOverallScoreRelaxed(body: SemrushRecommendationsPayload): number | undefined {
+  if (body.data_ready === false || typeof body.score !== 'number') {
+    return undefined;
+  }
+  return parseOverallScore({ ...body, data_ready: true });
+}
+
+/** Overall < 9.0/10：侧栏仍可能有语气/拆段红点，即使可读性总评「极佳」 */
+function isNearMissSemrushScore(body: SemrushRecommendationsPayload): boolean {
+  const overall = parseOverallScore(body);
+  if (overall === undefined) return false;
+  return overall < 9.0;
 }
 
 export function pickBestRecommendationsCapture(

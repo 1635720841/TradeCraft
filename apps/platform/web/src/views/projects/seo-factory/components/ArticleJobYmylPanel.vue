@@ -109,7 +109,7 @@ const summaryText = computed(() => {
     return "人工审核已通过，可下载 HTML 导出文件。";
   }
   if (review.value.humanReviewStatus === "rejected") {
-    return "人工审核已驳回，请修改内容后重新生成或续跑任务。";
+    return "人工审核已驳回，请修改内容后重新生成。";
   }
   return "文章涉及医疗、金融、法律或安全等高影响主题，请前往「待审核」或通过下方操作完成人工复核。";
 });

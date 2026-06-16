@@ -78,6 +78,21 @@ export function extractMainText(html: string, maxChars = 8000): string {
   return `${text.slice(0, maxChars).trim()}…`;
 }
 
+export function normalizeCompetitorUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return trimmed;
+  try {
+    const parsed = new URL(trimmed);
+    parsed.hash = '';
+    if (parsed.pathname.length > 1 && parsed.pathname.endsWith('/')) {
+      parsed.pathname = parsed.pathname.slice(0, -1);
+    }
+    return parsed.toString();
+  } catch {
+    return trimmed;
+  }
+}
+
 export function parseCompetitorPageHtml(
   html: string,
   options: { maxChars?: number; maxHeadings?: number } = {},

@@ -22,6 +22,6 @@ defineOptions({ name: "ArticleJobDraftEditGuide" });
 const rows = [
   { scenario: "改一个词、价格、年份、产品名", tool: "手动编辑", note: "即时保存，不动整体结构" },
   { scenario: "按 SEO 建议改语气、可读性", tool: "AI 重写", note: "约 30–90 秒，可预览候选版" },
-  { scenario: "整篇结构不对", tool: "续跑任务", note: "从失败/优化步骤继续，或重新入队" }
+  { scenario: "整篇结构不对", tool: "重新生成", note: "从失败/优化步骤继续，或重新入队" }
 ];
 </script>

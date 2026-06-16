@@ -2,6 +2,17 @@
  * seo-factory 插件 API 类型。
  */
 
+export type KeywordConflictReason = "exact" | "substring" | "similar";
+
+export interface KeywordCannibalizationWarning {
+  code: "KEYWORD_CANNIBALIZATION";
+  message: string;
+  jobId: string;
+  keyword: string;
+  status: string;
+  reason: KeywordConflictReason;
+}
+
 export interface WmApiResponse<T> {
   data: T;
   meta?: {
@@ -14,12 +25,22 @@ export interface WmApiResponse<T> {
   };
 }
 
+export interface SerpOrganicScrapedMeta {
+  wordCount: number;
+  headings: string[];
+  excerpt: string;
+  metaDescription?: string;
+  scrapedAt: string;
+  error?: string;
+}
+
 export interface SerpOrganicItem {
   link: string;
   title: string;
   snippet?: string;
   position?: number;
   date?: string;
+  scraped?: SerpOrganicScrapedMeta;
 }
 
 export interface SerpOrganicFilterMeta {
@@ -28,19 +49,35 @@ export interface SerpOrganicFilterMeta {
   excluded: number;
   articlesOnly: boolean;
   limit: number;
+  articleKept?: number;
+  backfillKept?: number;
+}
+
+export interface SerpCompetitorScrapeMeta {
+  requested: number;
+  succeeded: number;
+  failed: number;
+  skipped: boolean;
 }
 
 export interface ArticleJobSerpData {
   organic?: SerpOrganicItem[];
   organicRaw?: SerpOrganicItem[];
   filterMeta?: SerpOrganicFilterMeta;
+  competitorScrapeMeta?: SerpCompetitorScrapeMeta;
   fingerprint?: string;
+  fromCache?: boolean;
   aiOverview?: unknown;
 }
 
 export interface ArticleJobBriefOutlineSection {
   heading: string;
   points?: string[];
+}
+
+export interface ArticleJobBriefFeaturedSnippet {
+  heading?: string;
+  answerMaxWords?: number;
 }
 
 export interface ArticleJobBriefData {
@@ -50,8 +87,13 @@ export interface ArticleJobBriefData {
     contentGaps?: string[];
     searchIntent?: string;
     targetWordCount?: number;
+    faqCandidates?: string[];
+    featuredSnippetTarget?: ArticleJobBriefFeaturedSnippet;
   };
   promptVersion?: string;
+  approvalStatus?: "pending" | "approved" | "skipped";
+  approvedAt?: string;
+  approvedBy?: string;
 }
 
 export interface ArticleJobOptimizeRoundBreakdown {
@@ -205,6 +247,8 @@ export interface ArticleJobDraftData {
   rewriteCandidate?: ArticleJobRewriteCandidate;
   rewriteHistory?: ArticleJobRewriteHistoryEntry[];
   lastRewriteError?: string;
+  paraphraseApplied?: boolean;
+  paraphraseOriginalContent?: string;
 }
 
 export interface RewriteArticleJobPayload {
@@ -281,6 +325,10 @@ export interface ArticleJobSeoCheckData {
   workflowProgress?: ArticleJobWorkflowProgress | null;
   workflow?: ArticleJobWorkflowMeta;
   optimizeHistory?: ArticleJobOptimizeRound[];
+  optimizationRerun?: {
+    reason: "gsc_underperform" | "manual";
+    requestedAt: string;
+  };
   local?: {
     score: number;
     breakdown?: {
@@ -300,6 +348,8 @@ export interface ArticleJobSeoCheckData {
       longSentencesOver22?: number;
       longParagraphsOver80?: number;
       passiveVoiceHits?: number;
+      longSentenceSamples?: Array<{ text: string; wordCount: number }>;
+      longParagraphSamples?: Array<{ text: string; wordCount: number }>;
     };
     optimizeRounds?: number;
     /** 是否已达本地预检门槛（≥95），通过后才可 Semrush 终检 */
@@ -327,8 +377,11 @@ export interface ArticleJobSeoCheckData {
       previousStatus: string;
     };
     lastManualCheckError?: string;
+    lastManualCheckEndedAt?: string;
+    recoveredOrphanOptimizing?: boolean;
     cancelled?: boolean;
     manualCheckAt?: string;
+    manualCheckPreviousStatus?: string;
     /** 提交给 Semrush 的目标词 + 推荐词 */
     submittedKeywords?: string[];
     optimizeRounds?: number;
@@ -336,18 +389,25 @@ export interface ArticleJobSeoCheckData {
     semrushCurrentWordCount?: number;
     semrushReadabilityScore?: number;
   };
-  quillbot?: {
-    skipped?: boolean;
-    passed?: boolean;
-    usedOriginal?: boolean;
-    completedAt?: string;
-    promptVersion?: string;
-    validatePromptVersion?: string;
-    changesSummary?: string[];
-    warnings?: string[];
-  };
+  quillbot?: ArticleJobQuillbotResult;
   cmsPublish?: CmsPublishResult;
   ymylReview?: ArticleJobYmylReview;
+}
+
+export interface ArticleJobQuillbotResult {
+  skipped?: boolean;
+  passed?: boolean;
+  usedOriginal?: boolean;
+  completedAt?: string;
+  promptVersion?: string;
+  validatePromptVersion?: string;
+  changesSummary?: string[];
+  warnings?: string[];
+  protectedTermCount?: number;
+  chunkCount?: number;
+  chunksPolished?: number;
+  localScoreBefore?: number;
+  localScoreAfter?: number;
 }
 
 export interface ArticleJobItem {
@@ -355,11 +415,20 @@ export interface ArticleJobItem {
   traceId: string;
   status: string;
   targetKeyword: string;
+  searchIntent?: string | null;
   semrushScore?: number | null;
   localSeoScore?: number | null;
   requiresHumanReview?: boolean;
   ymylReviewCompleted?: boolean;
+  reviewPending?: boolean;
+  exportReady?: boolean;
   internalLinkCount?: number | null;
+  warnings?: KeywordCannibalizationWarning[];
+  siteId?: string;
+  siteDomain?: string | null;
+  siteCmsType?: string | null;
+  siteShopifyPublishTarget?: "blog" | "product" | null;
+  siteContentProfile?: SiteContentProfile | null;
   seoCheckData?: ArticleJobSeoCheckData | null;
   outputUrl?: string | null;
   errorMessage?: string | null;
@@ -374,6 +443,8 @@ export interface CreateArticleJobPayload {
   siteId: string;
   targetKeyword: string;
   contentLanguage?: "en" | "zh-CN";
+  searchIntent?: string;
+  contentForm?: "ARTICLE" | "PRODUCT_ENHANCED" | "FAQ_PAGE";
   serpArticleLimit?: number;
   serpArticlesOnly?: boolean;
 }
@@ -400,11 +471,79 @@ export interface BatchArticleJobsResult {
   jobs: ArticleJobItem[];
 }
 
-export interface SiteCmsConfig {
+export interface SiteWordPressCmsConfig {
   baseUrl: string;
   username: string;
   defaultStatus: "draft" | "publish";
   hasApplicationPassword: boolean;
+}
+
+export interface SiteShopifyCmsConfig {
+  shopDomain: string;
+  blogId: string;
+  productId: string;
+  publishTarget: "blog" | "product";
+  defaultPublished: boolean;
+  hasAccessToken: boolean;
+}
+
+export type SiteCmsConfig = SiteWordPressCmsConfig | SiteShopifyCmsConfig;
+
+export function isWordPressCmsConfig(
+  cmsType: string | null | undefined,
+  config: SiteCmsConfig | null | undefined
+): config is SiteWordPressCmsConfig {
+  return cmsType === "wordpress" && config != null && "baseUrl" in config;
+}
+
+export function isShopifyCmsConfig(
+  cmsType: string | null | undefined,
+  config: SiteCmsConfig | null | undefined
+): config is SiteShopifyCmsConfig {
+  return cmsType === "shopify" && config != null && "shopDomain" in config;
+}
+
+export interface SiteWorkflowSettings {
+  requireBriefApproval?: boolean;
+  enableParaphrase?: boolean;
+}
+
+/** 管理员配置的搜索结果 / 竞品分析策略（按站点） */
+export interface SiteSerpResearchSettings {
+  articleLimit?: number;
+  articlesOnly?: boolean;
+  organicFetchNum?: number;
+  minArticleCandidates?: number;
+  /** 搜索缓存时长（小时），0 = 不缓存 */
+  cacheTtlHours?: number;
+}
+
+export interface SiteContentProfile {
+  /** 主营行业 / 产品方向（注入 AI Prompt） */
+  industry?: string;
+  /** 认证资质 */
+  certifications?: string;
+  /** 起订量与交期说明 */
+  moqLeadTime?: string;
+  /** 文末询盘引导按钮文案 */
+  ctaPrimaryText?: string;
+  /** 引导按钮跳转 URL */
+  ctaPrimaryUrl?: string;
+  /** CTA UTM 来源 */
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  utmContent?: string;
+  /** 核心产品线 / 应用场景 */
+  productLines?: string;
+  /** 差异化卖点（最多 3 条） */
+  differentiators?: string[];
+  /** 目标客户类型 */
+  targetBuyerType?: string;
+  /** 禁用词 / 合规限制 */
+  forbiddenTerms?: string[];
+  /** 案例 / 客户类型 */
+  caseHighlights?: string;
 }
 
 export interface SiteItem {
@@ -415,6 +554,9 @@ export interface SiteItem {
   contentLanguage?: string | null;
   cmsType?: string | null;
   cmsConfig?: SiteCmsConfig | null;
+  workflow?: SiteWorkflowSettings;
+  contentProfile?: SiteContentProfile;
+  serpResearch?: SiteSerpResearchSettings;
   createdAt: string;
 }
 
@@ -424,6 +566,7 @@ export interface SitePageItem {
   title: string;
   summary?: string | null;
   keywords: string[];
+  primaryKeyword?: string | null;
   pageType: string;
   businessValue: number;
   lastUpdated?: string | null;
@@ -441,8 +584,12 @@ export interface CreateSitePayload {
   brandVoice?: string;
   targetMarket?: string;
   contentLanguage?: "en" | "zh-CN";
-  cmsType?: "wordpress";
+  cmsType?: "wordpress" | "shopify";
   wordpress?: SiteWordPressPayload;
+  shopify?: SiteShopifyPayload;
+  workflow?: SiteWorkflowSettings;
+  contentProfile?: SiteContentProfile;
+  serpResearch?: SiteSerpResearchSettings;
 }
 
 export interface UpdateSitePayload {
@@ -450,8 +597,12 @@ export interface UpdateSitePayload {
   brandVoice?: string;
   targetMarket?: string;
   contentLanguage?: "en" | "zh-CN";
-  cmsType?: "wordpress" | null;
+  cmsType?: "wordpress" | "shopify" | null;
   wordpress?: SiteWordPressPayload;
+  shopify?: SiteShopifyPayload;
+  workflow?: SiteWorkflowSettings;
+  contentProfile?: SiteContentProfile;
+  serpResearch?: SiteSerpResearchSettings;
 }
 
 export interface SiteWordPressPayload {
@@ -461,31 +612,78 @@ export interface SiteWordPressPayload {
   defaultStatus?: "draft" | "publish";
 }
 
-export interface CmsPublishResult {
-  provider: "wordpress";
+export interface SiteShopifyPayload {
+  shopDomain: string;
+  accessToken?: string;
+  blogId?: string;
+  productId?: string;
+  publishTarget?: "blog" | "product";
+  defaultPublished?: boolean;
+}
+
+export interface CmsPublishResultBase {
   postId: number | null;
   postUrl: string | null;
   status: string;
   publishedAt: string;
+  lastError?: string;
+  attemptCount?: number;
+}
+
+export interface WordPressCmsPublishResult extends CmsPublishResultBase {
+  provider: "wordpress";
   wpStatusRequested: "draft" | "publish";
 }
+
+export interface ShopifyCmsPublishResult extends CmsPublishResultBase {
+  provider: "shopify";
+  publishTarget?: "blog" | "product";
+  publishedRequested: boolean;
+  blogId?: string;
+  productId?: string;
+}
+
+export type CmsPublishResult = WordPressCmsPublishResult | ShopifyCmsPublishResult;
 
 export interface SeoFactoryProjectStats {
   totalJobs: number;
   completedJobs: number;
   failedJobs: number;
   activeJobs: number;
+  queuedJobs: number;
+  optimizingJobs: number;
+  pendingBriefCount: number;
+  pendingPublishCount: number;
+  cmsPublishFailedCount: number;
   pendingReviewCount: number;
+  staleDraftCount: number;
   siteCount: number;
+  sitesMissingProfileCount: number;
+  gscPendingSyncCount: number;
+  gscStaleSyncCount: number;
+  gscUnderperformingCount: number;
+  gscUnderperformingJobs: Array<{
+    jobId: string;
+    keyword: string;
+    page: string;
+    impressions: number;
+    clicks: number;
+    position: number;
+  }>;
+  keywordTotalCount: number;
+  keywordQueueableCount: number;
+  keywordUnclusteredCount: number;
 }
 
-export interface PendingReviewItem {
+export interface ShopifyBlogItem {
   id: string;
-  traceId: string;
-  targetKeyword: string;
   title: string;
+  handle: string;
+}
+
+export interface ShopifyProductItem {
+  id: string;
+  title: string;
+  handle: string;
   status: string;
-  ymylReview: ArticleJobYmylReview | null;
-  createdAt: string;
-  updatedAt: string;
 }

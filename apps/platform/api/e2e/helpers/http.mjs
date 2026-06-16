@@ -82,6 +82,58 @@ export async function apiRequest(method, path, { token, body, baseUrl = E2E_API_
   return { status: response.status, data: payload?.data, meta: payload?.meta, raw: payload };
 }
 
+export async function apiBinaryRequest(method, path, { token, body, baseUrl = E2E_API_BASE_URL } = {}) {
+  const url = path.startsWith('http') ? path : `${baseUrl}${path}`;
+  const headers = {
+    ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
+  const response = await fetch(url, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (!response.ok) {
+    let payload = null;
+    try {
+      payload = JSON.parse(buffer.toString('utf8'));
+    } catch {
+      payload = { raw: buffer.toString('utf8').slice(0, 500) };
+    }
+    throw new E2eHttpError(response.status, payload, path, method);
+  }
+
+  return {
+    status: response.status,
+    buffer,
+    headers: response.headers,
+  };
+}
+
+export async function apiMultipartRequest(method, path, { token, formData, baseUrl = E2E_API_BASE_URL } = {}) {
+  const url = path.startsWith('http') ? path : `${baseUrl}${path}`;
+  const headers = {
+    Accept: 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
+  const response = await fetch(url, {
+    method,
+    headers,
+    body: formData,
+  });
+
+  const payload = await parseJsonSafe(response);
+  if (!response.ok) {
+    throw new E2eHttpError(response.status, payload, path, method);
+  }
+
+  return { status: response.status, data: payload?.data, meta: payload?.meta, raw: payload };
+}
+
 export function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

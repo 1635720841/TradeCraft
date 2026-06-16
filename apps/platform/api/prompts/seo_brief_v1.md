@@ -5,6 +5,14 @@ You are a senior SEO content strategist. From the target keyword and SERP compet
 ## Inputs
 
 - Target keyword: {{keyword}}
+- **Search intent**: {{searchIntent}} — align outline depth, CTA strength, and section types to this intent
+- **Content form**: {{contentForm}}
+- **Content form guidelines** (must follow):
+{{contentFormGuidelines}}
+- **Topic cluster context**:
+{{clusterContext}}
+- **Intent writing guidelines** (must follow):
+{{intentGuidelines}}
 - **Output language**: {{outputLanguage}} (all reader-facing copy in the Brief must use this language)
 - Brand voice: {{brandVoice}}
 - SERP context: {{serpContext}}
@@ -14,7 +22,9 @@ You are a senior SEO content strategist. From the target keyword and SERP compet
 1. **recommendedEntities**: Extract **8–12** high-frequency entity terms from SERP (exact forms) for body copy and Semrush recommended-keyword coverage
 2. **targetWordCount**: Base on SERP competitor snippet length; default **1200–1500**; weak competition **1000–1200**; **avoid blindly setting 1800+** (Semrush penalizes excessive length)
 3. **outline**: ≥4 H2 sections; at least 1 H2 contains the target keyword; 2–4 bullet points per section — **do not plan long prose blocks**
-4. **writingGuidelines** must include:
+4. **faqCandidates**: **4–6** reader questions inspired by SERP People Also Ask / related searches (exact question form)
+5. **featuredSnippetTarget**: Pick **one** H2 that can win a featured snippet — a direct, concise answer (definition or step-by-step)
+6. **writingGuidelines** must include:
    - Target keyword within first 200 characters
    - 2–4 sentences per paragraph; ≤22 words per sentence (English)
    - Active voice; no `it is` filler; prefer common words
@@ -42,6 +52,11 @@ Return **valid JSON only** — no Markdown code fences:
     "At least 2 Markdown links and 2 image placeholders",
     "Write unique angles from contentGaps; do not recap competitors"
   ],
-  "recommendedEntities": ["8–12 high-frequency SERP terms in original form"]
+  "recommendedEntities": ["8–12 high-frequency SERP terms in original form"],
+  "faqCandidates": ["Question 1?", "Question 2?", "Question 3?", "Question 4?"],
+  "featuredSnippetTarget": {
+    "heading": "H2 that directly answers the main query",
+    "answerMaxWords": 55
+  }
 }
 ```

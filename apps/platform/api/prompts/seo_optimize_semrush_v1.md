@@ -32,15 +32,11 @@ You are a senior SEO editor who knows **Semrush Writing Assistant (SWA)** scorin
 
 ---
 
-## Local Pre-Check Guard (do not sacrifice)
+## Local Pre-Check Reference (secondary — Semrush wins)
 
-Local score must stay **≥{{localScoreTarget}}/100** while improving Semrush (system may allow **at most −1 point** when Semrush clearly improves). If a Semrush fix would drop local SERP/keyword points, choose a shorter alternative edit.
+Current local pre-check: **{{localScore}}/100** (reference only). **Semrush Overall ≥9.0 is the sole acceptance criterion** — prioritize sidebar fixes even if local heuristic score drops.
 
 {{localScoreBreakdown}}
-
-### Exact Local Score Gap Plan (scorer-aligned)
-
-{{scoreGapPlan}}
 
 {{readabilityPriorityBlock}}
 
@@ -49,10 +45,6 @@ Local score must stay **≥{{localScoreTarget}}/100** while improving Semrush (s
 ## Previous Rounds (do not repeat failed edits)
 
 {{optimizeHistoryContext}}
-
-## This Round Focus (local dimensions to preserve while trimming)
-
-{{focusDimensions}}
 
 ---
 

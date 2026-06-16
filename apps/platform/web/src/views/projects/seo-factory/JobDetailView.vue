@@ -18,7 +18,7 @@
               :loading="retrying"
               @click="handleRetry"
             >
-              续跑任务
+              重新生成
             </el-button>
             <el-button @click="goBack">返回列表</el-button>
           </div>
@@ -26,9 +26,61 @@
       </template>
 
       <template v-if="job">
+        <el-alert
+          v-if="nextStep"
+          class="mb-4"
+          :type="nextStep.alertType"
+          :closable="false"
+          show-icon
+          :title="nextStep.title"
+          :description="nextStep.description"
+        >
+          <template #default>
+            <el-button :type="nextStep.buttonType" @click="nextStep.handler">
+              {{ nextStep.label }}
+            </el-button>
+          </template>
+        </el-alert>
+
+        <el-alert
+          v-if="gscUnderperformHint"
+          class="mb-4"
+          type="warning"
+          :closable="false"
+          show-icon
+          title="搜索表现偏弱"
+          description="该文章在 Google 搜索中展示多但点击或排名不佳。可先改稿，或一键重新跑优化评分（自动改写 + 重算分数）。"
+        >
+          <template #default>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <el-button
+                type="primary"
+                size="small"
+                :loading="rerunningOptimization"
+                :disabled="!canRerunOptimization"
+                @click="handleRerunOptimization('gsc_underperform')"
+              >
+                重新优化评分
+              </el-button>
+              <el-button size="small" @click="activeTab = 'draft'">去改稿</el-button>
+              <el-button size="small" @click="activeTab = 'research'">查看竞品分析</el-button>
+            </div>
+          </template>
+        </el-alert>
+
         <el-descriptions :column="1" border>
           <el-descriptions-item label="目标关键词">
             {{ job.targetKeyword }}
+          </el-descriptions-item>
+          <el-descriptions-item label="搜索意图">
+            <el-tag
+              v-if="job.searchIntent"
+              size="small"
+              :type="dictTagType(keywordIntentDict, job.searchIntent)"
+            >
+              {{ dictLabel(keywordIntentDict, job.searchIntent) }}
+            </el-tag>
+            <span v-else class="text-gray-500">未记录（默认信息型）</span>
           </el-descriptions-item>
           <el-descriptions-item label="状态">
             <el-tag :type="dictTagType(jobStatusDict, job.status)">
@@ -44,25 +96,8 @@
               v-if="isOptimizingStale"
               class="mt-1 text-sm text-amber-600"
             >
-              超过预期时间仍无进展，可能 API 已中断；请到「SEO 评分」点「取消检测」或「续跑任务」
+              超过预期时间仍无进展，可能 API 已中断；请到「SEO 评分」点「取消检测」或「重新生成」
             </p>
-          </el-descriptions-item>
-          <el-descriptions-item label="Semrush 终检">
-            {{ job.semrushScore ?? "-" }} / 10
-          </el-descriptions-item>
-          <el-descriptions-item label="本地预检">
-            <el-tag
-              v-if="job.localSeoScore != null"
-              :type="job.localSeoScore >= LOCAL_SEO_PASS_THRESHOLD ? 'success' : 'warning'"
-              size="small"
-              class="mr-2"
-            >
-              {{ job.localSeoScore }} / 100
-            </el-tag>
-            <span v-else>- / 100</span>
-            <span v-if="job.localSeoScore != null" class="text-sm text-gray-500">
-              门槛 {{ LOCAL_SEO_PASS_THRESHOLD }}
-            </span>
           </el-descriptions-item>
           <el-descriptions-item label="YMYL 审查">
             <el-tag v-if="ymylReviewCompleted" :type="requiresHumanReview ? 'warning' : 'success'">
@@ -115,21 +150,21 @@
                 下载 JSON-LD
               </el-button>
               <el-button
-                v-if="wordpressCmsUiEnabled && canPublishToCms"
+                v-if="cmsUiEnabled && canPublishToCms"
                 type="success"
-                link
+                :link="!prePublishReady"
                 :loading="cmsPublishing"
-                @click="handlePublishToWordPress"
+                @click="handlePublishToCms"
               >
-                推送到 WordPress
+                {{ cmsPublishButtonLabel }}
               </el-button>
               <el-link
-                v-if="wordpressCmsUiEnabled && cmsPublishResult?.postUrl"
+                v-if="cmsUiEnabled && cmsPublishResult?.postUrl"
                 :href="cmsPublishResult.postUrl"
                 target="_blank"
                 type="primary"
               >
-                查看 WP 文章
+                查看 CMS 文章
               </el-link>
             </div>
             <span v-else-if="requiresHumanReview" class="text-amber-600">
@@ -137,20 +172,14 @@
             </span>
             <span v-else>-</span>
           </el-descriptions-item>
-          <el-descriptions-item v-if="job.errorMessage" label="错误信息">
-            <span class="text-red-500">{{ job.errorMessage }}</span>
+          <el-descriptions-item v-if="displayErrorMessage" label="错误信息">
+            <span class="text-red-500">{{ displayErrorMessage }}</span>
             <p
               v-if="resumeStepLabel"
               class="mt-1 text-sm text-gray-600"
             >
-              续跑将从「{{ resumeStepLabel }}」步骤继续，不会重头跑 SERP / 初稿。
+              将从「{{ resumeStepLabel }}」步骤继续，不会重头生成。
             </p>
-          </el-descriptions-item>
-          <el-descriptions-item label="任务 ID">
-            {{ job.id }}
-          </el-descriptions-item>
-          <el-descriptions-item label="Trace ID">
-            {{ job.traceId }}
           </el-descriptions-item>
           <el-descriptions-item label="创建时间">
             {{ formatTime(job.createdAt) }}
@@ -160,12 +189,52 @@
           </el-descriptions-item>
         </el-descriptions>
 
+        <el-collapse v-if="job" class="mt-4">
+          <el-collapse-item title="高级信息" name="advanced">
+            <el-descriptions :column="1" border size="small" class="mb-4">
+              <el-descriptions-item label="任务 ID">{{ job.id }}</el-descriptions-item>
+              <el-descriptions-item label="Trace ID">{{ job.traceId }}</el-descriptions-item>
+              <el-descriptions-item v-if="job.serpData?.fingerprint" label="搜索缓存指纹">
+                {{ job.serpData.fingerprint }}
+              </el-descriptions-item>
+              <el-descriptions-item label="Semrush 终检">
+                {{ job.semrushScore ?? "-" }} / 10
+              </el-descriptions-item>
+              <el-descriptions-item label="本地预检">
+                <el-tag
+                  v-if="effectiveLocalSeoScore != null"
+                  :type="effectiveLocalSeoScore >= LOCAL_SEO_PASS_THRESHOLD ? 'success' : 'warning'"
+                  size="small"
+                >
+                  {{ effectiveLocalSeoScore }} / 100
+                </el-tag>
+                <span v-else>- / 100</span>
+              </el-descriptions-item>
+            </el-descriptions>
+          </el-collapse-item>
+        </el-collapse>
+
+        <ArticleJobProgressStepper v-if="job" class="mt-4" :job="job" />
+
+        <ArticleJobDraftPublishChecklist
+          v-if="prePublishChecklistItems.length && activeTab !== 'draft'"
+          class="mt-4"
+          variant="pre-publish"
+          :items="prePublishChecklistItems"
+          @action="handlePrePublishChecklistAction"
+          @go-ymyl="activeTab = 'ymyl'"
+          @go-edit="activeTab = 'draft'"
+          @go-tab="handleChecklistGoTab"
+          @go-sites="goSiteManage"
+        />
+
         <ArticleJobDraftPublishChecklist
           v-if="publishChecklistItems.length && activeTab !== 'draft'"
           class="mt-4"
           :items="publishChecklistItems"
           @action="handleChecklistAction"
           @go-ymyl="activeTab = 'ymyl'"
+          @go-edit="activeTab = 'draft'"
         />
 
         <el-alert
@@ -200,7 +269,7 @@
           />
 
           <ArticleJobSeoScorePanel
-            :local-seo-score="job.localSeoScore"
+            :local-seo-score="effectiveLocalSeoScore"
             :semrush-score="job.semrushScore"
             :seo-check-data="job.seoCheckData"
             :optimize-history="job.draftData?.optimizeHistory"
@@ -213,9 +282,12 @@
             :can-rewrite="canTriggerRewrite"
             :rewriting="isRewriting"
             :rewrite-blocked-reason="rewriteBlockedReason"
+            :can-rerun-optimization="canRerunOptimization"
+            :rerunning-optimization="rerunningOptimization"
             @run-semrush-check="handleSemrushCheck"
             @cancel-semrush-check="handleCancelSemrushCheck"
             @rewrite="rewriteDrawerOpen = true"
+            @rerun-optimization="handleRerunOptimization('manual')"
           />
         </el-tab-pane>
         <el-tab-pane label="稿件正文" name="draft">
@@ -256,6 +328,7 @@
             :project-id="projectId"
             :job-id="jobId"
             :draft-data="job.draftData"
+            :brief-data="job.briefData"
             :article-images="job.draftData?.articleImages"
             :saving="draftSaving"
             :can-save="canSaveDraftEdit"
@@ -269,6 +342,7 @@
           <ArticleJobDraftPreview
             v-else
             :draft-data="job.draftData"
+            :brief-data="job.briefData"
             :can-rewrite="canTriggerRewrite"
             :rewriting="isRewriting"
             :rewrite-blocked-reason="rewriteBlockedReason"
@@ -282,14 +356,13 @@
             @rollback="handleDraftRollback"
           />
 
-          <el-alert
-            v-if="quillbotSummary"
-            class="mt-4"
-            :type="quillbotSummary.type"
-            :closable="false"
-            show-icon
-            title="QuillBot 原创表达优化"
-            :description="quillbotSummary.text"
+          <ArticleJobQuillbotPanel
+            :quillbot="job.seoCheckData?.quillbot"
+            :original-content="job.draftData?.paraphraseOriginalContent"
+            :current-content="job.draftData?.content"
+            :can-rerun="canRerunParaphrase"
+            :rerunning="rerunningParaphrase"
+            @rerun="handleRerunParaphrase"
           />
         </el-tab-pane>
         <el-tab-pane label="内容审查" name="ymyl">
@@ -297,8 +370,11 @@
         </el-tab-pane>
         <el-tab-pane label="内链" name="links">
           <ArticleJobInternalLinksPanel
+            :project-id="projectId"
+            :job-id="jobId"
             :internal-links="job.draftData?.internalLinks"
             :internal-links-applied="job.draftData?.internalLinksApplied"
+            @updated="fetchOnce"
           />
         </el-tab-pane>
         <el-tab-pane label="配图" name="images">
@@ -307,11 +383,24 @@
             :images-applied="job.draftData?.imagesApplied"
           />
         </el-tab-pane>
-        <el-tab-pane label="Brief 大纲" name="brief">
+        <el-tab-pane label="大纲" name="brief">
+          <ArticleJobBriefReviewPanel
+            v-if="briefPending"
+            :project-id="projectId"
+            :job-id="jobId"
+            :brief-data="job.briefData"
+            @updated="handleBriefUpdated"
+          />
           <ArticleJobBriefPanel :brief-data="job.briefData" />
         </el-tab-pane>
-        <el-tab-pane label="SERP 检索" name="serp">
-          <ArticleJobSerpPanel :serp-data="job.serpData" />
+        <el-tab-pane label="分析搜索结果" name="research">
+          <ArticleJobCompetitorPanel
+            :serp-data="job.serpData"
+            :brief-data="job.briefData"
+            :refreshing="serpRefreshing"
+            :show-refresh-action="canRefreshSerp"
+            @refresh="handleRefreshSerp"
+          />
         </el-tab-pane>
       </el-tabs>
     </el-card>
@@ -360,6 +449,9 @@ import {
   patchArticleDraft,
   publishArticleJob,
   resolveArticleDraftStale,
+  refreshArticleJobSerp,
+  rerunArticleOptimization,
+  rerunArticleParaphrase,
   retryArticleJob,
   rollbackArticleDraft,
   triggerArticleRewrite,
@@ -371,17 +463,31 @@ import type {
   ManualEditHistoryEntry,
   RewriteArticleJobPayload
 } from "@/api/seo-factory/types";
-import { previewPendingEditAffected, buildPublishChecklist, needsSaveConfirmDialog, resolveQuickSaveAction } from "@/utils/seo-factory/draft-edit-preview";
 import type { DraftPostSaveAction } from "@/api/seo-factory/types";
+import {
+  previewPendingEditAffected,
+  buildPublishChecklist,
+  buildPrePublishChecklist,
+  prePublishChecklistAllDone,
+  needsSaveConfirmDialog,
+  resolveQuickSaveAction,
+  type PublishChecklistAction
+} from "@/utils/seo-factory/draft-edit-preview";
 import { ElMessageBox } from "element-plus";
 import { useArticleJobPolling } from "@/composables/seo-factory/useArticleJobPolling";
 import { WORDPRESS_CMS_UI_ENABLED } from "@/constants/feature-flags";
 import { message } from "@/utils/message";
-import { jobStatusDict } from "@/constants/dicts/seo-factory";
+import { jobStatusDict, keywordIntentDict } from "@/constants/dicts/seo-factory";
 import { LOCAL_SEO_PASS_THRESHOLD } from "@/constants/seo-factory";
 import { dictLabel, dictTagType } from "@/utils/dict";
+import { canPublishJobToCms, cmsPublishActionLabel } from "@/utils/seo-factory/cms-publish-status";
 import { workflowStepLabel } from "@/utils/seo-factory/workflow-progress";
+import { isBriefPending } from "@/utils/seo-factory/job-progress";
+import { resolveEffectiveLocalSeoScore } from "@/utils/seo-factory/local-seo-display";
+import { resolveJobDisplayErrorMessage } from "@/utils/seo-factory/job-error-display";
 import ArticleJobBriefPanel from "./components/ArticleJobBriefPanel.vue";
+import ArticleJobBriefReviewPanel from "./components/ArticleJobBriefReviewPanel.vue";
+import ArticleJobProgressStepper from "./components/ArticleJobProgressStepper.vue";
 import ArticleJobDraftEditor from "./components/ArticleJobDraftEditor.vue";
 import ArticleJobDraftEditGuide from "./components/ArticleJobDraftEditGuide.vue";
 import ArticleJobDraftHistory from "./components/ArticleJobDraftHistory.vue";
@@ -395,13 +501,14 @@ import ArticleJobImagesPanel from "./components/ArticleJobImagesPanel.vue";
 import ArticleJobInternalLinksPanel from "./components/ArticleJobInternalLinksPanel.vue";
 import ArticleJobRewriteDrawer from "./components/ArticleJobRewriteDrawer.vue";
 import ArticleJobRewriteResult from "./components/ArticleJobRewriteResult.vue";
+import ArticleJobCompetitorPanel from "./components/ArticleJobCompetitorPanel.vue";
 import ArticleJobSeoScorePanel from "./components/ArticleJobSeoScorePanel.vue";
-import ArticleJobSerpPanel from "./components/ArticleJobSerpPanel.vue";
+import ArticleJobQuillbotPanel from "./components/ArticleJobQuillbotPanel.vue";
 import ArticleJobYmylPanel from "./components/ArticleJobYmylPanel.vue";
 
 defineOptions({ name: "JobDetailView" });
 
-const wordpressCmsUiEnabled = WORDPRESS_CMS_UI_ENABLED;
+const cmsUiEnabled = WORDPRESS_CMS_UI_ENABLED;
 
 const route = useRoute();
 const router = useRouter();
@@ -417,6 +524,9 @@ const { job, loading, polling, fetchOnce, startPolling } = useArticleJobPolling(
 
 const semrushChecking = ref(false);
 const retrying = ref(false);
+const rerunningOptimization = ref(false);
+const rerunningParaphrase = ref(false);
+const serpRefreshing = ref(false);
 const rewriteDrawerOpen = ref(false);
 const rewriteSubmitting = ref(false);
 const rewriteAccepting = ref(false);
@@ -506,13 +616,49 @@ async function switchDraftViewMode(next: "preview" | "edit") {
 }
 
 watch(
+  () => job.value?.briefData?.approvalStatus,
+  (status) => {
+    if (status === "pending") activeTab.value = "brief";
+  },
+  { immediate: true }
+);
+
+watch(
   () => route.query,
   (query) => {
     if (query.tab === "draft") activeTab.value = "draft";
+    if (query.tab === "seo") activeTab.value = "seo";
+    if (query.tab === "research") activeTab.value = "research";
     if (query.edit === "1" && hasDraftContent.value) draftViewMode.value = "edit";
   },
   { immediate: true }
 );
+
+const gscUnderperformHint = computed(
+  () => route.query.gsc === "underperform" && job.value?.status === "COMPLETED"
+);
+
+const canRerunOptimization = computed(() => {
+  if (!job.value || rerunningOptimization.value) return false;
+  if (job.value.status !== "COMPLETED") return false;
+  if (!hasDraftContent.value) return false;
+  if (isSemrushChecking.value || isRewriting.value) return false;
+  return true;
+});
+
+const canRerunParaphrase = computed(() => {
+  if (!job.value || rerunningParaphrase.value) return false;
+  if (job.value.status !== "COMPLETED") return false;
+  if (!hasDraftContent.value) return false;
+  if (isSemrushChecking.value || isRewriting.value || rerunningOptimization.value) return false;
+  return true;
+});
+
+const canRefreshSerp = computed(() => {
+  if (!job.value || serpRefreshing.value) return false;
+  if (job.value.status === "QUEUED" || job.value.status === "RESEARCHING") return false;
+  return true;
+});
 
 onMounted(() => {
   if (route.query.tab === "draft") activeTab.value = "draft";
@@ -534,6 +680,10 @@ const workflowProgress = computed(
   () => job.value?.seoCheckData?.workflowProgress ?? null
 );
 
+const effectiveLocalSeoScore = computed(() => resolveEffectiveLocalSeoScore(job.value));
+
+const displayErrorMessage = computed(() => resolveJobDisplayErrorMessage(job.value));
+
 const ymylReview = computed(() => job.value?.seoCheckData?.ymylReview ?? null);
 
 const ymylReviewCompleted = computed(() => Boolean(ymylReview.value?.reviewedAt));
@@ -545,13 +695,27 @@ const requiresHumanReview = computed(
 const publishChecklistItems = computed(() =>
   buildPublishChecklist({
     staleness: draftStaleness.value,
-    localSeoScore: job.value?.localSeoScore,
+    localSeoScore: effectiveLocalSeoScore.value,
     outputUrl: job.value?.outputUrl,
     ymylReview: ymylReview.value,
     semrushRunning: isSemrushChecking.value,
     resolvingAction: draftResolving.value
   })
 );
+
+const prePublishChecklistItems = computed(() => {
+  if (!job.value) return [];
+  return buildPrePublishChecklist({
+    job: job.value,
+    siteContentProfile: job.value.siteContentProfile,
+    cmsUiEnabled,
+    exportStale: exportStale.value,
+    resolvingAction: draftResolving.value,
+    publishingCms: cmsPublishing.value
+  });
+});
+
+const prePublishReady = computed(() => prePublishChecklistAllDone(prePublishChecklistItems.value));
 
 const pendingYmylReReview = computed(() => {
   if (!requiresHumanReview.value) return false;
@@ -569,28 +733,6 @@ const ymylReviewDescription = computed(() => {
   const categoryText = categories.length > 0 ? categories.join("、") : "敏感主题";
   const signalPreview = signals.slice(0, 3).join("；");
   return `检测到 ${categoryText} 相关内容，禁止自动导出可发布 HTML。${signalPreview ? `命中：${signalPreview}` : ""}`;
-});
-
-const quillbotSummary = computed(() => {
-  const quillbot = job.value?.seoCheckData?.quillbot;
-  if (!quillbot?.completedAt && !quillbot?.skipped) return null;
-
-  if (quillbot.skipped) {
-    return { type: "info" as const, text: quillbot.warnings?.[0] ?? "已跳过 QuillBot 优化" };
-  }
-
-  if (quillbot.usedOriginal) {
-    return {
-      type: "warning" as const,
-      text: `复检未通过，已保留 Semrush 优化稿。${(quillbot.warnings ?? []).slice(0, 2).join("；") || ""}`
-    };
-  }
-
-  const changes = quillbot.changesSummary?.[0];
-  return {
-    type: "success" as const,
-    text: changes ? `已完成润色：${changes}` : "已完成原创表达优化"
-  };
 });
 
 const optimizingProgressMessage = computed(() => {
@@ -642,6 +784,107 @@ const canTriggerRewrite = computed(
 
 const canRetry = computed(() => job.value?.status === "FAILED" && !retrying.value);
 
+const briefPending = computed(() => (job.value ? isBriefPending(job.value) : false));
+
+interface NextStepAction {
+  title: string;
+  description?: string;
+  label: string;
+  alertType: "success" | "warning" | "info" | "error";
+  buttonType: "primary" | "success" | "warning" | "danger";
+  handler: () => void;
+}
+
+const nextStep = computed<NextStepAction | null>(() => {
+  const j = job.value;
+  if (!j) return null;
+
+  if (briefPending.value) {
+    return {
+      title: "下一步：确认大纲",
+      description: "核对 AI 大纲后确认，系统才会开始生成正文。",
+      label: "去确认大纲",
+      alertType: "warning",
+      buttonType: "warning",
+      handler: () => {
+        activeTab.value = "brief";
+      }
+    };
+  }
+
+  if (j.status === "FAILED") {
+    return {
+      title: "下一步：重新生成",
+      description: j.errorMessage || "任务生成失败，可从失败步骤继续。",
+      label: "重新生成",
+      alertType: "error",
+      buttonType: "danger",
+      handler: () => {
+        void handleRetry();
+      }
+    };
+  }
+
+  if (requiresHumanReview.value && ymylReview.value?.humanReviewStatus !== "approved") {
+    return {
+      title: "下一步：敏感内容审核",
+      description: "需人工审核通过后才能导出或发布。",
+      label: "去审核",
+      alertType: "warning",
+      buttonType: "warning",
+      handler: () => {
+        activeTab.value = "ymyl";
+      }
+    };
+  }
+
+  if (exportStale.value) {
+    return {
+      title: "下一步：处理稿件变更",
+      description: "正文已编辑，导出物已失效，请按黄色提示重新处理。",
+      label: "去处理稿件",
+      alertType: "warning",
+      buttonType: "warning",
+      handler: () => {
+        activeTab.value = "draft";
+      }
+    };
+  }
+
+  if (cmsUiEnabled && canPublishToCms.value) {
+    return {
+      title: "下一步：发布到网站",
+      description: "文章已就绪，可推送到 CMS。",
+      label: cmsPublishButtonLabel.value,
+      alertType: "success",
+      buttonType: "success",
+      handler: () => {
+        void handlePublishToCms();
+      }
+    };
+  }
+
+  if (j.status === "COMPLETED" && j.outputUrl && !exportStale.value) {
+    return {
+      title: "下一步：下载文章",
+      description: "文章已生成完成，可下载 HTML 或资产包。",
+      label: "下载 HTML",
+      alertType: "success",
+      buttonType: "primary",
+      handler: () => {
+        void handleDownloadExport("html");
+      }
+    };
+  }
+
+  return null;
+});
+
+async function handleBriefUpdated() {
+  startPolling();
+  await fetchOnce();
+}
+
 const resumeStepLabel = computed(() => {
   const step = job.value?.seoCheckData?.workflow?.failedStep;
   return step ? workflowStepLabel(step) : null;
@@ -651,26 +894,32 @@ const cmsPublishResult = computed(() => job.value?.seoCheckData?.cmsPublish ?? n
 
 const canPublishToCms = computed(
   () =>
-    job.value?.status === "COMPLETED" &&
+    job.value?.status === 'COMPLETED' &&
     Boolean(job.value.outputUrl) &&
-    !cmsPublishResult.value?.postUrl
+    canPublishJobToCms(job.value)
 );
 
-async function handlePublishToWordPress() {
-  if (!canPublishToCms.value || cmsPublishing.value) return;
+const cmsPublishButtonLabel = computed(() =>
+  job.value ? cmsPublishActionLabel(job.value) : "推送到 CMS"
+);
+
+async function handlePublishToCms() {
+  if (!canPublishToCms.value || cmsPublishing.value || !job.value) return;
 
   cmsPublishing.value = true;
   try {
     const result = await publishArticleJob(projectId.value, jobId.value);
+    const published =
+      result.status === "publish" ||
+      result.status === "published" ||
+      (result.provider === "shopify" && result.publishedRequested);
     message(
-      result.status === "publish"
-        ? "已发布到 WordPress"
-        : "已推送到 WordPress 草稿箱",
+      published ? "已发布到 CMS" : "已推送到 CMS 草稿",
       { type: "success" }
     );
     await fetchOnce();
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "WordPress 发布失败";
+    const msg = error instanceof Error ? error.message : "CMS 发布失败";
     message(msg, { type: "error" });
   } finally {
     cmsPublishing.value = false;
@@ -714,7 +963,7 @@ async function handleRetry() {
   retrying.value = true;
   try {
     await retryArticleJob(projectId.value, jobId.value);
-    message("已从失败步骤重新入队，正在续跑…", { type: "success" });
+    message("已从失败步骤重新入队，正在重新生成…", { type: "success" });
     startPolling();
     await fetchOnce();
   } catch (error) {
@@ -722,6 +971,60 @@ async function handleRetry() {
     message(msg, { type: "error" });
   } finally {
     retrying.value = false;
+  }
+}
+
+async function handleRerunOptimization(reason: "gsc_underperform" | "manual" = "manual") {
+  if (!canRerunOptimization.value) return;
+
+  rerunningOptimization.value = true;
+  try {
+    await rerunArticleOptimization(projectId.value, jobId.value, { reason });
+    message("已重新入队优化评分，请稍候…", { type: "success" });
+    activeTab.value = "seo";
+    startPolling();
+    await fetchOnce();
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "重新优化失败";
+    message(msg, { type: "error" });
+  } finally {
+    rerunningOptimization.value = false;
+  }
+}
+
+async function handleRerunParaphrase() {
+  if (!canRerunParaphrase.value) return;
+
+  rerunningParaphrase.value = true;
+  try {
+    await rerunArticleParaphrase(projectId.value, jobId.value);
+    message("已重新入队原创表达优化，请稍候…", { type: "success" });
+    activeTab.value = "draft";
+    startPolling();
+    await fetchOnce();
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "重新润色失败";
+    message(msg, { type: "error" });
+  } finally {
+    rerunningParaphrase.value = false;
+  }
+}
+
+async function handleRefreshSerp(payload?: { serpArticlesOnly?: boolean }) {
+  if (!canRefreshSerp.value) return;
+
+  serpRefreshing.value = true;
+  try {
+    await refreshArticleJobSerp(projectId.value, jobId.value, payload);
+    message(payload?.serpArticlesOnly === false ? "已放宽筛选并更新搜索结果" : "搜索结果已更新", {
+      type: "success"
+    });
+    await fetchOnce();
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "重新分析失败";
+    message(msg, { type: "error" });
+  } finally {
+    serpRefreshing.value = false;
   }
 }
 
@@ -835,6 +1138,31 @@ async function handleResolveDraftStale(action: DraftResolveStaleAction) {
 
 function handleChecklistAction(action: DraftResolveStaleAction) {
   void handleResolveDraftStale(action);
+}
+
+function handlePrePublishChecklistAction(
+  action: Exclude<
+    PublishChecklistAction,
+    "go_ymyl" | "go_edit" | "go_internal_links" | "go_images" | "go_sites"
+  >
+) {
+  if (action === "publish_cms") {
+    void handlePublishToCms();
+    return;
+  }
+  if (action === "regenerate_export") {
+    void handleResolveDraftStale("regenerate_export");
+    return;
+  }
+  void handleResolveDraftStale(action as DraftResolveStaleAction);
+}
+
+function handleChecklistGoTab(tab: "internalLinks" | "images") {
+  activeTab.value = tab === "internalLinks" ? "links" : "images";
+}
+
+function goSiteManage() {
+  router.push({ name: "SeoFactorySites", params: { projectId: projectId.value } });
 }
 
 function extractApiErrorCode(error: unknown): string | undefined {

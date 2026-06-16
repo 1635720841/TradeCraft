@@ -31,8 +31,8 @@ export class CreateBatchArticleJobsDto {
 
   @IsOptional()
   @IsInt()
-  @Min(1)
-  @Max(MAX_BATCH_JOB_LIMIT)
+  @Min(1, { message: '运行条数至少为 1' })
+  @Max(MAX_BATCH_JOB_LIMIT, { message: `运行条数不能超过 ${MAX_BATCH_JOB_LIMIT}` })
   limit?: number;
 
   @IsOptional()
@@ -41,8 +41,10 @@ export class CreateBatchArticleJobsDto {
 
   @IsOptional()
   @IsInt()
-  @Min(1)
-  @Max(MAX_SERP_ARTICLE_LIMIT)
+  @Min(1, { message: '竞品分析条数至少为 1' })
+  @Max(MAX_SERP_ARTICLE_LIMIT, {
+    message: `竞品分析条数不能超过 ${MAX_SERP_ARTICLE_LIMIT}`,
+  })
   serpArticleLimit?: number;
 
   @IsOptional()

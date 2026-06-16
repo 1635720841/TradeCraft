@@ -20,8 +20,14 @@
             :closable="false"
             show-icon
             title="请先创建站点"
-            description="文章任务必须绑定站点；请前往「站点管理」新建站点后再提交。"
-          />
+            description="文章任务必须绑定站点。请前往「站点管理」填写域名与公司卖点后再提交。"
+          >
+            <template #default>
+              <el-button type="primary" size="small" class="mt-2" @click="goSites">
+                去站点管理
+              </el-button>
+            </template>
+          </el-alert>
 
           <el-form
             ref="singleFormRef"
@@ -31,10 +37,10 @@
             class="mt-2"
             @submit.prevent
           >
-            <el-form-item label="目标站点" prop="siteId">
+            <el-form-item label="发到哪个网站" prop="siteId">
               <el-select
                 v-model="singleForm.siteId"
-                placeholder="请选择站点"
+                placeholder="选择要发文章的网站"
                 class="w-full"
                 :loading="sitesLoading"
               >
@@ -43,17 +49,72 @@
                   :key="site.id"
                   :label="site.domain"
                   :value="site.id"
-                />
+                >
+                  <div class="py-0.5">
+                    <div>{{ site.domain }}</div>
+                    <div v-if="siteOptionSubline(site)" class="text-xs text-gray-400 leading-tight">
+                      {{ siteOptionSubline(site) }}
+                    </div>
+                  </div>
+                </el-option>
               </el-select>
+              <p class="mt-1 text-xs text-gray-500">
+                {{ siteFieldDescription(selectedSingleSite) }}
+              </p>
             </el-form-item>
 
-            <el-form-item label="目标关键词" prop="targetKeyword">
+            <el-form-item label="想排什么搜索词" prop="targetKeyword">
               <el-input
                 v-model="singleForm.targetKeyword"
-                placeholder="例如：industrial valve supplier"
+                placeholder="例如：industrial valve supplier（英文站写英文词）"
                 maxlength="200"
                 show-word-limit
               />
+              <p class="mt-1 text-xs text-gray-500">
+                填读者在 Google 会搜的词；系统会分析该词的搜索结果，并围绕它写一篇文章。
+              </p>
+            </el-form-item>
+
+            <el-form-item label="读者想做什么">
+              <el-select v-model="singleForm.searchIntent" class="w-full" placeholder="请选择">
+                <el-option
+                  v-for="item in keywordIntentDict"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                >
+                  <div class="py-0.5">
+                    <div>{{ item.label }}</div>
+                    <div v-if="item.description" class="text-xs text-gray-400 leading-tight">
+                      {{ item.description }}
+                    </div>
+                  </div>
+                </el-option>
+              </el-select>
+              <p class="mt-1 text-xs text-gray-500">
+                {{ dictDescription(keywordIntentDict, singleForm.searchIntent) }}
+              </p>
+            </el-form-item>
+
+            <el-form-item label="写成什么样式">
+              <el-select v-model="singleForm.contentForm" class="w-full" placeholder="请选择">
+                <el-option
+                  v-for="item in articleContentFormDict"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                >
+                  <div class="py-0.5">
+                    <div>{{ item.label }}</div>
+                    <div v-if="item.description" class="text-xs text-gray-400 leading-tight">
+                      {{ item.description }}
+                    </div>
+                  </div>
+                </el-option>
+              </el-select>
+              <p class="mt-1 text-xs text-gray-500">
+                {{ dictDescription(articleContentFormDict, singleForm.contentForm) }}
+              </p>
             </el-form-item>
 
             <el-form-item label="输出语言" prop="contentLanguage">
@@ -67,16 +128,30 @@
               </el-select>
             </el-form-item>
 
-            <el-form-item label="SERP 竞品条数">
-              <el-input-number v-model="singleForm.serpArticleLimit" :min="1" />
-            </el-form-item>
-
-            <el-form-item label="仅 SEO 文章">
-              <el-switch v-model="singleForm.serpArticlesOnly" />
-            </el-form-item>
+            <el-alert
+              v-if="keywordConflicts.length"
+              class="mb-4"
+              type="warning"
+              :closable="false"
+              show-icon
+              title="检测到相似关键词任务"
+            >
+              <template #default>
+                <ul class="list-disc pl-5 text-sm">
+                  <li v-for="item in keywordConflicts" :key="item.jobId">
+                    「{{ item.keyword }}」（{{ conflictReasonLabel(item.reason) }}）
+                  </li>
+                </ul>
+              </template>
+            </el-alert>
 
             <el-form-item>
-              <el-button type="primary" :loading="submitting" @click="handleSingleSubmit">
+              <el-button
+                type="primary"
+                :loading="submitting"
+                :disabled="sites.length === 0"
+                @click="handleSingleSubmit"
+              >
                 提交任务
               </el-button>
               <el-button @click="goBack">返回列表</el-button>
@@ -84,7 +159,7 @@
           </el-form>
         </el-tab-pane>
 
-        <el-tab-pane label="批量采集" name="batch">
+        <el-tab-pane label="批量采集（高级）" name="batch">
           <el-form
             ref="batchFormRef"
             :model="batchForm"
@@ -93,10 +168,10 @@
             class="mt-2"
             @submit.prevent
           >
-            <el-form-item label="目标站点" prop="siteId">
+            <el-form-item label="发到哪个网站" prop="siteId">
               <el-select
                 v-model="batchForm.siteId"
-                placeholder="请选择站点"
+                placeholder="选择要发文章的网站"
                 class="w-full"
                 :loading="sitesLoading"
                 @change="handleBatchSiteChange"
@@ -106,8 +181,18 @@
                   :key="site.id"
                   :label="site.domain"
                   :value="site.id"
-                />
+                >
+                  <div class="py-0.5">
+                    <div>{{ site.domain }}</div>
+                    <div v-if="siteOptionSubline(site)" class="text-xs text-gray-400 leading-tight">
+                      {{ siteOptionSubline(site) }}
+                    </div>
+                  </div>
+                </el-option>
               </el-select>
+              <p class="mt-1 text-xs text-gray-500">
+                {{ siteFieldDescription(selectedBatchSite) }}
+              </p>
             </el-form-item>
 
             <el-form-item label="输出语言">
@@ -167,13 +252,16 @@
               <el-input-number v-model="batchForm.limit" :min="1" :max="20" />
             </el-form-item>
 
-            <el-form-item label="仅 SEO 文章">
-              <el-switch v-model="batchForm.seoArticlesOnly" />
-            </el-form-item>
-
-            <el-form-item label="SERP 竞品条数">
-              <el-input-number v-model="batchForm.serpArticleLimit" :min="1" :max="10" />
-            </el-form-item>
+            <el-collapse class="mb-2">
+              <el-collapse-item title="高级选项" name="advanced">
+                <el-form-item label="只采博客页">
+                  <el-switch v-model="batchForm.seoArticlesOnly" />
+                  <p class="mt-1 text-xs text-gray-500">
+                    从站点 sitemap 采集时，只挑博客/资讯类 URL；关掉会纳入更多页面。
+                  </p>
+                </el-form-item>
+              </el-collapse-item>
+            </el-collapse>
 
             <el-form-item>
               <el-button type="primary" :loading="submitting" @click="handleBatchSubmit">
@@ -184,35 +272,30 @@
           </el-form>
         </el-tab-pane>
       </el-tabs>
-
-      <el-alert
-        v-if="sites.length === 0 && !sitesLoading"
-        type="warning"
-        :closable="false"
-        show-icon
-        class="mt-2"
-      >
-        <template #title>
-          当前项目暂无站点。请在项目根目录执行
-          <code class="mx-1">pnpm db:seed</code>
-          后刷新；或使用菜单「平台 → SEO 文章任务」进入开发环境。
-        </template>
-      </el-alert>
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { FormInstance, FormRules } from "element-plus";
+import { ElMessageBox } from "element-plus";
 import { createArticleJob, createBatchArticleJobs } from "@/api/seo-factory/article-job";
+import {
+  getSiteKeywordConflicts,
+  type KeywordConflictItem,
+  type KeywordConflictReason
+} from "@/api/seo-factory/keyword-conflict";
 import { listSiteSeoArticles, listSites } from "@/api/seo-factory/site";
 import type { DiscoveredSeoArticle, SiteItem } from "@/api/seo-factory/types";
 import {
   CONTENT_LANGUAGE_OPTIONS,
+  keywordIntentDict,
+  articleContentFormDict,
   type ContentLanguageCode
 } from "@/constants/dicts/seo-factory";
+import { dictDescription } from "@/utils/dict";
 import { message } from "@/utils/message";
 
 defineOptions({ name: "JobCreateView" });
@@ -230,9 +313,9 @@ const contentLanguageOptions = CONTENT_LANGUAGE_OPTIONS;
 const singleForm = reactive({
   siteId: "",
   targetKeyword: "",
-  contentLanguage: "en" as ContentLanguageCode,
-  serpArticleLimit: 5,
-  serpArticlesOnly: true
+  searchIntent: "INFORMATIONAL",
+  contentForm: "ARTICLE" as "ARTICLE" | "PRODUCT_ENHANCED" | "FAQ_PAGE",
+  contentLanguage: "en" as ContentLanguageCode
 });
 
 const batchForm = reactive({
@@ -241,20 +324,19 @@ const batchForm = reactive({
   keywordsText: "",
   contentLanguage: "en" as ContentLanguageCode,
   limit: 5,
-  seoArticlesOnly: true,
-  serpArticleLimit: 5
+  seoArticlesOnly: true
 });
 
 const singleRules: FormRules = {
-  siteId: [{ required: true, message: "请选择站点", trigger: "change" }],
+  siteId: [{ required: true, message: "请选择要发文的网站", trigger: "change" }],
   targetKeyword: [
-    { required: true, message: "请输入目标关键词", trigger: "blur" },
-    { min: 2, message: "关键词至少 2 个字符", trigger: "blur" }
+    { required: true, message: "请输入搜索词", trigger: "blur" },
+    { min: 2, message: "搜索词至少 2 个字符", trigger: "blur" }
   ]
 };
 
 const batchRules: FormRules = {
-  siteId: [{ required: true, message: "请选择站点", trigger: "change" }],
+  siteId: [{ required: true, message: "请选择要发文的网站", trigger: "change" }],
   keywordsText: [
     {
       validator: (_rule, value, callback) => {
@@ -282,6 +364,48 @@ const sitesLoading = ref(false);
 const submitting = ref(false);
 const previewLoading = ref(false);
 const previewItems = ref<DiscoveredSeoArticle[]>([]);
+const keywordConflicts = ref<KeywordConflictItem[]>([]);
+let keywordConflictTimer: ReturnType<typeof setTimeout> | null = null;
+
+const selectedSingleSite = computed(() =>
+  sites.value.find((site) => site.id === singleForm.siteId)
+);
+const selectedBatchSite = computed(() =>
+  sites.value.find((site) => site.id === batchForm.siteId)
+);
+
+function siteOptionSubline(site: SiteItem): string | undefined {
+  const bits: string[] = [];
+  if (site.contentLanguage === "zh-CN") bits.push("简体中文");
+  else if (site.contentLanguage === "en") bits.push("英文");
+  if (site.targetMarket) bits.push(site.targetMarket);
+  return bits.length ? bits.join(" · ") : undefined;
+}
+
+function siteFieldDescription(site?: SiteItem): string {
+  if (!site) {
+    return "选择要发文章的网站，AI 会读取该站的公司卖点、认证与文末询盘按钮来写稿。";
+  }
+  const meta = siteOptionSubline(site);
+  return meta
+    ? `已选 ${site.domain}（${meta}），生成内容将按该站配置写作与发布。`
+    : `已选 ${site.domain}，生成内容将按该站配置写作与发布。`;
+}
+
+function lastSiteStorageKey() {
+  return `seo-factory:last-site:${projectId}`;
+}
+
+function rememberLastSite(siteId: string) {
+  if (!siteId) return;
+  localStorage.setItem(lastSiteStorageKey(), siteId);
+}
+
+function resolveLastSiteId(): string | null {
+  const saved = localStorage.getItem(lastSiteStorageKey());
+  if (!saved) return null;
+  return sites.value.some((site) => site.id === saved) ? saved : null;
+}
 
 watch(
   () => batchForm.siteId,
@@ -290,11 +414,55 @@ watch(
   }
 );
 
+watch(
+  () => [singleForm.siteId, singleForm.targetKeyword] as const,
+  ([siteId, keyword]) => {
+    if (keywordConflictTimer) clearTimeout(keywordConflictTimer);
+    keywordConflicts.value = [];
+    if (!siteId || keyword.trim().length < 2) return;
+    keywordConflictTimer = setTimeout(() => {
+      void loadKeywordConflicts(siteId, keyword.trim());
+    }, 400);
+  }
+);
+
+async function loadKeywordConflicts(siteId: string, keyword: string) {
+  try {
+    keywordConflicts.value = await getSiteKeywordConflicts(projectId, siteId, keyword);
+  } catch {
+    keywordConflicts.value = [];
+  }
+}
+
+function conflictReasonLabel(reason: KeywordConflictReason) {
+  if (reason === "exact") return "完全相同";
+  if (reason === "substring") return "包含关系";
+  return "高度相似";
+}
+
+async function confirmKeywordConflictsIfNeeded(): Promise<boolean> {
+  if (keywordConflicts.value.length === 0) return true;
+  try {
+    await ElMessageBox.confirm(
+      `该站点已有 ${keywordConflicts.value.length} 个相似关键词任务，继续入队可能导致内容同质化。是否仍要提交？`,
+      "关键词冲突提示",
+      { type: "warning", confirmButtonText: "仍要提交", cancelButtonText: "取消" }
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function loadSites() {
   sitesLoading.value = true;
   try {
     sites.value = await listSites(projectId);
-    if (sites.value.length === 1) {
+    const lastSiteId = resolveLastSiteId();
+    if (lastSiteId) {
+      const site = sites.value.find((item) => item.id === lastSiteId);
+      if (site) applySiteDefaults(site);
+    } else if (sites.value.length === 1) {
       applySiteDefaults(sites.value[0]);
     }
   } finally {
@@ -341,17 +509,22 @@ async function loadPreview() {
 async function handleSingleSubmit() {
   const valid = await singleFormRef.value?.validate().catch(() => false);
   if (!valid) return;
+  if (!(await confirmKeywordConflictsIfNeeded())) return;
 
   submitting.value = true;
   try {
     const job = await createArticleJob(projectId, {
       siteId: singleForm.siteId,
       targetKeyword: singleForm.targetKeyword.trim(),
-      contentLanguage: singleForm.contentLanguage,
-      serpArticleLimit: singleForm.serpArticleLimit,
-      serpArticlesOnly: singleForm.serpArticlesOnly
+      searchIntent: singleForm.searchIntent,
+      contentForm: singleForm.contentForm,
+      contentLanguage: singleForm.contentLanguage
     });
+    rememberLastSite(singleForm.siteId);
     message("任务已提交，正在排队处理", { type: "success" });
+    if (job.warnings?.length) {
+      message(job.warnings[0].message, { type: "warning" });
+    }
     router.push({
       name: "SeoFactoryJobDetail",
       params: { projectId, jobId: job.id }
@@ -381,10 +554,10 @@ async function handleBatchSubmit() {
       keywords,
       limit: batchForm.limit,
       seoArticlesOnly: batchForm.seoArticlesOnly,
-      contentLanguage: batchForm.contentLanguage,
-      serpArticleLimit: batchForm.serpArticleLimit,
-      serpArticlesOnly: true
+      contentLanguage: batchForm.contentLanguage
     });
+
+    rememberLastSite(batchForm.siteId);
 
     message(`已提交 ${result.created} 条任务`, { type: "success" });
     router.push({ name: "SeoFactoryJobs", params: { projectId } });
@@ -395,6 +568,10 @@ async function handleBatchSubmit() {
 
 function goBack() {
   router.push({ name: "SeoFactoryJobs", params: { projectId } });
+}
+
+function goSites() {
+  router.push({ name: "SeoFactorySites", params: { projectId } });
 }
 
 onMounted(() => {

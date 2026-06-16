@@ -11,3 +11,6 @@ export const ARTICLE_JOB_QUEUE = 'seo-factory-article-job';
 
 /** seo-factory Playwright / Semrush RPA 专用队列（低频限速） */
 export const PLAYWRIGHT_QUEUE = 'seo-factory-playwright';
+
+/** seo-factory GSC 过期数据定时同步 */
+export const GSC_SYNC_QUEUE = 'seo-factory-gsc-sync';

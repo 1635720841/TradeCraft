@@ -18,7 +18,7 @@
 
 
 
-import { Controller, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
+import { Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Body } from '@nestjs/common';
 
 import type { RequestContext } from '@wm/shared-core';
 
@@ -27,6 +27,7 @@ import { ReqCtx } from '../../../../core/decorators/request-context.decorator';
 import { ProjectService } from '../../../../modules/project/project.service';
 
 import { SitePageService } from './site-page.service';
+import { PatchSitePageDto } from './dto/patch-site-page.dto';
 
 
 
@@ -94,6 +95,25 @@ export class SitePageController {
 
     return { data: result, meta: { traceId: ctx.traceId } };
 
+  }
+
+  @Patch(':pageId')
+  async patch(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('siteId') siteId: string,
+    @Param('pageId') pageId: string,
+    @Body() dto: PatchSitePageDto,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const page = await this.sitePageService.patchPage(
+      ctx.organizationId,
+      projectId,
+      siteId,
+      pageId,
+      dto.primaryKeyword,
+    );
+    return { data: page, meta: { traceId: ctx.traceId } };
   }
 
 }

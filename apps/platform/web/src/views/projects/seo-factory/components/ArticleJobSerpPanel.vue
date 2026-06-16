@@ -8,6 +8,8 @@
   <div>
     <div v-if="fingerprint" class="mb-3 text-sm text-gray-500">
       缓存指纹：{{ fingerprint }}
+      <span v-if="fromCache"> · 本次来自搜索缓存</span>
+      <span v-else-if="fromCache === false"> · 本次实时拉取</span>
     </div>
 
     <el-alert
@@ -18,9 +20,7 @@
       class="mb-3"
     >
       <template #title>
-        已过滤 SERP 竞品：保留 {{ filterMeta.kept }} 条 SEO 文章
-        （原始 {{ filterMeta.total }} 条，排除 {{ filterMeta.excluded }} 条，上限
-        {{ filterMeta.limit }}）
+        {{ filterMetaTitle }}
       </template>
     </el-alert>
 
@@ -43,7 +43,7 @@
       <el-table-column prop="link" label="链接" min-width="180" show-overflow-tooltip />
     </el-table>
 
-    <el-empty v-else description="暂无 SERP 数据（任务进行中或检索失败）" />
+    <el-empty v-else description="暂无搜索结果数据（任务进行中或检索失败）" />
   </div>
 </template>
 
@@ -59,5 +59,18 @@ const props = defineProps<{
 
 const organic = computed(() => props.serpData?.organic ?? []);
 const fingerprint = computed(() => props.serpData?.fingerprint);
+const fromCache = computed(() => props.serpData?.fromCache);
 const filterMeta = computed(() => props.serpData?.filterMeta);
+
+const filterMetaTitle = computed(() => {
+  const meta = filterMeta.value;
+  if (!meta) return "";
+  if (meta.backfillKept != null && meta.backfillKept > 0) {
+    return `已分析 ${meta.kept} 条结果（博客 ${meta.articleKept ?? 0} 篇，另补充 ${meta.backfillKept} 条；来自 Google 前 ${meta.total} 条）`;
+  }
+  if (meta.articlesOnly) {
+    return `已分析 ${meta.kept} 篇博客/资讯类结果（来自 Google 前 ${meta.total} 条，目标最多 ${meta.limit} 篇）`;
+  }
+  return `已分析 ${meta.kept} 条搜索结果（来自 Google 前 ${meta.total} 条）`;
+});
 </script>
