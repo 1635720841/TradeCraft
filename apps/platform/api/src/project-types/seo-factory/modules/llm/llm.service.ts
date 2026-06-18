@@ -44,6 +44,8 @@ export interface LlmJobContext {
 export interface GenerateOptimizeMeta {
   phase: 'local' | 'semrush';
   round: number;
+  /** Semrush 评测线路（3ue 节点） */
+  semrushEvaluationRoute?: string;
   semrushCompetitorWordCount?: number;
   semrushCurrentWordCount?: number;
   semrushReadabilityScore?: number;
@@ -59,6 +61,8 @@ export interface GenerateOptimizeMeta {
   pointsToGo?: number;
   scoreGapPlan?: string;
   contentCoverageMaxed?: boolean;
+  /** 已命中的 SEO 短语，可读性优化轮禁止删改 */
+  protectedSeoPhrases?: string[];
 }
 
 export interface OptimizeRoundBreakdown {
@@ -74,6 +78,8 @@ export interface DraftOptimizeRound {
   round: number;
   /** baseline=初稿/初检快照，optimize=AI 优化轮 */
   kind?: 'baseline' | 'optimize';
+  /** Semrush 轮对应的 3ue 评测线路（节点） */
+  semrushEvaluationRoute?: string;
   promptVersion?: string;
   changesSummary?: string[];
   warnings?: string[];
@@ -91,7 +97,7 @@ export interface DraftOptimizeRound {
   /** Semrush 轮回滚时候选稿本地分 */
   candidateLocalScoreAfter?: number;
   /** 回滚原因 */
-  rollbackReason?: 'score_regressed' | 'local_below_threshold' | 'both';
+  rollbackReason?: 'score_regressed' | 'keyword_coverage_regressed' | 'local_below_threshold' | 'both';
 }
 
 export type ManualRewriteMode = 'suggestions' | 'instruction';
@@ -270,6 +276,7 @@ export class LlmService {
       pointsToGo: meta?.pointsToGo,
       scoreGapPlan: meta?.scoreGapPlan,
       contentCoverageMaxed: meta?.contentCoverageMaxed,
+      protectedSeoPhrases: meta?.protectedSeoPhrases,
     });
 
     const optimizeHistory = [...(existingDraft?.optimizeHistory ?? [])];
@@ -278,6 +285,7 @@ export class LlmService {
         phase: meta.phase,
         round: meta.round,
         kind: 'optimize',
+        semrushEvaluationRoute: meta.semrushEvaluationRoute,
         promptVersion: optimized.promptVersion,
         changesSummary: optimized.changesSummary,
         warnings: optimized.warnings,
@@ -318,7 +326,10 @@ export class LlmService {
     ctx: LlmJobContext,
     content: string,
     instruction: string,
-    meta: Pick<GenerateOptimizeMeta, 'round' | 'scoreBefore' | 'localScore' | 'phase'>,
+    meta: Pick<
+      GenerateOptimizeMeta,
+      'round' | 'scoreBefore' | 'localScore' | 'phase' | 'semrushEvaluationRoute'
+    >,
   ): Promise<string> {
     const job = await this.prisma.articleJob.findFirst({
       where: { id: ctx.jobId, organizationId: ctx.organizationId, projectId: ctx.projectId },
@@ -346,6 +357,7 @@ export class LlmService {
       phase: meta.phase,
       round: meta.round,
       kind: 'optimize',
+      semrushEvaluationRoute: meta.semrushEvaluationRoute,
       promptVersion: rewritten.promptVersion,
       changesSummary: rewritten.changesSummary,
       warnings: rewritten.warnings,

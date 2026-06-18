@@ -37,5 +37,14 @@ export const SEMRUSH_ULTRA_NEAR_MISS_MARGIN = 0.1;
 /** 极接近及格线时的额外改写轮次 */
 export const SEMRUSH_ULTRA_NEAR_MISS_EXTRA_ROUNDS = 2;
 
+/** Semrush 终检 RPA 分数波动容差（回滚判定） */
+export const SEMRUSH_SCORE_ROLLBACK_TOLERANCE = 0.05;
+
 /** Semrush Overall Score 通过线 */
 export const SEMRUSH_PASS_THRESHOLD = 9.0;
+
+/** Semrush SWA 提交词表下限（正文已覆盖短语） */
+export const SEMRUSH_SUBMITTED_KEYWORD_MIN = 8;
+
+/** Semrush SWA 提交词表上限（少而准，对齐「从文本中提取」路径） */
+export const SEMRUSH_SUBMITTED_KEYWORD_MAX = 12;

@@ -7,7 +7,8 @@
  */
 
 const LONG_SENTENCE_MAX_WORDS = 22;
-const LONG_PARAGRAPH_MAX_WORDS = 80;
+/** 与 Semrush SWA 本地预检对齐：单段 >65 词计为超长段 */
+const LONG_PARAGRAPH_MAX_WORDS = 65;
 /** Semrush SWA 侧栏「段落太长」阈值（prompt 与 SWA 对齐） */
 export const SEMRUSH_PARAGRAPH_MAX_WORDS = 60;
 export const SEMRUSH_PARAGRAPH_MAX_SENTENCES = 3;
@@ -70,6 +71,11 @@ export function convertInlineDashEnumerations(content: string): string {
       continue;
     }
 
+    if (/^-\s+/m.test(trimmed)) {
+      result.push(trimmed);
+      continue;
+    }
+
     const dashParts = trimmed.split(/\s+-\s+/);
     if (dashParts.length >= 3) {
       const intro = dashParts[0].trim();
@@ -121,7 +127,7 @@ function isBodyParagraphBlock(block: string): boolean {
   );
 }
 
-/** 与 scoreReadability 一致：正文段 >80 词 */
+/** 与 scoreReadability 一致：正文段 >65 词 */
 export function extractLongParagraphs(
   content: string,
   maxWords = LONG_PARAGRAPH_MAX_WORDS,
@@ -369,7 +375,7 @@ export function trimBodyToWordCap(content: string, maxWords: number): string {
 export interface BoostLocalSeoContentOptions {
   targetWordCount?: number;
   maxStructureRatio?: number;
-  /** 默认 80；Semrush 轮应传 60 */
+  /** 默认 65（Semrush SWA 对齐）；Semrush 轮应传 60 */
   maxParagraphWords?: number;
   /** Semrush 轮建议 3（2–3 句/段） */
   maxParagraphSentences?: number;

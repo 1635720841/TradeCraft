@@ -15,6 +15,7 @@ import {
   SEMRUSH_RETRY_EXTRA_ROUNDS,
   SEMRUSH_ULTRA_NEAR_MISS_EXTRA_ROUNDS,
   SEMRUSH_ULTRA_NEAR_MISS_MARGIN,
+  SEMRUSH_SCORE_ROLLBACK_TOLERANCE,
 } from '../constants/seo-score';
 
 export interface SeoOptimizeHistoryEntry {
@@ -112,10 +113,46 @@ export function resolveSemrushOptimizeRoundCap(
   return cap;
 }
 
-/** Semrush 优化轮：Semrush 提升或达标即保留；本地分仅作参考，不参与回滚判定 */
-export function shouldAcceptSemrushCandidate(
-  semrushImproved: boolean,
-  semrushPassing: boolean,
-): boolean {
-  return semrushImproved || semrushPassing;
+/** Semrush 优化轮：分数提升、达标、RPA 容差、缺词减少或可读性改善时保留 */
+export interface SemrushCandidateAcceptInput {
+  candidateOverall: number;
+  bestOverall: number;
+  candidateMissingKeywordCount: number;
+  bestMissingKeywordCount: number;
+  readabilityImproved?: boolean;
+}
+
+export function shouldAcceptSemrushCandidate(input: SemrushCandidateAcceptInput): boolean {
+  if (input.candidateOverall >= SEMRUSH_PASS_THRESHOLD) return true;
+  if (input.candidateOverall >= input.bestOverall) return true;
+  if (input.candidateOverall >= input.bestOverall - SEMRUSH_SCORE_ROLLBACK_TOLERANCE) {
+    return true;
+  }
+  if (
+    input.candidateMissingKeywordCount < input.bestMissingKeywordCount &&
+    input.candidateOverall >= input.bestOverall - 0.15
+  ) {
+    return true;
+  }
+  if (input.readabilityImproved && input.candidateOverall >= input.bestOverall - 0.1) {
+    return true;
+  }
+  return false;
+}
+/** 本地优化轮：允许 near-miss 2 分波动，但 keywordCoverage 掉分绝对拒绝 */
+export function shouldAcceptLocalCandidate(input: {
+  candidateScore: number;
+  bestScore: number;
+  candidateKeywordCoverage: number;
+  bestKeywordCoverage: number;
+  nearMiss: boolean;
+  readabilityImproved: boolean;
+}): boolean {
+  if (input.candidateKeywordCoverage < input.bestKeywordCoverage) return false;
+  if (input.candidateScore >= input.bestScore) return true;
+  return (
+    input.nearMiss &&
+    input.readabilityImproved &&
+    input.candidateScore >= input.bestScore - 2
+  );
 }

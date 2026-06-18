@@ -6,11 +6,15 @@ import type { SeoScore } from '@wm/provider-interfaces';
 import {
   extractLongParagraphs,
   extractLongSentences,
+  SEMRUSH_FLESCH_TARGET_DEFAULT,
   SEMRUSH_PARAGRAPH_MAX_SENTENCES,
   SEMRUSH_PARAGRAPH_MAX_WORDS,
   type BoostLocalSeoContentOptions,
 } from '@wm/shared-core';
 import { SEMRUSH_PASS_THRESHOLD } from '../constants/seo-score';
+import { buildContextualKeywordWeavingInstruction } from '../providers/semrush/semrush-keyword-coverage.util';
+
+export { buildContextualKeywordWeavingInstruction };
 
 const SUGGESTION_CAP = 28;
 
@@ -170,6 +174,49 @@ export function buildSemrushRewriteSuggestions(result: SeoScore, content: string
     if (trimmed) lines.push(trimmed);
   }
 
+  const recommended = result.semrushRecommendedKeywords ?? [];
+  const missingTarget = result.semrushMissingTargetKeywords ?? [];
+  const missingRecommended = result.semrushMissingRecommendedKeywords ?? [];
+
+  const missingAll = [...missingTarget, ...missingRecommended];
+
+  if (missingAll.length > 0) {
+    const weaving = buildContextualKeywordWeavingInstruction(missingAll);
+    if (weaving) lines.unshift(weaving);
+  } else if (recommended.length > 0) {
+    lines.unshift(
+      `[SEO] SWA 推荐词须各至少出现 1 次（语境化融合，禁止列表堆砌）: ${recommended.slice(0, 10).join(', ')}`,
+    );
+  }
+
+  for (const issue of result.actionableIssues ?? []) {
+    for (const quote of issue.quotes ?? []) {
+      const trimmed = quote.trim();
+      if (!trimmed) continue;
+      const tag =
+        issue.rule === 'passive_voice'
+          ? '可读性·被动'
+          : issue.rule === 'complex_word'
+            ? '可读性·复杂词'
+            : issue.rule === 'casual_sentence'
+              ? '语气·随意句'
+              : issue.rule === 'filler_phrase'
+                ? '语气·填充词'
+                : issue.category;
+      lines.unshift(
+        `[${tag}·必做] 改写: "${trimmed.slice(0, 100)}${trimmed.length > 100 ? '…' : ''}"`,
+      );
+    }
+    for (const term of issue.terms ?? []) {
+      if (issue.rule === 'keyword') {
+        const weaving = buildContextualKeywordWeavingInstruction([term]);
+        lines.unshift(weaving || `[SEO] 须自然融合: ${term}`);
+      } else {
+        lines.unshift(`[可读性·复杂词·必做] 替换词语: ${term}`);
+      }
+    }
+  }
+
   const audit = buildSemrushReadabilityAudit(content);
   if (audit.longParagraphCount > 0) {
     for (const sample of extractLongParagraphs(content, SEMRUSH_PARAGRAPH_MAX_WORDS).slice(0, 3)) {
@@ -193,13 +240,6 @@ export function buildSemrushRewriteSuggestions(result: SeoScore, content: string
     );
   }
 
-  const recommended = result.semrushRecommendedKeywords ?? [];
-  if (recommended.length > 0) {
-    lines.unshift(
-      `[SEO·必做] SWA 推荐词须各至少出现 1 次（自然嵌入）: ${recommended.slice(0, 10).join(', ')}`,
-    );
-  }
-
   const competitorWords = result.semrushCompetitorWordCount;
   const currentWords = result.semrushCurrentWordCount;
   if (
@@ -207,8 +247,10 @@ export function buildSemrushRewriteSuggestions(result: SeoScore, content: string
     typeof currentWords === 'number' &&
     currentWords + 80 < competitorWords
   ) {
+    const gap = competitorWords - currentWords;
+    const faqCount = Math.min(4, Math.max(2, Math.ceil(gap / 50)));
     lines.unshift(
-      `[可读性·必做] 当前约 ${currentWords} 词，Semrush 竞品标杆约 ${competitorWords} 词：须增补至 ${competitorWords - 30}–${competitorWords} 词（加案例/FAQ/对比表，禁止废话堆砌）`,
+      `[可读性·必做] 当前约 ${currentWords} 词，Semrush 竞品标杆约 ${competitorWords} 词（缺 ${gap} 词）：增补至 ${competitorWords - 10}–${competitorWords} 词；优先加 ${faqCount} 条 FAQ（每条 40–60 词），禁止废话堆砌`,
     );
   }
 
@@ -223,10 +265,14 @@ export function buildSemrushRewriteSuggestions(result: SeoScore, content: string
   }
 
   const readability = result.semrushReadabilityScore;
-  if (typeof readability === 'number' && readability < 70) {
-    lines.unshift(
-      `[可读性] Semrush 可读性指数 ${readability}/100（须 ≥70）：短句、简单词、主动语态、列表替长段`,
-    );
+  const fleschTarget = SEMRUSH_FLESCH_TARGET_DEFAULT;
+  if (typeof readability === 'number') {
+    const delta = Math.abs(readability - fleschTarget);
+    if (delta > 8) {
+      lines.unshift(
+        `[可读性] Semrush Flesch ${readability}，目标约 ${fleschTarget}（±8）：${readability > fleschTarget ? '略增句长/正式词' : '缩短句子、简化音节复杂词'}`,
+      );
+    }
   }
 
   const pointsToGo = Math.max(
@@ -250,6 +296,54 @@ export function buildSemrushRewriteSuggestions(result: SeoScore, content: string
       '[SEO] 覆盖 SWA 推荐关键词',
     );
   }
+
+  return [...new Set(lines)].slice(0, SUGGESTION_CAP);
+}
+
+/** 侧栏 suggestions 为空时的兜底指令（避免 optimize 轮提前 break） */
+export function buildFallbackSemrushSuggestions(result: SeoScore, content: string): string[] {
+  const primary = buildSemrushRewriteSuggestions(result, content);
+  if (primary.length > 0) return primary;
+
+  const audit = buildSemrushReadabilityAudit(content);
+  const lines: string[] = [];
+  const missing = [
+    ...(result.semrushMissingTargetKeywords ?? []),
+    ...(result.semrushMissingRecommendedKeywords ?? []),
+  ];
+
+  if (missing.length > 0) {
+    const weaving = buildContextualKeywordWeavingInstruction(missing);
+    if (weaving) lines.push(weaving);
+  }
+
+  if (audit.longParagraphCount > 0) {
+    lines.push(
+      `[可读性·必做] 拆分 ${audit.longParagraphCount} 个超长段（≤60 词/段，段间空行）`,
+    );
+  }
+  if (audit.longSentenceCount > 2) {
+    lines.push(`[可读性·必做] 将超长句从 ${audit.longSentenceCount} 条压到 ≤2 条（单句 ≤22 词）`);
+  }
+
+  const competitorWords = result.semrushCompetitorWordCount;
+  const currentWords = result.semrushCurrentWordCount;
+  if (
+    typeof competitorWords === 'number' &&
+    typeof currentWords === 'number' &&
+    currentWords + 80 < competitorWords
+  ) {
+    const gap = competitorWords - currentWords;
+    const faqCount = Math.min(4, Math.max(2, Math.ceil(gap / 50)));
+    lines.push(
+      `[可读性·必做] 缺 ${gap} 词：增补至 ${competitorWords} 词左右（${faqCount} 条 FAQ，每条 40–60 词）`,
+    );
+  }
+
+  lines.push(
+    '[格式·必做] 所有特性/要点须用 Markdown `-` 列表，禁止 "Item A - Item B - Item C" 行内串联',
+    '[可读性] 优先主动语态；替换侧栏点名的 complex words',
+  );
 
   return [...new Set(lines)].slice(0, SUGGESTION_CAP);
 }

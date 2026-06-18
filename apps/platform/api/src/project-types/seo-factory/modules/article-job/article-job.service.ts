@@ -889,7 +889,7 @@ export class ArticleJobService {
       organizationId,
       projectId,
       targetKeyword: job.targetKeyword,
-      targetMarket: job.site.targetMarket ?? 'US',
+      targetMarket: serp.serpCountry,
       contentLanguage: job.contentLanguage,
       serpArticleLimit: serp.serpArticleLimit,
       serpArticlesOnly: serp.serpArticlesOnly,

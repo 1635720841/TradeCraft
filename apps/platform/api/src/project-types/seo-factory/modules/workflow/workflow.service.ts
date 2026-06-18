@@ -111,7 +111,7 @@ export class WorkflowService {
           organizationId: ctx.organizationId,
           projectId: ctx.projectId,
           targetKeyword: ctx.targetKeyword,
-          targetMarket: ctx.targetMarket,
+          targetMarket: serp.serpCountry,
           contentLanguage: ctx.contentLanguage,
           serpArticleLimit: serp.serpArticleLimit,
           serpArticlesOnly: serp.serpArticlesOnly,

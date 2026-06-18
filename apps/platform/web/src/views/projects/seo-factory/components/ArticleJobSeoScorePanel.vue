@@ -182,13 +182,37 @@
         label="Semrush 可读性"
       >
         {{ semrushReadabilityScore }} / 100
-        <span class="ml-2 text-sm text-gray-500">目标 ≥70</span>
+        <span class="ml-2 text-sm text-gray-500">目标约 50（±8）</span>
+      </el-descriptions-item>
+      <el-descriptions-item
+        v-if="metrics?.fleschReadingEase != null"
+        label="本地 Flesch"
+      >
+        {{ metrics.fleschReadingEase }} / 100
+        <span class="ml-2 text-sm text-gray-500">
+          目标 {{ metrics.fleschTarget ?? 50 }}（±8）
+        </span>
+      </el-descriptions-item>
+      <el-descriptions-item
+        v-if="metrics?.casualSentenceHits != null"
+        label="本地语气（随意句）"
+      >
+        <span :class="readabilityMetricClass(metrics.casualSentenceHits, 3)">
+          {{ metrics.casualSentenceHits }} / ≤3
+        </span>
+        <span class="ml-2 text-sm text-gray-500">>5 需改写</span>
       </el-descriptions-item>
       <el-descriptions-item
         v-if="semrushWordCountLabel"
         label="Semrush 词数"
       >
         {{ semrushWordCountLabel }}
+      </el-descriptions-item>
+      <el-descriptions-item v-if="semrushWordGap != null" label="Semrush 词数差">
+        <span :class="semrushWordGapClass">
+          {{ semrushWordGap > 0 ? `缺 ${semrushWordGap} 词` : `超 ${Math.abs(semrushWordGap)} 词` }}
+        </span>
+        <span class="ml-2 text-sm text-gray-500">优先补齐到竞品附近</span>
       </el-descriptions-item>
       <el-descriptions-item v-if="submittedKeywords.length" label="提交关键词" :span="2">
         <el-tag
@@ -202,6 +226,19 @@
       </el-descriptions-item>
       <el-descriptions-item v-if="semrushNode" label="3ue 节点">
         {{ semrushNode }}
+      </el-descriptions-item>
+      <el-descriptions-item
+        v-if="semrushEvaluationRoute"
+        label="Semrush 评测线路"
+      >
+        {{ semrushEvaluationRoute }}
+      </el-descriptions-item>
+      <el-descriptions-item
+        v-if="semrushEvaluationContentFingerprint"
+        label="Semrush 评测文章"
+        :span="2"
+      >
+        {{ semrushEvaluationContentFingerprint }}
       </el-descriptions-item>
       <el-descriptions-item v-if="analysisSource" label="建议来源">
         {{ analysisSourceLabel }}
@@ -230,11 +267,11 @@
         </span>
       </el-descriptions-item>
       <el-descriptions-item
-        v-if="metrics?.longParagraphsOver80 != null"
-        label="超长段 (>80词)"
+        v-if="metrics?.longParagraphsOver65 != null"
+        label="超长段 (>65词)"
       >
-        <span :class="readabilityMetricClass(metrics.longParagraphsOver80, 1)">
-          {{ metrics.longParagraphsOver80 }} / ≤1
+        <span :class="readabilityMetricClass(metrics.longParagraphsOver65, 1)">
+          {{ metrics.longParagraphsOver65 }} / ≤1
         </span>
       </el-descriptions-item>
       <el-descriptions-item
@@ -264,7 +301,7 @@
 
     <div v-if="longParagraphSamples.length" class="mt-4">
       <div class="mb-2 font-medium">
-        超长段定位（须压至 ≤1 段，每段 ≤80 词）
+        超长段定位（须压至 ≤1 段，每段 ≤65 词）
       </div>
       <el-alert
         class="mb-3"
@@ -310,6 +347,30 @@
       </ul>
     </div>
 
+    <div v-if="casualSentenceSamples.length" class="mt-4">
+      <div class="mb-2 font-medium">
+        随意句定位（建议 ≤3 条，>5 条会明显拖累 Semrush 语气）
+      </div>
+      <el-alert
+        class="mb-3"
+        type="warning"
+        :closable="false"
+        show-icon
+        title="优先改写以下句子为 B2B 正式陈述句"
+        description="将问句（Which/Can users...）改为陈述句；将 Next/comes next 这类口语过渡改为正式衔接。"
+      />
+      <ul class="space-y-2 text-sm">
+        <li
+          v-for="(sample, i) in casualSentenceSamples"
+          :key="`c-${i}`"
+          class="rounded border border-amber-200 bg-amber-50 px-3 py-2"
+        >
+          <span class="text-amber-700 font-medium">({{ sample.reason }}) </span>
+          <span class="text-gray-800">{{ sample.text }}</span>
+        </li>
+      </ul>
+    </div>
+
     <div v-if="localSuggestions.length" class="mt-4">
       <div class="mb-2 font-medium">本地评分建议</div>
       <ul class="list-disc pl-5 space-y-1 text-sm">
@@ -348,6 +409,23 @@
           </template>
         </el-table-column>
         <el-table-column label="轮次" width="88" prop="roundLabel" />
+        <el-table-column label="3ue 节点" min-width="220">
+          <template #default="{ row }">
+            <span v-if="row.phase === 'semrush'">
+              <el-tag
+                v-if="row.semrushRouteChanged"
+                class="mr-2"
+                type="warning"
+                size="small"
+                effect="plain"
+              >
+                线路变更
+              </el-tag>
+              {{ row.semrushEvaluationRoute || semrushEvaluationRoute || semrushNode || "-" }}
+            </span>
+            <span v-else class="text-gray-400">-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="优化前" width="100">
           <template #default="{ row }">
             {{ formatRowScore(row, "before") }}
@@ -596,8 +674,8 @@ const localNearMissHint = computed(() => {
   if (m?.longSentencesOver22 != null && m.longSentencesOver22 > 2) {
     parts.push(`超长句 ${m.longSentencesOver22} 条（须 ≤2）`);
   }
-  if (m?.longParagraphsOver80 != null && m.longParagraphsOver80 > 1) {
-    parts.push(`超长段 ${m.longParagraphsOver80} 段（须 ≤1）`);
+  if (m?.longParagraphsOver65 != null && m.longParagraphsOver65 > 1) {
+    parts.push(`超长段 ${m.longParagraphsOver65} 段（须 ≤1）`);
   }
   if (m?.passiveVoiceHits != null && m.passiveVoiceHits > 6) {
     parts.push(`被动语态 ${m.passiveVoiceHits} 处（须 ≤6）`);
@@ -648,11 +726,20 @@ const longSentenceSamples = computed(
 const longParagraphSamples = computed(
   () => local.value?.metrics?.longParagraphSamples ?? [],
 );
+const casualSentenceSamples = computed(
+  () => local.value?.metrics?.casualSentenceSamples ?? [],
+);
 const breakdown = computed(() => local.value?.breakdown);
 const localSuggestions = computed(() => local.value?.suggestions ?? []);
 const semrushSuggestions = computed(() => semrush.value?.suggestions ?? []);
 const semrushNode = computed(
   () => semrush.value?.nodeLabel ?? semrush.value?.node ?? null,
+);
+const semrushEvaluationRoute = computed(
+  () => semrush.value?.semrushEvaluationRoute ?? null,
+);
+const semrushEvaluationContentFingerprint = computed(
+  () => semrush.value?.semrushEvaluationContentFingerprint ?? null,
 );
 const submittedKeywords = computed(() => semrush.value?.submittedKeywords ?? []);
 const semrushReadabilityScore = computed(
@@ -667,6 +754,22 @@ const semrushWordCountLabel = computed(() => {
   }
   if (current != null) return `当前约 ${current} 词`;
   return `竞品标杆约 ${competitor} 词`;
+});
+
+const semrushWordGap = computed(() => {
+  const current = semrush.value?.semrushCurrentWordCount;
+  const competitor = semrush.value?.semrushCompetitorWordCount;
+  if (typeof current !== "number" || typeof competitor !== "number") return null;
+  return competitor - current;
+});
+
+const semrushWordGapClass = computed(() => {
+  const gap = semrushWordGap.value;
+  if (gap == null) return "";
+  if (gap > 150) return "text-red-700 font-medium";
+  if (gap > 60) return "text-amber-700 font-medium";
+  if (gap >= 0) return "text-gray-700";
+  return "text-amber-700";
 });
 const analysisSource = computed(() => semrush.value?.analysisSource ?? null);
 const analysisSourceLabel = computed(() => {
@@ -689,17 +792,40 @@ const semrushSuggestionSections = computed(() => {
   return sections.filter((s) => s.items.length > 0);
 });
 
-const optimizeHistory = computed(
-  () => props.seoCheckData?.optimizeHistory ?? props.optimizeHistory ?? []
+function mergeOptimizeHistory(
+  fromSeo: ArticleJobOptimizeRound[] | null | undefined,
+  fromDraft: ArticleJobOptimizeRound[] | null | undefined,
+): ArticleJobOptimizeRound[] {
+  const seo = fromSeo ?? [];
+  const draft = fromDraft ?? [];
+  if (seo.length === 0) return draft;
+  if (draft.length === 0) return seo;
+
+  const keyOf = (item: ArticleJobOptimizeRound) =>
+    `${item.phase}|${item.round}|${item.kind ?? "optimize"}|${item.optimizedAt ?? ""}`;
+  const merged = new Map<string, ArticleJobOptimizeRound>();
+  for (const item of seo) merged.set(keyOf(item), item);
+  for (const item of draft) merged.set(keyOf(item), item);
+  return [...merged.values()].sort((a, b) =>
+    (a.optimizedAt ?? "").localeCompare(b.optimizedAt ?? ""),
+  );
+}
+
+const optimizeHistory = computed(() =>
+  mergeOptimizeHistory(props.seoCheckData?.optimizeHistory, props.optimizeHistory),
 );
 
 interface OptimizeScoreRow extends ArticleJobOptimizeRound {
   roundLabel: string;
   delta: number | null;
+  semrushRouteChanged?: boolean;
 }
 
 const optimizeScoreRows = computed((): OptimizeScoreRow[] =>
-  optimizeHistory.value.map((item) => {
+  optimizeHistory.value.map((item, index, all) => {
+    const baselineRoute =
+      all.find((r) => r.phase === "semrush" && (r.kind === "baseline" || r.round === 0))
+        ?.semrushEvaluationRoute ?? null;
     const isBaseline = item.kind === "baseline" || item.round === 0;
     let roundLabel = "";
     if (isBaseline) {
@@ -711,7 +837,12 @@ const optimizeScoreRows = computed((): OptimizeScoreRow[] =>
       item.scoreBefore != null && item.scoreAfter != null
         ? Math.round((item.scoreAfter - item.scoreBefore) * 10) / 10
         : null;
-    return { ...item, roundLabel, delta };
+    const semrushRouteChanged =
+      item.phase === "semrush" &&
+      baselineRoute != null &&
+      item.semrushEvaluationRoute != null &&
+      item.semrushEvaluationRoute !== baselineRoute;
+    return { ...item, roundLabel, delta, semrushRouteChanged };
   })
 );
 

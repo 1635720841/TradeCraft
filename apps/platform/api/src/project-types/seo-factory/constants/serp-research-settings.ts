@@ -15,6 +15,8 @@ import {
 } from './serp-filter';
 
 export interface SiteSerpResearchSettings {
+  /** Google 搜索国家（Serper gl），默认 US */
+  country?: string;
   /** 最终用于大纲的竞品参考篇数 */
   articleLimit?: number;
   /** 是否优先只保留博客/资讯类 URL */
@@ -28,6 +30,7 @@ export interface SiteSerpResearchSettings {
 }
 
 export interface ResolvedSerpResearchOptions {
+  serpCountry: string;
   serpArticleLimit: number;
   serpArticlesOnly: boolean;
   organicFetchNum: number;
@@ -44,6 +47,8 @@ export type SerpResearchOverrides = Partial<
   }
 >;
 
+const SERP_COUNTRIES = new Set(['US', 'GB', 'CA', 'AU', 'SG', 'IN', 'DE', 'FR', 'JP', 'KR', 'VN']);
+
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return fallback;
@@ -51,11 +56,22 @@ function clampInt(value: unknown, min: number, max: number, fallback: number): n
   return Math.min(max, Math.max(min, Math.trunc(value)));
 }
 
+function normalizeSerpCountry(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toUpperCase();
+  return SERP_COUNTRIES.has(normalized) ? normalized : undefined;
+}
+
 export function parseSiteSerpResearchSettings(raw: unknown): SiteSerpResearchSettings | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
 
   const record = raw as Record<string, unknown>;
   const parsed: SiteSerpResearchSettings = {};
+
+  const country = normalizeSerpCountry(record.country);
+  if (country) {
+    parsed.country = country;
+  }
 
   if (record.articleLimit !== undefined) {
     parsed.articleLimit = clampInt(
@@ -104,6 +120,11 @@ export function mergeSiteSerpResearchSettings(
 
   const merged: SiteSerpResearchSettings = { ...(existing ?? {}) };
 
+  const country = normalizeSerpCountry(patch.country);
+  if (country !== undefined) {
+    merged.country = country;
+  }
+
   if (patch.articleLimit !== undefined) {
     merged.articleLimit = clampInt(
       patch.articleLimit,
@@ -150,6 +171,7 @@ export function resolveSerpResearchOptions(
 ): ResolvedSerpResearchOptions {
   const siteRoot = (siteSettings ?? {}) as { serpResearch?: unknown };
   const site = parseSiteSerpResearchSettings(siteRoot.serpResearch) ?? {};
+  const serpCountry = normalizeSerpCountry(site.country) ?? 'US';
 
   const serpArticleLimit = clampInt(
     overrides?.serpArticleLimit ?? site.articleLimit,
@@ -183,6 +205,7 @@ export function resolveSerpResearchOptions(
   );
 
   return {
+    serpCountry,
     serpArticleLimit,
     serpArticlesOnly,
     organicFetchNum,

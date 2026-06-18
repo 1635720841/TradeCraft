@@ -51,4 +51,20 @@ describe('resolveOrphanOptimizingRestore', () => {
     assert.equal(plan.failedStep, 'optimizing');
     assert.equal(plan.manualSemrushInterrupted, false);
   });
+
+  it('does not mark workflow semrush orphan as COMPLETED when draft pipeline is done', () => {
+    const plan = resolveOrphanOptimizingRestore({
+      seoCheckData: {
+        workflowProgress: { phase: 'semrush', updatedAt: new Date().toISOString() },
+        semrush: { passed: false },
+      },
+      semrushScore: 8,
+      draftData: completeDraft,
+      briefData: { outline: { targetWordCount: 1200 } },
+    });
+
+    assert.equal(plan.status, 'FAILED');
+    assert.equal(plan.failedStep, 'optimizing');
+    assert.equal(plan.manualSemrushInterrupted, false);
+  });
 });

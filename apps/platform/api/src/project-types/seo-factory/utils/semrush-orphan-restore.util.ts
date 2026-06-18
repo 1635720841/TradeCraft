@@ -3,7 +3,6 @@
  */
 
 import type { JobStatus } from '@prisma/client';
-import { SEMRUSH_PASS_THRESHOLD } from '../constants/seo-score';
 import type { SemrushCheckPending } from '../constants/semrush-check';
 import {
   resolveFailedStep,
@@ -17,17 +16,6 @@ export interface OrphanOptimizingRestorePlan {
   failedStep?: WorkflowResumeStep;
   /** 文章主流程已完成，仅 Semrush 手动检测被中断 */
   manualSemrushInterrupted: boolean;
-}
-
-function isArticlePipelineComplete(draftData: unknown): boolean {
-  const draft = draftData as {
-    content?: string;
-    internalLinksApplied?: boolean;
-    imagesApplied?: boolean;
-  } | null;
-  return Boolean(
-    draft?.content?.trim() && draft.internalLinksApplied && draft.imagesApplied,
-  );
 }
 
 /** 推断 OPTIMIZING 僵死时应恢复的状态 */
@@ -51,23 +39,6 @@ export function resolveOrphanOptimizingRestore(job: {
   if (manualPrevious && manualPrevious !== 'OPTIMIZING') {
     return {
       status: manualPrevious as JobStatus,
-      jobErrorMessage: null,
-      manualSemrushInterrupted: true,
-    };
-  }
-
-  const workflowProgress = prevCheck.workflowProgress as { phase?: string } | undefined;
-  const semrushPhaseActive =
-    workflowProgress?.phase === 'semrush-check' || workflowProgress?.phase === 'semrush';
-
-  const pipelineComplete = isArticlePipelineComplete(job.draftData);
-  const semrushCheckIncomplete =
-    prevSemrush.passed !== true &&
-    (job.semrushScore == null || job.semrushScore < SEMRUSH_PASS_THRESHOLD);
-
-  if (pipelineComplete && semrushPhaseActive && semrushCheckIncomplete) {
-    return {
-      status: 'COMPLETED',
       jobErrorMessage: null,
       manualSemrushInterrupted: true,
     };

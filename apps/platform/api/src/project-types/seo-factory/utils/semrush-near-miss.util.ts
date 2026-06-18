@@ -57,8 +57,18 @@ function findSentenceContaining(content: string, fragment: string): string | nul
 export function extractSemrushCasualSentenceQuotes(
   details: SemrushSuggestionDetails | undefined,
   content: string,
+  actionableIssues?: SeoScore['actionableIssues'],
 ): string[] {
   const quotes: string[] = [];
+
+  for (const issue of actionableIssues ?? []) {
+    for (const quote of issue.quotes ?? []) {
+      if (issue.rule === 'casual_sentence' || issue.rule === 'passive_voice') {
+        quotes.push(quote.trim());
+      }
+    }
+  }
+
   const pools = [...(details?.tone ?? []), ...(details?.readability ?? [])];
 
   for (const item of pools) {
@@ -82,8 +92,16 @@ export function extractSemrushCasualSentenceQuotes(
 export function extractSemrushComplexWordTargets(
   details: SemrushSuggestionDetails | undefined,
   content: string,
+  actionableIssues?: SeoScore['actionableIssues'],
 ): string[] {
   const targets: string[] = [];
+
+  for (const issue of actionableIssues ?? []) {
+    if (issue.rule === 'complex_word') {
+      for (const term of issue.terms ?? []) targets.push(term);
+    }
+  }
+
   const pools = [...(details?.readability ?? []), ...(details?.tone ?? [])];
 
   for (const item of pools) {
@@ -95,14 +113,38 @@ export function extractSemrushComplexWordTargets(
     }
   }
 
-  if (targets.length === 0 && /\bcompatibility\b/i.test(content)) {
-    targets.push('compatibility');
+  if (targets.length === 0) {
+    const hasComplexSidebar = [...(details?.readability ?? []), ...(details?.tone ?? [])].some(
+      (item) => /复杂|complex|更换|replace|simplif/i.test(item),
+    );
+    if (hasComplexSidebar && /\bcompatibility\b/i.test(content)) {
+      targets.push('compatibility');
+    }
   }
 
   return [...new Set(targets)].slice(0, 8);
 }
 
-/** 确定性替换：复杂词、填充词（不改结构） */
+const COMPLEX_WORD_LOOKUP = new Map(COMPLEX_WORD_PATTERNS.map((p) => [p.word, p]));
+
+/** 仅替换 SWA 侧栏/actionable 点名的复杂词（Semrush 每轮 optimize 前执行） */
+export function applySemrushSidebarComplexWordFixes(content: string, result: SeoScore): string {
+  const targets = extractSemrushComplexWordTargets(
+    result.suggestionDetails,
+    content,
+    result.actionableIssues,
+  );
+  if (targets.length === 0) return content;
+
+  let output = content;
+  for (const target of targets) {
+    const entry = COMPLEX_WORD_LOOKUP.get(target.toLowerCase());
+    if (entry) output = output.replace(entry.pattern, entry.replacement);
+  }
+  return output;
+}
+
+/** 确定性替换：复杂词、填充词（不改结构） — 手术式 near-miss 专用 */
 export function applySemrushNearMissDeterministicFixes(content: string): string {
   let result = content;
   for (const { pattern, replacement } of COMPLEX_WORD_PATTERNS) {
@@ -120,8 +162,16 @@ export function buildSemrushNearMissSurgicalInstruction(
   content: string,
 ): string | null {
   const details = result.suggestionDetails;
-  const casualQuotes = extractSemrushCasualSentenceQuotes(details, content);
-  const complexWords = extractSemrushComplexWordTargets(details, content);
+  const casualQuotes = extractSemrushCasualSentenceQuotes(
+    details,
+    content,
+    result.actionableIssues,
+  );
+  const complexWords = extractSemrushComplexWordTargets(
+    details,
+    content,
+    result.actionableIssues,
+  );
   const pointsToGo = Math.max(
     0,
     Math.round((SEMRUSH_PASS_THRESHOLD - result.overall) * 10) / 10,

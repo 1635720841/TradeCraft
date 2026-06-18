@@ -56,7 +56,7 @@ describe('applyReadabilitySentenceFix', () => {
 });
 
 describe('applyReadabilityParagraphFix', () => {
-  it('splits a body paragraph over 80 words', () => {
+  it('splits a body paragraph over 65 words', () => {
     const longPara = Array.from({ length: 16 }, () =>
       'Smart bms monitors battery cells with CAN Bus daily.',
     ).join(' ');
@@ -68,7 +68,7 @@ describe('applyReadabilityParagraphFix', () => {
     const after = extractLongParagraphs(fixed);
     assert.ok(after.length <= 1, `expected ≤1 long paragraph, got ${after.length}`);
     for (const p of after) {
-      assert.ok(p.wordCount <= 80, `chunk still ${p.wordCount} words`);
+      assert.ok(p.wordCount <= 65, `chunk still ${p.wordCount} words`);
     }
   });
 });
@@ -158,12 +158,12 @@ describe('boostLocalSeoContent', () => {
     const content = `# Smart BMS Systems Guide\n\n## Smart BMS Benefits\n\nSmart bms platforms help operators monitor battery health with smart bms dashboards daily.\n\n${makeLongPara()}\n\n${makeLongPara()}\n\n${makeLongPara()}\n\n## Smart BMS Features\n\n- CAN Bus wiring\n- RS485 protocol\n\n## Smart BMS Setup\n\nInstall per manual.\n\n## Smart BMS Maintenance\n\nInspect quarterly.`;
 
     const before = scoreLocalSeo({ keyword: 'smart bms', content, targetWordCount: 1200 });
-    assert.ok(before.metrics.longParagraphsOver80 > 1);
+    assert.ok(before.metrics.longParagraphsOver65 > 1);
 
     const boosted = boostLocalSeoContent(content, { targetWordCount: 1200 });
     const after = scoreLocalSeo({ keyword: 'smart bms', content: boosted, targetWordCount: 1200 });
 
-    assert.ok(after.metrics.longParagraphsOver80 <= 1);
+    assert.ok(after.metrics.longParagraphsOver65 <= 1);
     assert.ok(after.breakdown.readability > before.breakdown.readability);
     assert.ok(after.score >= before.score);
   });

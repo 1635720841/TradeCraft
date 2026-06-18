@@ -13,6 +13,7 @@ const modPath = pathToFileURL(
 
 const {
   applySemrushNearMissDeterministicFixes,
+  applySemrushSidebarComplexWordFixes,
   buildSemrushNearMissSurgicalInstruction,
   extractSemrushCasualSentenceQuotes,
   isSemrushUltraNearMiss,
@@ -22,6 +23,28 @@ describe('isSemrushUltraNearMiss', () => {
   it('detects 8.9 as ultra near miss', () => {
     assert.equal(isSemrushUltraNearMiss(8.9), true);
     assert.equal(isSemrushUltraNearMiss(8.7), false);
+  });
+});
+
+describe('applySemrushSidebarComplexWordFixes', () => {
+  it('replaces only when sidebar flags complex word', () => {
+    const content = 'Check compatibility with your load profile.';
+    const withSidebar = applySemrushSidebarComplexWordFixes(content, {
+      overall: 8.7,
+      suggestions: [],
+      suggestionDetails: { readability: ['Replace overly complex words: compatibility'] },
+      actionableIssues: [
+        { category: 'readability', rule: 'complex_word', label: '复杂词', terms: ['compatibility'] },
+      ],
+    });
+    assert.match(withSidebar, /\bfit\b/i);
+    assert.doesNotMatch(withSidebar, /compatibility/i);
+
+    const withoutSidebar = applySemrushSidebarComplexWordFixes(content, {
+      overall: 8.7,
+      suggestions: [],
+    });
+    assert.match(withoutSidebar, /compatibility/i);
   });
 });
 

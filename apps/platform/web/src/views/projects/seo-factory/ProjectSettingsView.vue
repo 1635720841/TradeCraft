@@ -73,6 +73,20 @@
           </p>
         </el-form-item>
 
+        <el-form-item label="搜索国家">
+          <el-select v-model="adminForm.serpCountry" class="w-full">
+            <el-option
+              v-for="item in serpCountryOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            />
+          </el-select>
+          <p class="mt-1 text-xs text-gray-500">
+            用于 Google 搜索地区参数（Serper `gl`），默认美国（US）。
+          </p>
+        </el-form-item>
+
         <el-collapse class="mb-2">
           <el-collapse-item title="竞品分析高级参数" name="serp-advanced">
             <el-form-item label="Google 抓取条数">
@@ -275,11 +289,26 @@ const serpCacheTtlOptions = [
   { value: 168, label: "7 天" }
 ];
 
+const serpCountryOptions = [
+  { value: "US", label: "美国 (US)" },
+  { value: "GB", label: "英国 (GB)" },
+  { value: "CA", label: "加拿大 (CA)" },
+  { value: "AU", label: "澳大利亚 (AU)" },
+  { value: "SG", label: "新加坡 (SG)" },
+  { value: "IN", label: "印度 (IN)" },
+  { value: "DE", label: "德国 (DE)" },
+  { value: "FR", label: "法国 (FR)" },
+  { value: "JP", label: "日本 (JP)" },
+  { value: "KR", label: "韩国 (KR)" },
+  { value: "VN", label: "越南 (VN)" }
+] as const;
+
 const adminForm = reactive({
   requireBriefApproval: false,
   enableParaphrase: true,
   serpArticleLimit: 5,
   serpArticlesOnly: true,
+  serpCountry: "US" as (typeof serpCountryOptions)[number]["value"],
   serpOrganicFetchNum: 30,
   serpMinArticleCandidates: 3,
   serpCacheTtlHours: 24,
@@ -307,6 +336,7 @@ function resetAdminForm() {
   adminForm.enableParaphrase = true;
   adminForm.serpArticleLimit = 5;
   adminForm.serpArticlesOnly = true;
+  adminForm.serpCountry = "US";
   adminForm.serpOrganicFetchNum = 30;
   adminForm.serpMinArticleCandidates = 3;
   adminForm.serpCacheTtlHours = 24;
@@ -333,6 +363,7 @@ function loadAdminFormFromSite(site: SiteItem) {
   adminForm.enableParaphrase = site.workflow?.enableParaphrase !== false;
   adminForm.serpArticleLimit = site.serpResearch?.articleLimit ?? 5;
   adminForm.serpArticlesOnly = site.serpResearch?.articlesOnly !== false;
+  adminForm.serpCountry = site.serpResearch?.country ?? "US";
   adminForm.serpOrganicFetchNum = site.serpResearch?.organicFetchNum ?? 30;
   adminForm.serpMinArticleCandidates = site.serpResearch?.minArticleCandidates ?? 3;
   adminForm.serpCacheTtlHours = site.serpResearch?.cacheTtlHours ?? 24;
@@ -390,6 +421,7 @@ function buildAdminPayload() {
     serpResearch: {
       articleLimit: adminForm.serpArticleLimit,
       articlesOnly: adminForm.serpArticlesOnly,
+      country: adminForm.serpCountry,
       organicFetchNum: adminForm.serpOrganicFetchNum,
       minArticleCandidates: adminForm.serpMinArticleCandidates,
       cacheTtlHours: adminForm.serpCacheTtlHours

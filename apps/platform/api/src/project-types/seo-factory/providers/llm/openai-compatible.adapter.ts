@@ -68,11 +68,25 @@ function buildContentCoverageMaxedBlock(input: OptimizeInput): string {
   ].join('\n');
 }
 
+function buildSeoProtectionBlock(input: OptimizeInput): string {
+  const phrases = input.protectedSeoPhrases?.filter((p) => p.trim().length > 0) ?? [];
+  if (phrases.length === 0) return '';
+
+  return [
+    '## CRITICAL SEO CONSTRAINT (highest priority)',
+    '',
+    `The current draft successfully contains these exact SEO entities: ${phrases.join(', ')}.`,
+    'While splitting sentences or improving readability, you MUST NOT delete or alter these specific phrases.',
+    'Preserving them is your highest priority — shorten surrounding text instead.',
+  ].join('\n');
+}
+
 function buildReadabilityPriorityBlock(input: OptimizeInput): string {
   if (!input.readabilityPriority) return '';
+  const seoProtection = buildSeoProtectionBlock(input);
   const audit =
     input.readabilityAudit?.trim() ||
-    'Scan the body and split every sentence over 22 words and every paragraph over 80 words.';
+    'Scan the body and split every sentence over 22 words and every paragraph over 65 words.';
 
   if (input.optimizePhase === 'semrush') {
     const gap =
@@ -98,10 +112,11 @@ function buildReadabilityPriorityBlock(input: OptimizeInput): string {
       '',
       '- Split **every** paragraph over **60 words** (2–3 sentences each); split sentences over **22 words**',
       '- Rewrite **every** casual sentence flagged in suggestions; remove filler adverbs/phrases',
-      '- Weave **every** SWA recommended keyword at least once',
+      '- Weave **every** SWA recommended keyword at least once (contextual weaving — no list sentences)',
       '- Do **not** add length — surgical fixes only unless sidebar says copy is too short',
       '',
       audit,
+      seoProtection,
       surgicalBlock,
       '**Semrush Overall ≥9.0 overrides local pre-check score this round.**',
     ].join('\n');
@@ -115,11 +130,12 @@ function buildReadabilityPriorityBlock(input: OptimizeInput): string {
     '',
     `Local score is **${points} points** below ${target}. **Readability is the sole goal this round.**`,
     '',
-    '- Split **every** sentence over **22 words**; split paragraphs over **80 words**',
+    '- Split **every** sentence over **22 words**; split paragraphs over **65 words**',
     '- **Keep every SERP entity term** — use shorter sentences, not long clauses',
     '- Do **not** add length or new sections — surgical splits only',
     '',
     audit,
+    seoProtection,
     '',
     '**This round overrides "keep entities over readability"** — entities stay, sentences MUST shorten.',
   ].join('\n');

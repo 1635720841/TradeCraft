@@ -1,4 +1,4 @@
-import { IsBoolean, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
 import {
   MAX_SERPER_ORGANIC_NUM,
   MAX_SERP_ARTICLE_LIMIT,
@@ -8,6 +8,12 @@ import {
 } from '../../../constants/serp-filter';
 
 export class SiteSerpResearchSettingsDto {
+  @IsOptional()
+  @IsIn(['US', 'GB', 'CA', 'AU', 'SG', 'IN', 'DE', 'FR', 'JP', 'KR', 'VN'], {
+    message: '搜索国家仅支持 US/GB/CA/AU/SG/IN/DE/FR/JP/KR/VN',
+  })
+  country?: string;
+
   @IsOptional()
   @IsInt({ message: '参考竞品篇数须为整数' })
   @Min(1, { message: '参考竞品篇数至少为 1' })

@@ -108,6 +108,7 @@ export interface ArticleJobOptimizeRound {
   phase: "local" | "semrush";
   round: number;
   kind?: "baseline" | "optimize";
+  semrushEvaluationRoute?: string;
   promptVersion?: string;
   changesSummary?: string[];
   warnings?: string[];
@@ -346,8 +347,15 @@ export interface ArticleJobSeoCheckData {
       totalSerpTerms: number;
       h2Count: number;
       longSentencesOver22?: number;
-      longParagraphsOver80?: number;
+      longParagraphsOver65?: number;
       passiveVoiceHits?: number;
+      /** Semrush Flesch Reading Ease（0–100） */
+      fleschReadingEase?: number;
+      /** Semrush Flesch 目标（常见约 50） */
+      fleschTarget?: number;
+      /** 语气随意句命中数（对齐 Semrush Tone 侧栏） */
+      casualSentenceHits?: number;
+      casualSentenceSamples?: Array<{ text: string; reason: string }>;
       longSentenceSamples?: Array<{ text: string; wordCount: number }>;
       longParagraphSamples?: Array<{ text: string; wordCount: number }>;
     };
@@ -370,6 +378,13 @@ export interface ArticleJobSeoCheckData {
       tone?: string[];
       originality?: string[];
     };
+    actionableIssues?: Array<{
+      category: 'readability' | 'seo' | 'tone' | 'originality';
+      rule: string;
+      label: string;
+      quotes?: string[];
+      terms?: string[];
+    }>;
     analysisSource?: 'api' | 'dom' | 'mixed';
     apiUrls?: string[];
     pending?: {
@@ -388,6 +403,10 @@ export interface ArticleJobSeoCheckData {
     semrushCompetitorWordCount?: number;
     semrushCurrentWordCount?: number;
     semrushReadabilityScore?: number;
+    /** Semrush 实际评测的线路信息（节点键+节点标签） */
+    semrushEvaluationRoute?: string;
+    /** Semrush 实际评测的文章指纹（标题/首行+词数） */
+    semrushEvaluationContentFingerprint?: string;
   };
   quillbot?: ArticleJobQuillbotResult;
   cmsPublish?: CmsPublishResult;
@@ -510,6 +529,8 @@ export interface SiteWorkflowSettings {
 
 /** 管理员配置的搜索结果 / 竞品分析策略（按站点） */
 export interface SiteSerpResearchSettings {
+  /** Google 搜索国家（Serper gl），默认 US */
+  country?: "US" | "GB" | "CA" | "AU" | "SG" | "IN" | "DE" | "FR" | "JP" | "KR" | "VN";
   articleLimit?: number;
   articlesOnly?: boolean;
   organicFetchNum?: number;

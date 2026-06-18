@@ -69,6 +69,8 @@ export interface OptimizeInput {
   scoreGapPlan?: string;
   /** 关键词与 SERP 实体已满分，本轮禁止扩写/凑词 */
   contentCoverageMaxed?: boolean;
+  /** 可读性优化轮须保留的已命中 SEO 短语（exact match） */
+  protectedSeoPhrases?: string[];
 }
 
 export interface OptimizeOutput {

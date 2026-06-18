@@ -18,6 +18,7 @@ const {
   canResumeSemrushOptimization,
   resolveLocalOptimizeRoundCap,
   resolveSemrushOptimizeRoundCap,
+  shouldAcceptLocalCandidate,
   shouldAcceptSemrushCandidate,
   shouldSkipLocalOptimization,
   shouldSkipLocalPipeline,
@@ -86,17 +87,95 @@ describe('shouldSkipLocalPipeline', () => {
   });
 });
 
+describe('shouldAcceptLocalCandidate', () => {
+  it('rejects when keywordCoverage drops even within near-miss margin', () => {
+    assert.equal(
+      shouldAcceptLocalCandidate({
+        candidateScore: 93,
+        bestScore: 94,
+        candidateKeywordCoverage: 20,
+        bestKeywordCoverage: 25,
+        nearMiss: true,
+        readabilityImproved: true,
+      }),
+      false,
+    );
+  });
+
+  it('accepts near-miss readability improvement without keyword drop', () => {
+    assert.equal(
+      shouldAcceptLocalCandidate({
+        candidateScore: 93,
+        bestScore: 94,
+        candidateKeywordCoverage: 25,
+        bestKeywordCoverage: 25,
+        nearMiss: true,
+        readabilityImproved: true,
+      }),
+      true,
+    );
+  });
+});
+
 describe('shouldAcceptSemrushCandidate', () => {
-  it('accepts when Semrush passing regardless of local', () => {
-    assert.equal(shouldAcceptSemrushCandidate(false, true), true);
+  const base = {
+    candidateMissingKeywordCount: 2,
+    bestMissingKeywordCount: 2,
+    readabilityImproved: false,
+  };
+
+  it('accepts when Semrush passing', () => {
+    assert.equal(
+      shouldAcceptSemrushCandidate({ ...base, candidateOverall: 9.0, bestOverall: 8.8 }),
+      true,
+    );
   });
 
-  it('accepts when Semrush improves even if local would drop', () => {
-    assert.equal(shouldAcceptSemrushCandidate(true, false), true);
+  it('accepts when Semrush improves', () => {
+    assert.equal(
+      shouldAcceptSemrushCandidate({ ...base, candidateOverall: 8.8, bestOverall: 8.7 }),
+      true,
+    );
   });
 
-  it('rejects when Semrush neither improves nor passes', () => {
-    assert.equal(shouldAcceptSemrushCandidate(false, false), false);
+  it('accepts within RPA tolerance (±0.05)', () => {
+    assert.equal(
+      shouldAcceptSemrushCandidate({ ...base, candidateOverall: 8.75, bestOverall: 8.8 }),
+      true,
+    );
+  });
+
+  it('accepts when missing keywords reduced within score band', () => {
+    assert.equal(
+      shouldAcceptSemrushCandidate({
+        candidateOverall: 8.75,
+        bestOverall: 8.8,
+        candidateMissingKeywordCount: 1,
+        bestMissingKeywordCount: 3,
+        readabilityImproved: false,
+      }),
+      true,
+    );
+  });
+
+  it('accepts readability improvement within 0.1 when score flat', () => {
+    assert.equal(
+      shouldAcceptSemrushCandidate({
+        candidateOverall: 8.75,
+        bestOverall: 8.8,
+        candidateMissingKeywordCount: 2,
+        bestMissingKeywordCount: 2,
+        readabilityImproved: true,
+      }),
+      true,
+    );
+  });
+
+  it('rejects when score drops beyond tolerance without gains', () => {
+    assert.equal(
+      shouldAcceptSemrushCandidate({ ...base, candidateOverall: 8.5, bestOverall: 8.8 }),
+      false,
+    );
   });
 });
 

@@ -1,5 +1,5 @@
 /**
- * 本地 SEO 评分单元测试（长句阈值 22 词与提分计划）。
+ * 本地 SEO 评分单元测试（动态密度、H2 模糊匹配、长句/长段阈值）。
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -8,7 +8,13 @@ import { dirname, resolve } from 'node:path';
 
 const sharedRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../packages/shared-core');
 const scorePath = pathToFileURL(resolve(sharedRoot, 'dist/seo/local-seo-score.js')).href;
-const { scoreLocalSeo, buildLocalScoreGapPlan, LOCAL_SEO_PASS_THRESHOLD } = await import(scorePath);
+const {
+  scoreLocalSeo,
+  buildLocalScoreGapPlan,
+  headingMatchesKeyword,
+  LOCAL_SEO_PASS_THRESHOLD,
+  LOCAL_PARAGRAPH_MAX_WORDS,
+} = await import(scorePath);
 
 function repeatWord(n) {
   return Array.from({ length: n }, (_, i) => `word${i}`).join(' ');
@@ -40,7 +46,65 @@ describe('scoreLocalSeo readability threshold', () => {
     const content = `# Smart BMS\n\n## A\n\n${short} ${long}.\n\n## B\n\n## C\n\n## D\n\n- a\n- b`;
     const result = scoreLocalSeo({ keyword: 'smart bms', content, targetWordCount: 1200 });
     assert.ok(result.metrics.longSentencesOver22 <= 2);
-    assert.equal(result.breakdown.readability, 20);
+    assert.ok(result.breakdown.readability >= 17);
+  });
+
+  it(`uses ${LOCAL_PARAGRAPH_MAX_WORDS}-word paragraph threshold`, () => {
+    assert.equal(LOCAL_PARAGRAPH_MAX_WORDS, 65);
+    const longPara = Array.from({ length: 14 }, () =>
+      'Smart bms monitors battery cells with CAN Bus daily.',
+    ).join(' ');
+    const content = `# Guide\n\n## Overview\n\n${longPara}\n\n## B\n\n## C\n\n## D\n\n- a\n- b`;
+    const result = scoreLocalSeo({ keyword: 'smart bms', content, targetWordCount: 1200 });
+    assert.ok(result.metrics.longParagraphsOver65 >= 1);
+  });
+});
+
+describe('scoreKeywordCoverage dynamic density', () => {
+  it('gives long-tail full density score with a single natural occurrence', () => {
+    const keyword = 'how can i get rid of blisters';
+    const content = `# Foot Blisters\n\n${keyword}? Many hikers ask this after long walks.\n\n## How Can I Get Rid of Blisters\n\nClean the area and protect the skin.\n\n## Prevention\n\n## Care\n\n## FAQ\n\n- tip one\n- tip two`;
+    const result = scoreLocalSeo({ keyword, content, targetWordCount: 1200 });
+    assert.equal(result.breakdown.keywordCoverage, 25);
+  });
+
+  it('does not require keyword stuffing for 4+ word phrases', () => {
+    const keyword = 'how can i get rid of blisters';
+    const content = `# Foot Blisters\n\n${keyword} is a common question.\n\n## Prevention Tips\n\n## Care\n\n## FAQ\n\n## More\n\n- a\n- b`;
+    const result = scoreLocalSeo({ keyword, content, targetWordCount: 1200 });
+    assert.ok(result.breakdown.keywordCoverage >= 17, 'opening + density should score without H2 exact match');
+    assert.ok(
+      !result.suggestions.some((s) => s.includes('0.8%')),
+      'should not suggest old fixed density band for long-tail',
+    );
+  });
+});
+
+describe('headingMatchesKeyword', () => {
+  it('matches reordered heading with inserted prepositions', () => {
+    assert.equal(
+      headingMatchesKeyword('## Is There a Cure for Blistered Feet', 'cure blistered feet'),
+      true,
+    );
+    assert.equal(
+      headingMatchesKeyword('## Smart BMS Overview', 'smart bms'),
+      true,
+    );
+    assert.equal(
+      headingMatchesKeyword('## Unrelated Topic', 'cure blistered feet'),
+      false,
+    );
+  });
+
+  it('matches Foot Skin Blisters 9.6 H2 patterns', () => {
+    assert.equal(
+      headingMatchesKeyword('## How Can I Get Rid of Blisters on Feet', 'how can i get rid of blisters'),
+      true,
+    );
+    assert.equal(
+      headingMatchesKeyword('## What Does a Blood Blister Look Like', 'blood blister'),
+      true,
+    );
   });
 });
 
@@ -65,7 +129,7 @@ describe('buildLocalScoreGapPlan', () => {
           totalSerpTerms: 10,
           h2Count: 5,
           longSentencesOver22: 4,
-          longParagraphsOver80: 0,
+          longParagraphsOver65: 0,
           passiveVoiceHits: 0,
         },
       },
@@ -74,5 +138,61 @@ describe('buildLocalScoreGapPlan', () => {
     assert.match(plan, /Need \+1 point/);
     assert.match(plan, /\+1 point mode/);
     assert.match(plan, />22 words/);
+    assert.match(plan, />65 words/);
+  });
+});
+
+describe('high-score article patterns (9.5+ SWA)', () => {
+  const blistersContent = `# Foot Skin Blisters: Causes, Treatment, and Prevention
+
+Foot skin blisters are small, fluid-filled pockets that usually heal on their own.
+
+## What Are Blisters on Feet and What Do They Mean?
+
+Blisters on the feet are pockets of fluid under the skin.
+
+## What Does a Blood Blister Look Like?
+
+A blood blister looks red or purple.
+
+## How Can I Get Rid of Blisters on Feet?
+
+The best way to get rid of blisters on the feet is to leave them alone.
+
+## Is There a Cure for Blistered Feet?
+
+There is no instant cure for blistered feet.
+
+## Prevention
+
+- Wear well-fitting shoes
+- Keep feet dry
+- Change damp socks
+
+## FAQ
+
+See a doctor if signs of infection appear.`;
+
+  it('scores foot skin blisters primary keyword highly without stuffing', () => {
+    const result = scoreLocalSeo({
+      keyword: 'foot skin blisters',
+      content: blistersContent,
+      targetWordCount: 1200,
+    });
+    assert.equal(result.breakdown.keywordCoverage, 25);
+    assert.ok(result.score >= 70, `expected strong score, got ${result.score}`);
+  });
+
+  it('scores long-tail primary keyword with question H2 pattern', () => {
+    const content = blistersContent.replace(
+      'Foot skin blisters are small',
+      'Many readers ask how can i get rid of blisters. Foot skin blisters are small',
+    );
+    const result = scoreLocalSeo({
+      keyword: 'how can i get rid of blisters',
+      content,
+      targetWordCount: 1200,
+    });
+    assert.equal(result.breakdown.keywordCoverage, 25);
   });
 });

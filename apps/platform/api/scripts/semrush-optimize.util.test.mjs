@@ -13,6 +13,7 @@ const utilPath = pathToFileURL(
 
 const {
   buildSemrushRewriteSuggestions,
+  buildFallbackSemrushSuggestions,
   buildSemrushOptimizeContext,
   resolveSemrushBoostWordTarget,
 } = await import(utilPath);
@@ -48,16 +49,48 @@ describe('buildSemrushRewriteSuggestions', () => {
     assert.ok(lines.some((l) => l.includes('语气·必做') && l.includes('Test alarms')));
   });
 
-  it('requires SWA recommended keywords', () => {
+  it('requires contextual weaving when SWA keywords are missing', () => {
     const lines = buildSemrushRewriteSuggestions(
       {
-        overall: 8.7,
+        overall: 8,
         suggestions: [],
-        semrushRecommendedKeywords: ['solar panels', 'battery capacity'],
+        semrushMissingTargetKeywords: ['cell balancing'],
+        semrushMissingRecommendedKeywords: ['thermal runaway', 'battery capacity'],
       },
       'Body.',
     );
-    assert.ok(lines.some((l) => l.includes('SEO·必做') && l.includes('solar panels')));
+    assert.ok(lines.some((l) => l.includes('SEO·语境融合·必做') && l.includes('cell balancing')));
+    assert.ok(lines.some((l) => l.includes('H2 或 H3 的问句') || l.includes('H2/H3')));
+    assert.ok(
+      lines
+        .filter((l) => !l.includes('禁止'))
+        .every((l) => !/For procurement teams, relevant search terms include/i.test(l)),
+      'must not inject B2B filler sentence',
+    );
+  });
+  it('suggests precise FAQ word gap when below competitor benchmark', () => {
+    const lines = buildSemrushRewriteSuggestions(
+      {
+        overall: 8.5,
+        suggestions: [],
+        semrushCompetitorWordCount: 1115,
+        semrushCurrentWordCount: 1007,
+      },
+      'Short body.',
+    );
+    assert.ok(lines.some((l) => l.includes('缺 108 词')));
+    assert.ok(lines.some((l) => l.includes('FAQ')));
+  });
+});
+
+describe('buildFallbackSemrushSuggestions', () => {
+  it('returns structure hints when sidebar is empty', () => {
+    const lines = buildFallbackSemrushSuggestions(
+      { overall: 8.4, suggestions: [], suggestionDetails: {} },
+      'Word one. Word two.',
+    );
+    assert.ok(lines.length > 0);
+    assert.ok(lines.some((l) => l.includes('Markdown') || l.includes('列表')));
   });
 });
 

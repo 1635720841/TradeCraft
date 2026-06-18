@@ -48,6 +48,11 @@ export interface SemrushEditorSession {
   nodeLabel: string;
 }
 
+export interface OpenSemrushEditorOptions {
+  /** 优先固定的节点键（如「节点14」） */
+  preferredNodeKey?: string;
+}
+
 @Injectable()
 export class SemrushSessionManager {
   constructor(
@@ -68,10 +73,13 @@ export class SemrushSessionManager {
     }
   }
 
-  async openSemrushEditor(context: BrowserContext): Promise<SemrushEditorSession> {
+  async openSemrushEditor(
+    context: BrowserContext,
+    options?: OpenSemrushEditorOptions,
+  ): Promise<SemrushEditorSession> {
     const dashPage = await context.newPage();
     await this.ensureToolsShareLogin(dashPage);
-    const opened = await this.openSemrushFromDashboard(dashPage, context);
+    const opened = await this.openSemrushFromDashboard(dashPage, context, options);
     await this.navigateToSwaChecker(opened.page);
     await dashPage.close().catch(() => undefined);
     return opened;
@@ -378,6 +386,7 @@ export class SemrushSessionManager {
   private async openSemrushFromDashboard(
     dashPage: Page,
     context: BrowserContext,
+    options?: OpenSemrushEditorOptions,
   ): Promise<SemrushEditorSession> {
     await dashPage.goto(TOOLS_SHARE_HOME_URL, { waitUntil: 'networkidle', timeout: 60_000 });
     await dashPage
@@ -391,6 +400,14 @@ export class SemrushSessionManager {
     }
 
     const candidates = this.shuffleNodeLabels(onlineNodes);
+    const preferred = options?.preferredNodeKey?.trim();
+    if (preferred) {
+      const preferredLabel = onlineNodes.find((label) => this.extractNodeKey(label) === preferred);
+      if (preferredLabel) {
+        // 优先尝试固定节点；失败则继续随机候选
+        candidates.unshift(preferredLabel);
+      }
+    }
     const maxAttempts = Math.min(SEMRUSH_NODE_MAX_ATTEMPTS, candidates.length);
     const errors: string[] = [];
 

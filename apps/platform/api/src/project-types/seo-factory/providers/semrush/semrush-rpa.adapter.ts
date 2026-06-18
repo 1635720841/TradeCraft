@@ -7,6 +7,7 @@ import type {
   ISeoCheckerProvider,
   SeoCheckInput,
   SeoScore,
+  SemrushActionableIssue,
   SemrushSuggestionDetails,
 } from '@wm/provider-interfaces';
 import type { Frame, Page, Response } from 'playwright';
@@ -24,6 +25,15 @@ import {
 } from './semrush.constants';
 import { pollUntil, sleep, waitForAnyLocator } from './semrush-page-wait';
 import { parseChecksPayload } from './semrush-checks.parser';
+import {
+  dedupeActionableIssues,
+  mergeActionableIntoSuggestionDetails,
+  parseActionableIssuesFromSidebarText,
+  synthesizeActionableFromSuggestionDetails,
+} from './semrush-actionable.util';
+import {
+  enrichSemrushKeywordCoverage,
+} from './semrush-keyword-coverage.util';
 import {
   isSemrushRecommendationsPayload,
   parseLastStatusPayload,
@@ -69,39 +79,77 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
     }
 
     const startedAt = Date.now();
+    let phase = 'init';
 
     try {
       return await this.sessionManager.withBrowser(async (context) => {
-        const session = await this.sessionManager.openSemrushEditor(context);
+        const session = await this.sessionManager.openSemrushEditor(context, {
+          preferredNodeKey: input.preferredNodeKey,
+        });
         const { page, nodeKey, nodeLabel } = session;
 
         try {
+          phase = 'goto_swa';
           await this.gotoSeoWritingAssistant(page);
+          phase = 'wait_shell';
           await this.waitForCheckerShell(page);
 
           const apiCapture = this.setupApiCapture(page);
           let resolvedScore: number | undefined;
           try {
+            phase = 'fill_and_analyze';
             resolvedScore = await this.fillAndAnalyze(
               page,
               input.keyword,
               input.content,
               apiCapture.getCaptured,
               input.recommendedKeywords,
+              input.submittedKeywords,
             );
           } finally {
             apiCapture.dispose();
           }
 
           const captured = apiCapture.getCaptured();
-          const result = await this.extractScoreAndSuggestions(
+          phase = 'extract_score_and_suggestions';
+          const extracted = await this.extractScoreAndSuggestions(
             page,
             captured,
             nodeKey,
             nodeLabel,
             resolvedScore,
           );
+          const { domUncoveredSeoKeywords, ...scoreBase } = extracted;
 
+          phase = 'enrich_keyword_coverage';
+          const result = enrichSemrushKeywordCoverage(scoreBase, input.content, {
+            submittedKeywords:
+              input.submittedKeywords ??
+              [input.keyword, ...(input.recommendedKeywords ?? [])],
+            domUncoveredKeywords: domUncoveredSeoKeywords,
+          });
+          const contentWords = input.content.split(/\s+/).filter(Boolean).length;
+          const contentTitle =
+            input.content.match(/^#\s+(.+)$/m)?.[1]?.trim() ??
+            input.content.split('\n').map((line) => line.trim()).find(Boolean) ??
+            '(untitled)';
+          const routeMeta = `Semrush评测线路: ${nodeKey}${nodeLabel ? ` (${nodeLabel})` : ''}`;
+          const contentMeta = `Semrush评测文章: ${contentTitle.slice(0, 80)} | words:${contentWords}`;
+          result.semrushEvaluationRoute = routeMeta;
+          result.semrushEvaluationContentFingerprint = contentMeta;
+
+          if (
+            (result.semrushMissingTargetKeywords?.length ?? 0) > 0 ||
+            (result.semrushMissingRecommendedKeywords?.length ?? 0) > 0
+          ) {
+            this.logger.info('Semrush SEO keyword gaps detected', {
+              action: 'semrush.seo_keyword_gaps',
+              missingTarget: result.semrushMissingTargetKeywords?.length ?? 0,
+              missingRecommended: result.semrushMissingRecommendedKeywords?.length ?? 0,
+            });
+          }
+
+          phase = 'log_completed';
           this.logger.info('Semrush RPA check completed', {
             action: 'semrush.check_score',
             keyword: input.keyword,
@@ -111,6 +159,8 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
             suggestionCount: result.suggestions.length,
             apiUrlCount: result.apiUrls?.length ?? 0,
             durationMs: Date.now() - startedAt,
+            route: routeMeta,
+            contentFingerprint: contentMeta,
           });
 
           return result;
@@ -120,15 +170,18 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : '未知错误';
+      const stack = error instanceof Error ? error.stack : undefined;
       this.logger.error('Semrush RPA failed', {
         action: 'semrush.check_score_failed',
         keyword: input.keyword,
         durationMs: Date.now() - startedAt,
         errorMessage: message,
+        phase,
+        errorStack: stack,
       });
       throw new BusinessException(
         ErrorCodes.EXTERNAL_API_ERROR,
-        `Semrush RPA 查分失败：${message}`,
+        `Semrush RPA 查分失败（${phase}）：${message}`,
       );
     }
   }
@@ -252,6 +305,7 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
     content: string,
     getCaptured: () => CapturedApiPayload[],
     recommendedKeywords?: string[],
+    submittedKeywords?: string[],
   ): Promise<number> {
     const htmlContent = markdownToHtml(content);
 
@@ -261,7 +315,7 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
       { timeoutMs: SEMRUSH_SWA_EDITOR_TIMEOUT_MS, label: 'SWA 编辑器' },
     );
 
-    await this.setupKeywordGoal(page, keyword, recommendedKeywords);
+    await this.setupKeywordGoal(page, keyword, recommendedKeywords, submittedKeywords);
     await sleep(SEMRUSH_UI_SETTLE_MS);
 
     await editor.click();
@@ -291,16 +345,22 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
     page: Page,
     keyword: string,
     recommendedKeywords?: string[],
+    submittedKeywords?: string[],
   ): Promise<void> {
-    if (await this.isKeywordGoalAlreadySatisfied(page, keyword)) {
+    const plannedKeywords =
+      submittedKeywords && submittedKeywords.length > 0
+        ? submittedKeywords
+        : this.collectKeywordList(keyword, recommendedKeywords);
+
+    if (await this.isKeywordGoalAlreadySatisfied(page, plannedKeywords[0] ?? keyword)) {
       this.logger.info('Semrush keyword goal already active, skipping setup', {
         action: 'semrush.keyword_goal_skip',
-        primaryKeyword: keyword,
+        primaryKeyword: plannedKeywords[0] ?? keyword,
       });
       return;
     }
 
-    const keywords = this.collectKeywordList(keyword, recommendedKeywords);
+    const keywords = plannedKeywords;
     const keywordInput = await this.ensureKeywordInputVisible(page);
 
     await this.clearExistingKeywordTags(page, keywordInput);
@@ -1109,7 +1169,7 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
     nodeKey: string,
     nodeLabel: string,
     resolvedScore?: number,
-  ): Promise<SeoScore> {
+  ): Promise<SeoScore & { domUncoveredSeoKeywords?: string[] }> {
     const apiCaptured = pickBestRecommendationsCapture(captured);
     const apiPrefetched = apiCaptured ?? (await this.fetchRecommendationsWhenReady(page, 5_000));
     const domScore = this.resolveScore(
@@ -1168,15 +1228,55 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
     );
 
     await this.prepareSidebarForExtraction(page);
-    const domDetails = this.normalizeSuggestionDetails(
-      await this.extractSuggestionsFromDom(page, { skipPrepare: true }),
-    );
+    const domExtracted = await this.extractSuggestionsFromDom(page, { skipPrepare: true });
+    const domDetails = this.normalizeSuggestionDetails(domExtracted.details);
+    const domActionable = domExtracted.actionableIssues;
+
+    if (domActionable.length === 0) {
+      const sidebarSnippet = await page
+        .locator(SEMRUSH_SWA_SELECTORS.checkerWidget)
+        .first()
+        .innerText()
+        .catch(() => '');
+      this.logger.info('Semrush DOM actionable empty after sidebar expand', {
+        action: 'semrush.actionable_empty',
+        domSuggestionKeys: Object.keys(domDetails),
+        hasPassiveHeader: /主动语态|active voice/i.test(sidebarSnippet),
+        hasCasualHeader: /随意|casual sentence/i.test(sidebarSnippet),
+        snippet: sidebarSnippet.slice(0, 800),
+      });
+    }
 
     if (process.env.SEMRUSH_DEBUG_SIDEBAR === '1') {
       await this.dumpSidebarDebug(page, { apiDetails, domDetails }).catch(() => undefined);
     }
 
-    const suggestionDetails = this.mergeSuggestionDetails(domDetails, apiDetails);
+    let suggestionDetails = this.mergeSuggestionDetails(domDetails, apiDetails);
+    let actionableIssues =
+      domActionable.length > 0 ? dedupeActionableIssues(domActionable) : undefined;
+
+    if (!actionableIssues?.length) {
+      const synthesized = synthesizeActionableFromSuggestionDetails(suggestionDetails);
+      if (synthesized.length > 0) {
+        actionableIssues = synthesized;
+        this.logger.info('Semrush actionable synthesized from suggestion labels', {
+          action: 'semrush.actionable_synthesized',
+          count: synthesized.length,
+          rules: synthesized.map((i) => i.rule),
+        });
+      }
+    } else {
+      const synthesized = synthesizeActionableFromSuggestionDetails(suggestionDetails);
+      const coveredRules = new Set(actionableIssues.map((i) => i.rule));
+      const extras = synthesized.filter((i) => !coveredRules.has(i.rule));
+      if (extras.length > 0) {
+        actionableIssues = dedupeActionableIssues([...actionableIssues, ...extras]);
+      }
+    }
+
+    if (actionableIssues && actionableIssues.length > 0) {
+      suggestionDetails = mergeActionableIntoSuggestionDetails(suggestionDetails, actionableIssues);
+    }
 
     let analysisSource: SeoScore['analysisSource'];
     const hasApi = this.hasAnySuggestions(apiDetails);
@@ -1214,6 +1314,11 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
       apiFetched,
       captured,
     );
+    const semrushTargetKeywords = this.collectSemrushTargetKeywords(
+      apiPrefetched,
+      apiFetched,
+      captured,
+    );
 
     const finalDomScore = this.resolveScore(await this.tryReadScore(page));
     const finalApiScore = this.resolveScore(
@@ -1241,15 +1346,49 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
       overall: finalOverall,
       suggestions,
       semrushRecommendedKeywords,
+      semrushTargetKeywords,
       semrushCompetitorWordCount: metricsSource?.competitorWordCount,
       semrushCurrentWordCount: metricsSource?.currentWordCount,
       semrushReadabilityScore: metricsSource?.readabilityScore,
       node: nodeKey,
       nodeLabel,
       suggestionDetails,
+      actionableIssues,
       analysisSource,
       apiUrls: apiUrls.length > 0 ? apiUrls : undefined,
+      domUncoveredSeoKeywords: domExtracted.domUncoveredSeoKeywords,
     };
+  }
+
+  private collectSemrushTargetKeywords(
+    ...sources: Array<ParsedSemrushRecommendations | CapturedApiPayload[] | null | undefined>
+  ): string[] | undefined {
+    const merged: string[] = [];
+    const seen = new Set<string>();
+
+    const push = (value: string) => {
+      const trimmed = value.trim();
+      if (!trimmed) return;
+      const key = trimmed.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      merged.push(trimmed);
+    };
+
+    for (const source of sources) {
+      if (!source) continue;
+      if (Array.isArray(source)) {
+        for (const item of source) {
+          if (!isSemrushRecommendationsPayload(item.body)) continue;
+          const parsed = parseSemrushRecommendationsPayload(item.body);
+          for (const kw of parsed.targetKeywords ?? []) push(kw);
+        }
+        continue;
+      }
+      for (const kw of source.targetKeywords ?? []) push(kw);
+    }
+
+    return merged.length > 0 ? merged.slice(0, 30) : undefined;
   }
 
   private collectSemrushRecommendedKeywords(
@@ -1378,6 +1517,7 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
   }
 
   private async prepareSidebarForExtraction(page: Page): Promise<void> {
+    await this.expandSidebarSuggestionSections(page);
     await page
       .evaluate(`() => {
         const widget = document.querySelector('[data-test="swa-spa-checker-widget"]');
@@ -1395,35 +1535,281 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
     await sleep(600);
   }
 
+  /**
+   * SWA 侧栏需点击「可读性/语气」并「展示更多」后，DOM 才包含全部原句建议。
+   */
+  private async expandSidebarSuggestionSections(page: Page): Promise<void> {
+    const widget = page.locator(SEMRUSH_SWA_SELECTORS.checkerWidget).first();
+    if (!(await widget.isVisible().catch(() => false))) return;
+
+    const dimensionLabels = ['可读性', 'Readability', '语气', 'Tone'];
+    for (const label of dimensionLabels) {
+      const tab = widget
+        .locator(`[role="tab"]:has-text("${label}"), button:has-text("${label}")`)
+        .first();
+      if (await tab.isVisible().catch(() => false)) {
+        await tab.click({ timeout: 2_500 }).catch(() => undefined);
+      } else {
+        const hit = widget.getByText(label, { exact: true }).first();
+        if (await hit.isVisible().catch(() => false)) {
+          await hit.click({ timeout: 2_500 }).catch(() => undefined);
+        }
+      }
+      await sleep(SEMRUSH_EXPAND_POLL_MS);
+      await pollUntil(
+        async () => (await widget.locator('[role="listitem"]').count().catch(() => 0)) > 1,
+        {
+          timeoutMs: 6_000,
+          intervalMs: SEMRUSH_EXPAND_POLL_MS,
+          label: `SWA ${label} suggestions`,
+        },
+      ).catch(() => undefined);
+    }
+
+    const subsectionPatterns = [
+      /最为随意的句子|Most casual sentences/i,
+      /考虑使用主动语态|Consider using active voice/i,
+      /考虑移除或替换|Consider removing or replacing/i,
+      /替换太过复杂的词语|Replace overly complex words/i,
+      /拆分长段|Split long paragraph/i,
+      /段落太长|paragraph is too long/i,
+    ];
+    for (const pattern of subsectionPatterns) {
+      const hits = widget.getByText(pattern);
+      const hitCount = await hits.count().catch(() => 0);
+      for (let i = 0; i < hitCount; i += 1) {
+        const hit = hits.nth(i);
+        if (!(await hit.isVisible().catch(() => false))) continue;
+        await hit.click({ timeout: 2_500 }).catch(() => undefined);
+        await sleep(SEMRUSH_EXPAND_POLL_MS);
+      }
+    }
+
+    const issueRowPatternSources = [
+      '考虑使用主动语态|Consider using active voice',
+      '最为随意|随意句子|casual sentence',
+      '复杂词语|complex word',
+      '填充词|filler',
+      '拆分长段|long paragraph',
+      '难以阅读|hard to read',
+      '重写难以阅读|Rewrite hard-to-read',
+    ];
+    await widget
+      .evaluate(
+        `(patterns) => {
+          const widgetEl = document.querySelector('[data-test="swa-spa-checker-widget"]');
+          if (!widgetEl) return;
+          const safePatterns = Array.isArray(patterns) ? patterns : [];
+          const reList = safePatterns.map((p) => new RegExp(p, 'i'));
+
+          const clickExpandables = (root) => {
+            for (const btn of root.querySelectorAll('button[aria-expanded="false"]')) {
+              btn.click();
+            }
+          };
+
+          clickExpandables(widgetEl);
+          for (const section of widgetEl.querySelectorAll('section[aria-labelledby]')) {
+            clickExpandables(section);
+          }
+          for (const item of widgetEl.querySelectorAll('[role="listitem"]')) {
+            const text = (item.textContent || '').replace(/\\s+/g, ' ').trim();
+            if (text.length > 120) continue;
+            if (!reList.some((re) => re.test(text))) continue;
+            const btn = item.querySelector('button[aria-expanded="false"]');
+            if (btn) btn.click();
+            else item.click();
+          }
+          clickExpandables(widgetEl);
+        }`,
+        issueRowPatternSources,
+      )
+      .catch(() => undefined);
+    await sleep(SEMRUSH_EXPAND_POLL_MS * 2);
+
+    for (let round = 0; round < 10; round += 1) {
+      const showMore = widget.getByText(/展示更多|Show more/i);
+      const count = await showMore.count().catch(() => 0);
+      if (count === 0) break;
+
+      let clickedAny = false;
+      for (let i = 0; i < count; i += 1) {
+        const btn = showMore.nth(i);
+        if (!(await btn.isVisible().catch(() => false))) continue;
+        await btn.click({ timeout: 2_000 }).catch(() => undefined);
+        clickedAny = true;
+        await sleep(SEMRUSH_EXPAND_POLL_MS);
+      }
+      if (!clickedAny) break;
+    }
+
+    this.logger.info('Semrush sidebar sections expanded', {
+      action: 'semrush.sidebar_expand',
+    });
+
+    await widget
+      .locator(SEMRUSH_SWA_SELECTORS.suggestionScrollContainer)
+      .first()
+      .evaluate((el) => {
+        el.scrollTop = el.scrollHeight;
+      })
+      .catch(() => undefined);
+    await sleep(SEMRUSH_EXPAND_POLL_MS);
+  }
+
   private async extractSuggestionsFromDom(
     page: Page,
     options?: { skipPrepare?: boolean },
-  ): Promise<SemrushSuggestionDetails> {
+  ): Promise<{
+    details: SemrushSuggestionDetails;
+    actionableIssues: SemrushActionableIssue[];
+    domUncoveredSeoKeywords?: string[];
+  }> {
     if (!options?.skipPrepare) {
       await this.prepareSidebarForExtraction(page);
     }
 
-    let merged: SemrushSuggestionDetails = {};
-    for (const frame of page.frames()) {
-      try {
-        const partial = await this.extractSuggestionsFromFrame(frame);
-        merged = this.mergeSuggestionDetails(merged, partial);
-      } catch {
-        /* cross-origin or detached frame */
+    let mergedDetails: SemrushSuggestionDetails = {};
+    let mergedActionable: SemrushActionableIssue[] = [];
+    const widget = page.locator(SEMRUSH_SWA_SELECTORS.checkerWidget).first();
+
+    const dimensionTabGroups = [
+      ['可读性', 'Readability'],
+      ['语气', 'Tone'],
+      ['SEO'],
+    ];
+
+    let domUncoveredSeoKeywords: string[] = [];
+
+    const mergePartial = async () => {
+      for (const frame of page.frames()) {
+        try {
+          const partial = await this.extractSuggestionsFromFrame(frame);
+          mergedDetails = this.mergeSuggestionDetails(mergedDetails, partial.details);
+          mergedActionable.push(...partial.actionableIssues);
+        } catch {
+          /* cross-origin or detached frame */
+        }
       }
+    };
+
+    for (const labels of dimensionTabGroups) {
+      let tabClicked = false;
+      for (const label of labels) {
+        const tab = widget
+          .locator(`[role="tab"]:has-text("${label}"), button:has-text("${label}")`)
+          .first();
+        if (await tab.isVisible().catch(() => false)) {
+          await tab.click({ timeout: 2_500 }).catch(() => undefined);
+          tabClicked = true;
+          break;
+        }
+        const hit = widget.getByText(label, { exact: true }).first();
+        if (await hit.isVisible().catch(() => false)) {
+          await hit.click({ timeout: 2_500 }).catch(() => undefined);
+          tabClicked = true;
+          break;
+        }
+      }
+      if (!tabClicked) continue;
+
+      await sleep(SEMRUSH_EXPAND_POLL_MS);
+      for (let round = 0; round < 6; round += 1) {
+        const showMore = widget.getByText(/展示更多|Show more/i);
+        const count = await showMore.count().catch(() => 0);
+        if (count === 0) break;
+        for (let i = 0; i < count; i += 1) {
+          await showMore.nth(i).click({ timeout: 2_000 }).catch(() => undefined);
+          await sleep(SEMRUSH_EXPAND_POLL_MS);
+        }
+      }
+
+      const sidebarText = await widget.innerText().catch(() => '');
+      if (sidebarText) {
+        const parsedFromText = parseActionableIssuesFromSidebarText(sidebarText);
+        mergedActionable.push(...parsedFromText);
+        for (const issue of parsedFromText) {
+          if (issue.rule === 'casual_sentence' && issue.quotes?.length) {
+            mergedDetails.tone = [
+              ...new Set([...(mergedDetails.tone ?? []), ...issue.quotes]),
+            ].slice(0, 30);
+          }
+          if (issue.rule === 'passive_voice' && issue.quotes?.length) {
+            mergedDetails.readability = [
+              ...new Set([...(mergedDetails.readability ?? []), ...issue.quotes]),
+            ].slice(0, 30);
+          }
+        }
+      }
+
+      if (labels[0] === 'SEO') {
+        const uncovered = await this.scrapeUncoveredSeoTags(widget);
+        if (uncovered.length > 0) {
+          domUncoveredSeoKeywords = [
+            ...new Set([...domUncoveredSeoKeywords, ...uncovered]),
+          ];
+        }
+      }
+
+      await mergePartial();
     }
 
-    if (process.env.SEMRUSH_DEBUG_SIDEBAR === '1' && !this.hasAnySuggestions(merged)) {
+    if (!this.hasAnySuggestions(mergedDetails) && mergedActionable.length === 0) {
+      await mergePartial();
+    }
+
+    if (process.env.SEMRUSH_DEBUG_SIDEBAR === '1' && !this.hasAnySuggestions(mergedDetails)) {
       this.logger.info('Semrush DOM extract empty after all frames', {
         action: 'semrush.dom_extract_empty',
         frameCount: page.frames().length,
       });
     }
 
-    return this.normalizeSuggestionDetails(merged);
+    return {
+      details: this.normalizeSuggestionDetails(mergedDetails),
+      actionableIssues: dedupeActionableIssues(mergedActionable),
+      domUncoveredSeoKeywords:
+        domUncoveredSeoKeywords.length > 0 ? domUncoveredSeoKeywords : undefined,
+    };
   }
 
-  private async extractSuggestionsFromFrame(frame: Frame): Promise<SemrushSuggestionDetails> {
+  /** SEO Tab：灰色 Tag = 正文未覆盖（绿 Tag 为已覆盖） */
+  private async scrapeUncoveredSeoTags(
+    widget: ReturnType<Page['locator']>,
+  ): Promise<string[]> {
+    const tagsRaw = await widget
+      .evaluate(`() => {
+        const widgetEl = document.querySelector('[data-test="swa-spa-checker-widget"]');
+        if (!widgetEl) return [];
+        const uncovered = [];
+        for (const tag of widgetEl.querySelectorAll('[data-ui-name="Tag"]')) {
+          const text = tag.querySelector('[data-ui-name="Tag.Text"]')?.textContent?.trim();
+          if (!text || text.length < 2) continue;
+          const style = window.getComputedStyle(tag);
+          const bg = style.backgroundColor || '';
+          const rgb = bg.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/);
+          let isCovered = false;
+          if (rgb) {
+            const r = Number(rgb[1]);
+            const g = Number(rgb[2]);
+            const b = Number(rgb[3]);
+            isCovered = g > 110 && g > r + 15 && g > b + 15;
+          }
+          if (!isCovered) uncovered.push(text);
+        }
+        return uncovered;
+      }`)
+      .catch(() => []);
+
+    const tags = Array.isArray(tagsRaw) ? (tagsRaw as string[]) : [];
+
+    return [...new Set(tags.map((t) => t.trim()).filter(Boolean))];
+  }
+
+  private async extractSuggestionsFromFrame(frame: Frame): Promise<{
+    details: SemrushSuggestionDetails;
+    actionableIssues: SemrushActionableIssue[];
+  }> {
     const raw = (await frame.evaluate(`() => {
       const noise =
         /免费检查|Smart Writer|已用|增加限额|重述工具|创作|询问 AI|用于本文档|设置新目标|内容推荐|SEO Writing Assistant|文档：|站点表现|竞品分析|关键词研究|跳到内容|Enterprise|我的档案|发送反馈|这有帮助吗/i;
@@ -1487,23 +1873,144 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
         }
       }
 
-      const hasStructured = Object.values(details).some((items) => items?.length > 0);
-
-      const extractCasualSentences = () => {
-        const widgetText = normalize(widget.innerText || widget.textContent);
-        const headerRe = /最为随意的句子|Most casual sentences/i;
-        const idx = widgetText.search(headerRe);
-        if (idx < 0) return [];
-        const slice = widgetText.slice(idx, idx + 2500);
-        const numbered = [...slice.matchAll(/\\d+\\.\\s*([A-Za-z][^.!?\\n]{8,220}[.!?]?)/g)]
-          .map((m) => normalize(m[1]))
-          .filter(isBulletText);
-        return [...new Set(numbered)].slice(0, 12);
+      const classifyRule = (label) => {
+        if (/主动语态|active voice/i.test(label)) return 'passive_voice';
+        if (/复杂|complex word/i.test(label)) return 'complex_word';
+        if (/随意|casual sentence/i.test(label)) return 'casual_sentence';
+        if (/移除或替换|填充|filler/i.test(label)) return 'filler_phrase';
+        if (/段落|paragraph|拆分长段/i.test(label)) return 'long_paragraph';
+        if (/关键词|keyword/i.test(label)) return 'keyword';
+        return 'other';
       };
 
-      const casualSentences = extractCasualSentences();
+      const isEnglishQuote = (text) =>
+        /^[A-Za-z][A-Za-z0-9\\s,'"()-]{10,320}[.!?]?$/.test(text.trim());
+
+      const extractNumberedUnderHeader = (headerRe, maxItems = 20) => {
+        const rawText = widget.innerText || widget.textContent || '';
+        const idx = rawText.search(headerRe);
+        if (idx < 0) return [];
+        const slice = rawText.slice(idx, idx + 8000);
+        const quotes = [];
+
+        const pushQuote = (text) => {
+          const q = normalize(text);
+          if (isEnglishQuote(q)) quotes.push(q);
+        };
+
+        for (const m of slice.matchAll(/\\d+\\.\\s*([A-Za-z][^\\n]{8,320}?[.!?])/g)) {
+          pushQuote(m[1]);
+        }
+        for (const m of slice.matchAll(/(?:^|\\n)\\s*\\d+\\s*\\n\\s*([A-Za-z][^\\n]{8,320}?[.!?])/gm)) {
+          pushQuote(m[1]);
+        }
+
+        const normalizedSlice = normalize(slice);
+        for (const m of normalizedSlice.matchAll(/\\b\\d+\\s+([A-Za-z][^.!?]{8,280}[.!?])/g)) {
+          pushQuote(m[1]);
+        }
+
+        return [...new Set(quotes)].slice(0, maxItems);
+      };
+
+      const actionable = [];
+
+      for (const section of widget.querySelectorAll('section[aria-labelledby]')) {
+        const titleId = section.getAttribute('aria-labelledby');
+        const titleEl = titleId ? document.getElementById(titleId) : null;
+        const title = normalize(titleEl?.textContent);
+        if (!title) continue;
+
+        let targetKey = null;
+        for (const [key, labels] of Object.entries(sectionMap)) {
+          if (labels.includes(title)) {
+            targetKey = key;
+            break;
+          }
+        }
+        if (!targetKey) continue;
+
+        const topItems = [...section.querySelectorAll(':scope [role="list"] > [role="listitem"]')];
+        for (const item of topItems) {
+          const label = normalize(
+            item.querySelector('[data-ui-name="Box"]')?.textContent?.split('\\n')[0] ||
+              item.textContent?.split('\\n')[0],
+          );
+          if (!label || label.length < 4) continue;
+
+          const terms = [...item.querySelectorAll('[data-ui-name="Tag.Text"]')]
+            .map((tag) => normalize(tag.textContent))
+            .filter(Boolean);
+
+          const subQuotes = [...item.querySelectorAll(':scope [role="list"] [role="listitem"]')]
+            .map(extractListItemText)
+            .filter((t) => isEnglishQuote(t));
+
+          const inlineNumbered = [
+            ...normalize(item.innerText || '').matchAll(/\\d+\\.\\s*([A-Za-z][^.!?\\n]{8,280}[.!?]?)/g),
+          ]
+            .map((m) => normalize(m[1]))
+            .filter((t) => isEnglishQuote(t));
+
+          const quotes = [...new Set([...subQuotes, ...inlineNumbered])];
+          const rule = classifyRule(label);
+
+          if (quotes.length > 0 || terms.length > 0) {
+            actionable.push({
+              category: targetKey,
+              rule,
+              label,
+              quotes: quotes.length > 0 ? quotes : undefined,
+              terms: terms.length > 0 ? terms : undefined,
+            });
+          } else if (
+            rule !== 'other' &&
+            rule !== 'keyword' &&
+            /考虑|重写|替换|移除|Consider|Rewrite|Replace|Remove/i.test(label)
+          ) {
+            actionable.push({
+              category: targetKey,
+              rule,
+              label,
+            });
+          }
+        }
+      }
+
+      const headerRules = [
+        { re: /最为随意的句子|Most casual sentences/i, rule: 'casual_sentence', category: 'tone' },
+        { re: /考虑使用主动语态|Consider using active voice/i, rule: 'passive_voice', category: 'readability' },
+        { re: /考虑移除或替换|Consider removing or replacing/i, rule: 'filler_phrase', category: 'tone' },
+        { re: /替换太过复杂的词语|Replace overly complex words/i, rule: 'complex_word', category: 'readability' },
+      ];
+
+      for (const { re, rule, category } of headerRules) {
+        const quotes = extractNumberedUnderHeader(re, 24);
+        if (quotes.length === 0) continue;
+        const labelMatch = normalize(widget.innerText || '').match(re);
+        actionable.push({
+          category,
+          rule,
+          label: labelMatch ? labelMatch[0] : rule,
+          quotes,
+        });
+      }
+
+      const hasStructured = Object.values(details).some((items) => items?.length > 0);
+
+      const casualSentences = extractNumberedUnderHeader(/最为随意的句子|Most casual sentences/i, 24);
       if (casualSentences.length > 0) {
-        details.tone = [...new Set([...(details.tone ?? []), ...casualSentences])].slice(0, 20);
+        details.tone = [...new Set([...(details.tone ?? []), ...casualSentences])].slice(0, 30);
+      }
+
+      const passiveQuotes = extractNumberedUnderHeader(
+        /考虑使用主动语态|Consider using active voice/i,
+        16,
+      );
+      if (passiveQuotes.length > 0) {
+        details.readability = [
+          ...new Set([...(details.readability ?? []), ...passiveQuotes]),
+        ].slice(0, 30);
       }
 
       if (!hasStructured) {
@@ -1523,9 +2030,12 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
         }
       }
 
-      return details;
-    }`)) as SemrushSuggestionDetails;
+      return { details, actionable };
+    }`)) as { details: SemrushSuggestionDetails; actionable: SemrushActionableIssue[] };
 
-    return this.normalizeSuggestionDetails(raw);
+    return {
+      details: this.normalizeSuggestionDetails(raw.details ?? {}),
+      actionableIssues: dedupeActionableIssues(raw.actionable ?? []),
+    };
   }
 }

@@ -18,8 +18,8 @@ const SUGGESTION_EXACT: Record<string, string> = {
   '至少在一个 H2 标题中包含目标关键词': 'Include the target keyword in at least one H2 heading',
   '增加 H2 章节至至少 4 个': 'Add at least 4 H2 sections',
   '适当使用列表提升可读性与结构得分': 'Add a bullet list to improve readability and structure score',
-  '拆分长段（Semrush 可读性：单段建议不超过约 80 词）':
-    'Split long paragraphs (Semrush readability: aim for ≤80 words per paragraph)',
+  '拆分长段（Semrush 可读性：单段建议不超过约 65 词）':
+    'Split long paragraphs (Semrush readability: aim for ≤65 words per paragraph)',
   '重写难以阅读的句子（Semrush：单句建议 ≤22 词）':
     'Rewrite hard-to-read sentences (Semrush: aim for ≤22 words per sentence)',
   '考虑使用主动语态（减少被动句）': 'Use more active voice (reduce passive sentences)',
