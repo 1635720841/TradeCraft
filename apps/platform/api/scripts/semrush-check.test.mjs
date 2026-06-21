@@ -76,10 +76,10 @@ describe('shouldRecoverOrphanOptimizing', () => {
 });
 
 describe('isSemrushCheckStale', () => {
-  it('marks pending older than 5 minutes as stale', () => {
+  it('marks pending older than 15 minutes as stale', () => {
     const now = Date.now();
-    assert.equal(isSemrushCheckStale(new Date(now - 6 * 60_000).toISOString(), now), true);
-    assert.equal(isSemrushCheckStale(new Date(now - 2 * 60_000).toISOString(), now), false);
+    assert.equal(isSemrushCheckStale(new Date(now - 16 * 60_000).toISOString(), now), true);
+    assert.equal(isSemrushCheckStale(new Date(now - 10 * 60_000).toISOString(), now), false);
   });
 });
 

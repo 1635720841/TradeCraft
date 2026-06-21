@@ -13,6 +13,8 @@ describe('playwright-queue.config', () => {
     assert.equal(opts.concurrency, 1);
     assert.equal(opts.limiter.max, 1);
     assert.equal(opts.limiter.duration, 60_000);
+    assert.equal(opts.jobTimeoutMs, 600_000);
+    assert.equal(opts.jobGraceMs, 180_000);
 
     process.env.PLAYWRIGHT_QUEUE_ENABLED = 'false';
     assert.equal(mod.isPlaywrightQueueEnabled(), false);

@@ -10,7 +10,7 @@
 
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable } from '@nestjs/common';
-import { JobStatus, KeywordStatus, type Prisma } from '@prisma/client';
+import { JobStatus, KeywordStatus, Prisma } from '@prisma/client';
 import { Queue } from 'bullmq';
 import { v4 as uuidv4 } from 'uuid';
 import { isSeoArticleUrl, keywordFromArticleUrl, normalizeContentLanguage } from '@wm/shared-core';
@@ -18,7 +18,8 @@ import { BusinessException } from '../../../../core/exceptions/business.exceptio
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { PrismaService } from '../../../../core/database/prisma.service';
 import { LoggerService } from '../../../../core/logger/logger.service';
-import { ARTICLE_JOB_QUEUE } from '../../../../core/queue/queue.constants';
+import { StorageService } from '../../../../core/storage/storage.service';
+import { ARTICLE_JOB_QUEUE, PLAYWRIGHT_QUEUE } from '../../../../core/queue/queue.constants';
 import type {
   ArticleJobQueuePayload,
   ArticleJobScraperOptions,
@@ -28,8 +29,10 @@ import {
   MAX_BATCH_JOB_LIMIT,
 } from '../../constants/serp-filter';
 import { MAX_BATCH_ACTION_LIMIT } from '../../constants/batch-actions';
+import { CALIBRATION_LAB_JOB_ID_PREFIX } from '../../utils/score-calibration-manual-samples.util';
 import { isBriefApprovalPending } from '../../constants/brief-approval';
 import { siteHasWritingProfile, parseSiteSettings } from '../../constants/site-settings';
+import { resolveSiteSeoScoreConfig } from '../../constants/site-seo-score-settings';
 import { normalizeKeywordIntent, type KeywordIntentValue } from '../../constants/search-intent';
 import { normalizeArticleContentForm } from '../../constants/content-form';
 import { canPublishArticle } from '../content-review/ymyl-detect.util';
@@ -53,6 +56,9 @@ import { ScraperService } from '../scraper/scraper.service';
 import type { DraftStaleness } from '../../constants/draft-edit';
 import { hasActiveStaleness } from './draft-edit.util';
 import { findKeywordConflicts } from '../keyword-pool/keyword-cannibalization.util';
+import { removeBullJobsByArticleJobId } from '../../utils/article-job-queue-cleanup.util';
+import type { PlaywrightJobPayload } from '../../services/semrush-queue.service';
+import { buildExportStoragePrefix } from '../export/export-html.util';
 
 const JOB_LIST_SITE_SELECT = { domain: true, cmsType: true, cmsConfig: true } as const;
 
@@ -66,7 +72,9 @@ export class ArticleJobService {
     private readonly billingService: BillingService,
     private readonly gscService: GscService,
     private readonly scraperService: ScraperService,
+    private readonly storage: StorageService,
     @InjectQueue(ARTICLE_JOB_QUEUE) private readonly articleJobQueue: Queue<ArticleJobQueuePayload>,
+    @InjectQueue(PLAYWRIGHT_QUEUE) private readonly playwrightQueue: Queue<PlaywrightJobPayload>,
   ) {}
 
   async create(organizationId: string, projectId: string, dto: CreateArticleJobDto) {
@@ -302,6 +310,10 @@ export class ArticleJobService {
     const safeLimit = Math.min(Math.max(limit, 1), 100);
     const skip = (Math.max(page, 1) - 1) * safeLimit;
 
+    const andFilters: Prisma.ArticleJobWhereInput[] = [
+      { NOT: { id: { startsWith: CALIBRATION_LAB_JOB_ID_PREFIX } } },
+    ];
+
     const where: Prisma.ArticleJobWhereInput = {
       organizationId,
       projectId,
@@ -318,18 +330,22 @@ export class ArticleJobService {
       };
     } else if (options.generating) {
       where.status = { notIn: [JobStatus.COMPLETED, JobStatus.FAILED] };
-      where.NOT = {
-        AND: [
-          { status: JobStatus.DRAFTING },
-          {
-            briefData: {
-              path: ['approvalStatus'],
-              equals: 'pending',
+      andFilters.push({
+        NOT: {
+          AND: [
+            { status: JobStatus.DRAFTING },
+            {
+              briefData: {
+                path: ['approvalStatus'],
+                equals: 'pending',
+              },
             },
-          },
-        ],
-      };
+          ],
+        },
+      });
     }
+
+    where.AND = andFilters;
 
     const [rows, total] = await Promise.all([
       this.prisma.articleJob.findMany({
@@ -724,6 +740,7 @@ export class ArticleJobService {
       siteCmsType: site.cmsType,
       siteShopifyPublishTarget: shopifyConfig?.publishTarget ?? null,
       siteContentProfile: parseSiteSettings(site.settings).contentProfile ?? null,
+      siteWorkflow: resolveSiteSeoScoreConfig(site.settings),
       internalLinkCount: draftData?.internalLinksApplied
         ? (draftData.internalLinks?.length ?? 0)
         : null,
@@ -1203,6 +1220,138 @@ export class ArticleJobService {
       failed: results.filter((item) => !item.ok).length,
       results,
     };
+  }
+
+  /** 删除任务及队列、稿件插图等关联数据 */
+  async remove(organizationId: string, projectId: string, id: string, traceId: string) {
+    const job = await this.prisma.articleJob.findFirst({
+      where: { id, organizationId, projectId },
+      select: {
+        id: true,
+        traceId: true,
+        targetKeyword: true,
+        status: true,
+        seoCheckData: true,
+      },
+    });
+
+    if (!job) {
+      throw new BusinessException(ErrorCodes.JOB_NOT_FOUND, '任务不存在');
+    }
+
+    if (job.id.startsWith(CALIBRATION_LAB_JOB_ID_PREFIX)) {
+      throw new BusinessException(ErrorCodes.VALIDATION_ERROR, '校准实验室样本请在校准页删除');
+    }
+
+    await this.cleanupBeforeDelete(organizationId, projectId, job);
+
+    await this.prisma.articleJob.delete({
+      where: { id: job.id },
+    });
+
+    this.logger.info('Article job deleted', {
+      traceId,
+      organizationId,
+      projectId,
+      jobId: job.id,
+      targetKeyword: job.targetKeyword,
+      action: 'article_job.delete',
+    });
+
+    return {
+      id: job.id,
+      targetKeyword: job.targetKeyword,
+      deleted: true as const,
+    };
+  }
+
+  async batchRemove(organizationId: string, projectId: string, jobIds: string[], traceId: string) {
+    if (jobIds.length > MAX_BATCH_ACTION_LIMIT) {
+      throw new BusinessException(
+        ErrorCodes.VALIDATION_ERROR,
+        `单次最多删除 ${MAX_BATCH_ACTION_LIMIT} 个任务`,
+      );
+    }
+
+    const results: Array<{
+      jobId: string;
+      ok: boolean;
+      data?: { id: string; targetKeyword: string; deleted: true };
+      error?: string;
+    }> = [];
+
+    for (const jobId of jobIds) {
+      try {
+        const data = await this.remove(organizationId, projectId, jobId, traceId);
+        results.push({ jobId, ok: true, data });
+      } catch (error) {
+        results.push({
+          jobId,
+          ok: false,
+          error: this.resolveErrorMessage(error, '删除失败'),
+        });
+      }
+    }
+
+    return {
+      deleted: results.filter((item) => item.ok).length,
+      failed: results.filter((item) => !item.ok).length,
+      results,
+    };
+  }
+
+  private async cleanupBeforeDelete(
+    organizationId: string,
+    projectId: string,
+    job: {
+      id: string;
+      traceId: string;
+      targetKeyword: string;
+      seoCheckData: unknown;
+    },
+  ): Promise<void> {
+    const ctx = {
+      jobId: job.id,
+      traceId: job.traceId,
+      organizationId,
+      projectId,
+      targetKeyword: job.targetKeyword,
+    };
+
+    const pending = this.getSemrushPending(job.seoCheckData);
+    if (pending) {
+      try {
+        await this.seoCheckerService.cancelManualSemrushCheck(ctx, '任务已删除，Semrush 检测已取消');
+      } catch (error) {
+        this.logger.warn('Cancel Semrush check before delete failed', {
+          traceId: job.traceId,
+          organizationId,
+          projectId,
+          jobId: job.id,
+          action: 'article_job.delete_cancel_semrush_failed',
+          error: error instanceof Error ? error.message : 'unknown',
+        });
+      }
+    }
+
+    const [articleQueueRemoved, playwrightQueueRemoved] = await Promise.all([
+      removeBullJobsByArticleJobId(this.articleJobQueue, job.id),
+      removeBullJobsByArticleJobId(this.playwrightQueue, job.id),
+    ]);
+
+    if (articleQueueRemoved > 0 || playwrightQueueRemoved > 0) {
+      this.logger.info('Removed pending queue jobs before article job delete', {
+        traceId: job.traceId,
+        organizationId,
+        projectId,
+        jobId: job.id,
+        action: 'article_job.delete_queue_cleanup',
+        articleQueueRemoved,
+        playwrightQueueRemoved,
+      });
+    }
+
+    await this.storage.deleteByPrefix(`${buildExportStoragePrefix(organizationId, projectId, job.id)}/`);
   }
 
   async cancelSemrushCheck(organizationId: string, projectId: string, id: string) {

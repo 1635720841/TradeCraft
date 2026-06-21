@@ -27,6 +27,26 @@
     />
 
     <el-alert
+      v-if="calibratedScoreGapHint"
+      class="mb-4"
+      type="info"
+      :closable="false"
+      show-icon
+      title="规则分 ≠ 预测 Semrush"
+      :description="calibratedScoreGapHint"
+    />
+
+    <el-alert
+      v-if="contentScoreSummary"
+      class="mb-4"
+      :type="contentScoreSummary.passed ? 'success' : 'info'"
+      :closable="false"
+      show-icon
+      :title="contentScoreSummary.title"
+      :description="contentScoreSummary.description"
+    />
+
+    <el-alert
       v-if="localScoreStale || semrushScoreStale"
       class="mb-4"
       type="warning"
@@ -107,7 +127,7 @@
       type="warning"
       :closable="false"
       show-icon
-      :title="`本地预检 ${localScore} 分，距 ${LOCAL_SEO_PASS_THRESHOLD} 分还差 ${localPointsToGo} 分`"
+      :title="localNearMissTitle"
       :description="localNearMissHint"
     />
 
@@ -117,21 +137,26 @@
       type="warning"
       :closable="false"
       show-icon
-      :title="`Semrush ${semrushScore} / 10，距 ${SEMRUSH_PASS_THRESHOLD} 还差 ${semrushPointsToGo} 分`"
+      :title="`Semrush ${semrushScore} / 10，距 ${semrushPassThreshold} 还差 ${semrushPointsToGo} 分`"
       description="重新生成将从上次 Semrush 分数继续优化，不会重跑本地预检。"
     />
 
     <el-descriptions v-if="hasData" :column="2" border>
       <el-descriptions-item label="发布标准" :span="2">
         <template v-if="semrushSkipped">
-          <el-tag type="success">本地预检 ≥ {{ LOCAL_SEO_PASS_THRESHOLD }} 分即可发布</el-tag>
+          <el-tag type="success">本地预检 ≥ {{ localPassThreshold }} 分即可发布</el-tag>
           <span class="ml-2 text-sm text-gray-500">
             当前环境未启用 Semrush 终检，以本地预检为唯一权威门槛
           </span>
         </template>
         <template v-else>
           <span class="text-sm text-gray-700">
-            本地预检 ≥ {{ LOCAL_SEO_PASS_THRESHOLD }} 分 → Semrush 终检 ≥ {{ SEMRUSH_PASS_THRESHOLD }} 分
+            <template v-if="localGateCalibrated">
+              预测 Semrush ≥ {{ semrushPassThreshold }} 分（实验室对齐）→ RPA 终检 ≥ {{ semrushPassThreshold }} 分
+            </template>
+            <template v-else>
+              本地预检 ≥ {{ localPassThreshold }} 分 → Semrush 终检 ≥ {{ semrushPassThreshold }} 分
+            </template>
           </span>
         </template>
       </el-descriptions-item>
@@ -145,27 +170,35 @@
             已过期
           </el-tag>
           <span class="ml-2 text-sm text-gray-500">
-            通过线 {{ SEMRUSH_PASS_THRESHOLD }}（权威分）
+            通过线 {{ semrushPassThreshold }}（权威分）
           </span>
         </template>
         <span v-else>-</span>
       </el-descriptions-item>
-      <el-descriptions-item label="本地预检">
-        <el-tag :type="localTagType">{{ localScore ?? "-" }} / 100</el-tag>
+      <el-descriptions-item :label="localGateCalibrated ? '预测 Semrush（本地闸）' : '本地预检'">
+        <template v-if="localGateCalibrated && predictedLocalSemrush != null">
+          <el-tag :type="localPassed === true ? 'success' : localPassed === false ? 'warning' : 'info'">
+            {{ predictedLocalSemrush }} / 10
+          </el-tag>
+          <span class="ml-2 text-sm text-gray-500">进门闸 {{ semrushPassThreshold }} · 规则分 {{ localScore ?? "—" }}/100</span>
+        </template>
+        <template v-else>
+          <el-tag :type="localTagType">{{ localScore ?? "-" }} / 100</el-tag>
+        </template>
         <el-tag v-if="localScoreStale" class="ml-2" type="warning" size="small" effect="plain">
           已过期
         </el-tag>
         <el-tag
-          v-if="localPassed === true"
+          v-if="localGateDisplayPassed === true"
           class="ml-2"
           type="success"
           size="small"
           effect="plain"
         >
-          已通过
+          {{ localGatePassedLabel }}
         </el-tag>
         <el-tag
-          v-else-if="localPassed === false"
+          v-else-if="localGateDisplayPassed === false"
           class="ml-2"
           type="warning"
           size="small"
@@ -173,8 +206,8 @@
         >
           未通过
         </el-tag>
-        <span v-if="localScore != null" class="ml-2 text-sm text-gray-500">
-          门槛 {{ LOCAL_SEO_PASS_THRESHOLD }} 分 · 规则对齐 Semrush
+        <span v-if="localScore != null && !localGateCalibrated" class="ml-2 text-sm text-gray-500">
+          门槛 {{ localPassThreshold }} 分
         </span>
       </el-descriptions-item>
       <el-descriptions-item
@@ -282,6 +315,25 @@
           {{ metrics.passiveVoiceHits }} / ≤6
         </span>
       </el-descriptions-item>
+      <el-descriptions-item
+        v-if="metrics?.semrushComplexWordHits != null"
+        label="本地复杂词"
+      >
+        <span :class="readabilityMetricClass(metrics.semrushComplexWordHits, 0)">
+          {{ metrics.semrushComplexWordHits }} 处
+        </span>
+      </el-descriptions-item>
+      <el-descriptions-item
+        v-if="metrics?.hardToReadSentenceHits != null"
+        label="本地难读句"
+      >
+        <span :class="readabilityMetricClass(metrics.hardToReadSentenceHits, 2)">
+          {{ metrics.hardToReadSentenceHits }} / ≤2
+        </span>
+      </el-descriptions-item>
+      <el-descriptions-item v-if="semrushCheckRecordLabel" label="检测包" :span="2">
+        {{ semrushCheckRecordLabel }}
+      </el-descriptions-item>
     </el-descriptions>
 
     <div v-if="breakdown" class="mt-4">
@@ -342,6 +394,34 @@
           class="rounded border border-amber-200 bg-amber-50 px-3 py-2"
         >
           <span class="text-amber-700 font-medium">{{ sample.wordCount }} 词 · </span>
+          <span class="text-gray-800">{{ sample.text }}</span>
+        </li>
+      </ul>
+    </div>
+
+    <div v-if="semrushComplexWordSamples.length" class="mt-4">
+      <div class="mb-2 font-medium">复杂词定位（Semrush 侧栏对齐）</div>
+      <ul class="space-y-2 text-sm">
+        <li
+          v-for="(sample, i) in semrushComplexWordSamples"
+          :key="`cw-${i}`"
+          class="rounded border border-amber-200 bg-amber-50 px-3 py-2"
+        >
+          <span class="text-amber-700 font-medium">{{ sample.term }}</span>
+          <span class="text-gray-600"> → {{ sample.suggestion }}</span>
+        </li>
+      </ul>
+    </div>
+
+    <div v-if="hardToReadSentenceSamples.length" class="mt-4">
+      <div class="mb-2 font-medium">难读句定位（Semrush「重写难以阅读的句子」对齐）</div>
+      <ul class="space-y-2 text-sm">
+        <li
+          v-for="(sample, i) in hardToReadSentenceSamples"
+          :key="`hr-${i}`"
+          class="rounded border border-red-200 bg-red-50 px-3 py-2"
+        >
+          <span class="text-red-700 font-medium">{{ sample.wordCount }} 词 · </span>
           <span class="text-gray-800">{{ sample.text }}</span>
         </li>
       </ul>
@@ -438,10 +518,33 @@
             </span>
           </template>
         </el-table-column>
+        <el-table-column v-if="showPredictedOptimizeScores" label="预测前" width="88">
+          <template #default="{ row }">
+            {{ formatRowPredictedScore(row, "before") }}
+          </template>
+        </el-table-column>
+        <el-table-column v-if="showPredictedOptimizeScores" label="预测后" width="88">
+          <template #default="{ row }">
+            <span :class="scoreDeltaClass(getRowPredictedDelta(row))">
+              {{ formatRowPredictedScore(row, "after") }}
+            </span>
+          </template>
+        </el-table-column>
         <el-table-column label="候选分" width="100">
           <template #default="{ row }">
             <span v-if="row.rolledBack && row.candidateScoreAfter != null" class="text-amber-600">
               {{ formatRoundScore(row.candidateScoreAfter, row.phase) }}
+            </span>
+            <span v-else class="text-gray-400">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column v-if="showPredictedOptimizeScores" label="预测候选" width="88">
+          <template #default="{ row }">
+            <span
+              v-if="row.rolledBack && row.candidatePredictedSemrush != null"
+              class="text-amber-600"
+            >
+              {{ formatPredictedSemrush(row.candidatePredictedSemrush) }}
             </span>
             <span v-else class="text-gray-400">-</span>
           </template>
@@ -461,10 +564,22 @@
         </el-table-column>
         <el-table-column label="变化" width="88">
           <template #default="{ row }">
-            <span v-if="getRowDelta(row) != null" :class="scoreDeltaClass(getRowDelta(row))">
+            <div v-if="getRowDelta(row) != null" :class="scoreDeltaClass(getRowDelta(row))">
               {{ formatDelta(getRowDelta(row)!) }}
+            </div>
+            <div
+              v-if="showPredictedOptimizeScores && getRowPredictedDelta(row) != null"
+              class="text-xs"
+              :class="scoreDeltaClass(getRowPredictedDelta(row))"
+            >
+              预测 {{ formatDelta(getRowPredictedDelta(row)!) }}
+            </div>
+            <span
+              v-if="getRowDelta(row) == null && getRowPredictedDelta(row) == null"
+              class="text-gray-400"
+            >
+              -
             </span>
-            <span v-else class="text-gray-400">-</span>
           </template>
         </el-table-column>
         <el-table-column label="本地分" width="120">
@@ -509,6 +624,14 @@
                 {{ formatRoundScore(item.scoreAfter, item.phase) }}
               </el-tag>
               <el-tag
+                v-if="formatOptimizePredictedSummary(item)"
+                size="small"
+                effect="plain"
+                type="info"
+              >
+                预测 {{ formatOptimizePredictedSummary(item) }}
+              </el-tag>
+              <el-tag
                 v-if="item.rolledBack"
                 type="warning"
                 size="small"
@@ -522,6 +645,13 @@
               >
                 候选 {{ formatRoundScore(item.candidateScoreAfter, item.phase) }}
                 → 保留 {{ formatRoundScore(item.scoreAfter, item.phase) }}
+              </span>
+              <span
+                v-if="item.rolledBack && item.candidatePredictedSemrush != null"
+                class="text-xs text-amber-600"
+              >
+                预测候选 {{ formatPredictedSemrush(item.candidatePredictedSemrush) }}
+                → 保留 {{ formatPredictedSemrush(item.predictedSemrushAfter) }}
               </span>
               <span v-if="item.promptVersion" class="text-xs text-gray-500">
                 {{ item.promptVersion }}
@@ -578,6 +708,8 @@
       </el-collapse>
     </div>
 
+    <ArticleJobSeoAnalysisSnapshotsPanel :snapshots="analysisSnapshots" />
+
     <el-empty
       v-if="!hasData && !canCheck"
       description="暂无 SEO 评分（任务尚未进入优化阶段）"
@@ -593,9 +725,12 @@ import type {
 } from "@/api/seo-factory/types";
 import {
   LOCAL_SEO_PASS_THRESHOLD,
-  SEMRUSH_PASS_THRESHOLD
+  SEMRUSH_PASS_THRESHOLD,
+  SCORE_CALIBRATION_LOCAL_ALIGN_SOFT_PASS_MARGIN,
+  SCORE_CALIBRATION_HIGH_LOCAL_SOFT_PASS_MARGIN
 } from "@/constants/seo-factory";
 import { workflowStepLabel } from "@/utils/seo-factory/workflow-progress";
+import ArticleJobSeoAnalysisSnapshotsPanel from "./seo/ArticleJobSeoAnalysisSnapshotsPanel.vue";
 
 defineOptions({ name: "ArticleJobSeoScorePanel" });
 
@@ -615,7 +750,18 @@ const props = defineProps<{
   rewriteBlockedReason?: string;
   canRerunOptimization?: boolean;
   rerunningOptimization?: boolean;
+  localPassThreshold?: number;
+  semrushPassThreshold?: number;
+  /** 站点已开启本地对齐 Sem（实际生效见 seoCheck.local.gateMode） */
+  localAlignEnabled?: boolean;
 }>();
+
+const localPassThreshold = computed(
+  () => props.localPassThreshold ?? LOCAL_SEO_PASS_THRESHOLD
+);
+const semrushPassThreshold = computed(
+  () => props.semrushPassThreshold ?? SEMRUSH_PASS_THRESHOLD
+);
 
 const emit = defineEmits<{
   "run-semrush-check": [];
@@ -626,6 +772,8 @@ const emit = defineEmits<{
 
 const local = computed(() => props.seoCheckData?.local);
 const semrush = computed(() => props.seoCheckData?.semrush);
+const contentScore = computed(() => props.seoCheckData?.contentScore);
+const analysisSnapshots = computed(() => props.seoCheckData?.analysisSnapshots ?? []);
 const manualCheckWarning = computed(() => semrush.value?.lastManualCheckError?.trim() || null);
 const workflowProgress = computed(() => props.seoCheckData?.workflowProgress);
 
@@ -644,29 +792,129 @@ const localScore = computed(() => {
   return Math.max(...candidates);
 });
 
+const contentScoreSummary = computed(() => {
+  const snap = contentScore.value;
+  if (!snap) return null;
+  const sourceLabel =
+    snap.source === "draft_editor"
+      ? "改稿评分"
+      : snap.source === "m6_proxy"
+        ? "M6 代理分"
+        : "流水线评分";
+  return {
+    passed: snap.passed,
+    title: `内容评分 ${snap.overall} / 10（${sourceLabel}）`,
+    description: snap.passed
+      ? `已达发布线 · ${snap.primaryNode.label} · ${snap.confidence} 置信`
+      : `还差 ${snap.pointsToGo} 分 · 当前重点：${snap.primaryNode.label}`
+  };
+});
+
+const localGateCalibrated = computed(
+  () =>
+    local.value?.gateMode === "calibrated" ||
+    (props.localAlignEnabled === true && contentScore.value != null)
+);
+const predictedLocalSemrush = computed(() => {
+  if (local.value?.predictedSemrush != null) return local.value.predictedSemrush;
+  if (localGateCalibrated.value && contentScore.value?.overall != null) {
+    return contentScore.value.overall;
+  }
+  return null;
+});
 const localBreakdownStale = computed(() => {
   const score = localScore.value;
   const persisted = local.value?.score;
   if (score == null || persisted == null) return false;
-  return score >= LOCAL_SEO_PASS_THRESHOLD && score > persisted;
+  return score >= localPassThreshold.value && score > persisted;
 });
 const localPassed = computed(() => {
+  if (localGateCalibrated.value && predictedLocalSemrush.value != null) {
+    return predictedLocalSemrush.value >= semrushPassThreshold.value;
+  }
+  if (localScore.value != null) {
+    return localScore.value >= localPassThreshold.value;
+  }
   if (local.value?.passed != null) return local.value.passed;
-  if (localScore.value != null) return localScore.value >= LOCAL_SEO_PASS_THRESHOLD;
   return null;
 });
+const localPassedForSemrush = computed(() => {
+  if (localGateCalibrated.value && predictedLocalSemrush.value != null) {
+    if (predictedLocalSemrush.value >= semrushPassThreshold.value) return true;
+    if (
+      predictedLocalSemrush.value >=
+      semrushPassThreshold.value - SCORE_CALIBRATION_LOCAL_ALIGN_SOFT_PASS_MARGIN
+    ) {
+      return true;
+    }
+    if (
+      (localScore.value ?? 0) >= localPassThreshold.value &&
+      predictedLocalSemrush.value >=
+        semrushPassThreshold.value - SCORE_CALIBRATION_HIGH_LOCAL_SOFT_PASS_MARGIN
+    ) {
+      return true;
+    }
+  }
+  return localPassed.value;
+});
+const localGateDisplayPassed = computed(() => {
+  if (localGateCalibrated.value && predictedLocalSemrush.value != null) {
+    return localPassedForSemrush.value;
+  }
+  return localPassed.value;
+});
+const localGatePassedLabel = computed(() => {
+  if (
+    localGateCalibrated.value &&
+    predictedLocalSemrush.value != null &&
+    predictedLocalSemrush.value < semrushPassThreshold.value &&
+    localPassedForSemrush.value
+  ) {
+    return "可进 RPA（软放行）";
+  }
+  return "已通过";
+});
+const calibratedScoreGapHint = computed(() => {
+  if (!localGateCalibrated.value || predictedLocalSemrush.value == null || localScore.value == null) {
+    return "";
+  }
+  if (localScore.value < 90 || predictedLocalSemrush.value >= semrushPassThreshold.value) {
+    return "";
+  }
+  const parts = [
+    `规则分 ${localScore.value}/100 与预测 Semrush ${predictedLocalSemrush.value}/10 是两套评分，进门闸只看预测分（实验室校准模型），不是规则分÷10。`
+  ];
+  const flesch = metrics.value?.fleschReadingEase;
+  if (flesch != null && flesch < 42) {
+    parts.push(`Flesch ${flesch} 低于 Sem 目标 50±8，是预测分长期卡在 9 以下的主因；优化轮次以提升预测分为验收，规则分 99 仍可能回滚。`);
+  } else if (localPointsToGo.value > 0) {
+    parts.push(`还差 ${localPointsToGo.value} 分达标；规则分已满时，请优先 Flesch / 难读句 / SERP 实体。`);
+  }
+  return parts.join("");
+});
 const localPointsToGo = computed(() => {
-  if (localScore.value == null || localScore.value >= LOCAL_SEO_PASS_THRESHOLD) return 0;
-  return LOCAL_SEO_PASS_THRESHOLD - localScore.value;
+  if (localGateCalibrated.value && predictedLocalSemrush.value != null) {
+    if (predictedLocalSemrush.value >= semrushPassThreshold.value) return 0;
+    return Math.round((semrushPassThreshold.value - predictedLocalSemrush.value) * 10) / 10;
+  }
+  if (localScore.value == null || localScore.value >= localPassThreshold.value) return 0;
+  return localPassThreshold.value - localScore.value;
 });
 
-const localNearMiss = computed(
-  () =>
-    localPassed.value !== true &&
-    localPointsToGo.value > 0 &&
-    localPointsToGo.value <= 5 &&
-    localScore.value != null,
-);
+const localNearMiss = computed(() => {
+  if (localPassed.value === true) return false;
+  if (localGateCalibrated.value && predictedLocalSemrush.value != null) {
+    return localPointsToGo.value > 0 && localPointsToGo.value <= 1;
+  }
+  return localPointsToGo.value > 0 && localPointsToGo.value <= 5 && localScore.value != null;
+});
+
+const localNearMissTitle = computed(() => {
+  if (localGateCalibrated.value && predictedLocalSemrush.value != null) {
+    return `预测 Semrush ${predictedLocalSemrush.value}/10，距 ${semrushPassThreshold.value} 还差 ${localPointsToGo.value} 分（规则分 ${localScore.value ?? "—"}/100 仅参考）`;
+  }
+  return `本地预检 ${localScore.value} 分，距 ${localPassThreshold.value} 分还差 ${localPointsToGo.value} 分`;
+});
 
 const localNearMissHint = computed(() => {
   const parts: string[] = [];
@@ -689,32 +937,40 @@ const localNearMissHint = computed(() => {
 const semrushScore = computed(() => props.semrushScore ?? semrush.value?.overall ?? null);
 
 const semrushPointsToGo = computed(() => {
-  if (semrushScore.value == null || semrushScore.value >= SEMRUSH_PASS_THRESHOLD) return 0;
-  return Math.round((SEMRUSH_PASS_THRESHOLD - semrushScore.value) * 10) / 10;
+  if (semrushScore.value == null || semrushScore.value >= semrushPassThreshold.value) return 0;
+  return Math.round((semrushPassThreshold.value - semrushScore.value) * 10) / 10;
 });
 
 const semrushNearMiss = computed(
   () =>
     !semrushSkipped.value &&
     semrushScore.value != null &&
-    semrushScore.value >= 8 &&
-    semrushScore.value < SEMRUSH_PASS_THRESHOLD,
+    semrushScore.value >= Math.max(0, semrushPassThreshold.value - 1) &&
+    semrushScore.value < semrushPassThreshold.value,
 );
 
 const semrushSkipped = computed(() => semrush.value?.skipped === true);
 
 const publishStandardTitle = computed(() => {
   if (semrushSkipped.value) {
-    return `发布标准：本地预检 ≥ ${LOCAL_SEO_PASS_THRESHOLD} 分（Semrush 未启用）`;
+    return localGateCalibrated.value
+      ? `发布标准：预测 Semrush ≥ ${semrushPassThreshold.value} 分（Semrush 未启用）`
+      : `发布标准：本地预检 ≥ ${localPassThreshold.value} 分（Semrush 未启用）`;
   }
-  return `评分流程：本地预检 ≥ ${LOCAL_SEO_PASS_THRESHOLD} 分 → Semrush 终检 ≥ ${SEMRUSH_PASS_THRESHOLD} 分`;
+  if (localGateCalibrated.value) {
+    return `评分流程：预测 Semrush ≥ ${semrushPassThreshold.value} 分（本地对齐）→ Semrush RPA 终检 ≥ ${semrushPassThreshold.value} 分`;
+  }
+  return `评分流程：本地预检 ≥ ${localPassThreshold.value} 分 → Semrush 终检 ≥ ${semrushPassThreshold.value} 分`;
 });
 
 const publishStandardDescription = computed(() => {
   if (semrushSkipped.value) {
     return "当前环境未配置 Semrush RPA，达到本地预检门槛后即可导出与推送 CMS。若日后启用 Semrush，终检分将成为额外权威门槛。";
   }
-  return "本地预检为进门闸（规则对齐 Semrush Writing Assistant）；Semrush 终检为权威分，任务是否通过以此为准。";
+  if (localGateCalibrated.value) {
+    return "本地进门闸已对齐 Semrush：用实验室校准模型预测 Semrush 分，与终检同一通过线；RPA 真分仍为最终权威。";
+  }
+  return "本地预检为进门闸（规则 0–100）；Semrush 终检为权威分，任务是否通过以此为准。";
 });
 
 const optimizeRounds = computed(() => local.value?.optimizeRounds);
@@ -729,6 +985,22 @@ const longParagraphSamples = computed(
 const casualSentenceSamples = computed(
   () => local.value?.metrics?.casualSentenceSamples ?? [],
 );
+const semrushComplexWordSamples = computed(
+  () => local.value?.metrics?.semrushComplexWordSamples ?? [],
+);
+const hardToReadSentenceSamples = computed(
+  () => local.value?.metrics?.hardToReadSentenceSamples ?? [],
+);
+const semrushCheckRecordLabel = computed(() => {
+  const rec = semrush.value?.semrushCheckRecord;
+  if (!rec) return "";
+  const parts = [`hash:${rec.contentHash}`];
+  if (rec.nodeKey) parts.push(`节点:${rec.nodeKey}`);
+  if (rec.domScore != null) parts.push(`DOM:${rec.domScore}`);
+  if (rec.apiScore != null) parts.push(`API:${rec.apiScore}`);
+  if (rec.checkedAt) parts.push(formatTime(rec.checkedAt));
+  return parts.join(" · ");
+});
 const breakdown = computed(() => local.value?.breakdown);
 const localSuggestions = computed(() => local.value?.suggestions ?? []);
 const semrushSuggestions = computed(() => semrush.value?.suggestions ?? []);
@@ -818,8 +1090,21 @@ const optimizeHistory = computed(() =>
 interface OptimizeScoreRow extends ArticleJobOptimizeRound {
   roundLabel: string;
   delta: number | null;
+  predictedDelta: number | null;
   semrushRouteChanged?: boolean;
 }
+
+const showPredictedOptimizeScores = computed(
+  () =>
+    localGateCalibrated.value ||
+    optimizeHistory.value.some(
+      (item) =>
+        item.phase === "local" &&
+        (item.predictedSemrushBefore != null ||
+          item.predictedSemrushAfter != null ||
+          item.candidatePredictedSemrush != null)
+    )
+);
 
 const optimizeScoreRows = computed((): OptimizeScoreRow[] =>
   optimizeHistory.value.map((item, index, all) => {
@@ -837,12 +1122,16 @@ const optimizeScoreRows = computed((): OptimizeScoreRow[] =>
       item.scoreBefore != null && item.scoreAfter != null
         ? Math.round((item.scoreAfter - item.scoreBefore) * 10) / 10
         : null;
+    const predictedDelta =
+      item.predictedSemrushBefore != null && item.predictedSemrushAfter != null
+        ? Math.round((item.predictedSemrushAfter - item.predictedSemrushBefore) * 100) / 100
+        : null;
     const semrushRouteChanged =
       item.phase === "semrush" &&
       baselineRoute != null &&
       item.semrushEvaluationRoute != null &&
       item.semrushEvaluationRoute !== baselineRoute;
-    return { ...item, roundLabel, delta, semrushRouteChanged };
+    return { ...item, roundLabel, delta, predictedDelta, semrushRouteChanged };
   })
 );
 
@@ -867,15 +1156,27 @@ const hasData = computed(
 );
 const canCheck = computed(() => props.canCheck ?? false);
 const canRunSemrushCheck = computed(
-  () => canCheck.value && localPassed.value === true
+  () => canCheck.value && localPassedForSemrush.value === true
 );
 const semrushGateReason = computed(() => {
   if (!canCheck.value) return "";
+  if (localGateCalibrated.value) {
+    if (predictedLocalSemrush.value == null) {
+      return "预测 Semrush 分尚未就绪，请刷新页面或先保存稿件后再终检";
+    }
+    if (localPassedForSemrush.value === false) {
+      return `预测 Semrush ${predictedLocalSemrush.value}/10，未达 ${semrushPassThreshold.value} 分，请优化后再终检（规则分 ${localScore.value ?? "—"}/100 仅参考）`;
+    }
+    if (localPassed.value === false && localPassedForSemrush.value === true) {
+      return `预测 Semrush ${predictedLocalSemrush.value}/10 接近 ${semrushPassThreshold.value} 分，可进行终检（终检真分仍以 RPA 为准）`;
+    }
+    return "";
+  }
   if (localScore.value == null) {
-    return `须先完成本地预检（≥${LOCAL_SEO_PASS_THRESHOLD} 分）后方可 Semrush 终检`;
+    return `须先完成本地预检（≥${localPassThreshold.value} 分）后方可 Semrush 终检`;
   }
   if (localPassed.value === false) {
-    return `本地预检 ${localScore.value} 分，未达 ${LOCAL_SEO_PASS_THRESHOLD} 分，请按下方建议优化后再终检`;
+    return `本地预检 ${localScore.value} 分，未达 ${localPassThreshold.value} 分，请按下方建议优化后再终检`;
   }
   return "";
 });
@@ -902,7 +1203,46 @@ function formatRoundScore(
   return phase === "local" ? `${score} / 100` : `${score} / 10`;
 }
 
+function formatPredictedSemrush(score: number | null | undefined): string {
+  if (score == null) return "-";
+  return `${Math.round(score * 100) / 100} / 10`;
+}
+
+function formatRowPredictedScore(row: unknown, which: "before" | "after"): string {
+  const item = asOptimizeRow(row);
+  if (item.phase !== "local") return "-";
+  const score =
+    which === "before" ? item.predictedSemrushBefore : item.predictedSemrushAfter;
+  return formatPredictedSemrush(score);
+}
+
+function getRowPredictedDelta(row: unknown): number | null {
+  const item = asOptimizeRow(row);
+  if (item.phase !== "local") return null;
+  if (item.predictedSemrushBefore == null || item.predictedSemrushAfter == null) {
+    return null;
+  }
+  return Math.round((item.predictedSemrushAfter - item.predictedSemrushBefore) * 100) / 100;
+}
+
+function formatOptimizePredictedSummary(item: ArticleJobOptimizeRound): string {
+  if (item.phase !== "local") return "";
+  const before = item.predictedSemrushBefore;
+  const after = item.predictedSemrushAfter;
+  if (before != null && after != null) {
+    return `${Math.round(before * 100) / 100} → ${Math.round(after * 100) / 100}`;
+  }
+  if (after != null) return `${Math.round(after * 100) / 100} / 10`;
+  return "";
+}
+
 function formatRollbackReason(row: ArticleJobOptimizeRound): string {
+  if (row.phase === "local" && localGateCalibrated.value) {
+    if (row.rollbackReason === "keyword_coverage_regressed") {
+      return "关键词覆盖下降";
+    }
+    return "预测 Semrush 未提升";
+  }
   if (row.phase === "local") {
     return "本地分未提升";
   }
@@ -910,7 +1250,7 @@ function formatRollbackReason(row: ArticleJobOptimizeRound): string {
     return `本地分 ${row.candidateLocalScoreAfter ?? "?"} 低于保留门槛（历史策略，已改为 Semrush 优先）`;
   }
   if (row.rollbackReason === "both") {
-    return `Semrush 未提升且本地分 ${row.candidateLocalScoreAfter ?? "?"} 未达 ${LOCAL_SEO_PASS_THRESHOLD}（历史策略）`;
+    return `Semrush 未提升且本地分 ${row.candidateLocalScoreAfter ?? "?"} 未达 ${localPassThreshold.value}（历史策略）`;
   }
   return "Semrush 分未提升";
 }
@@ -922,6 +1262,17 @@ function formatRollbackDetail(item: ArticleJobOptimizeRound): string {
   const kept = formatRoundScore(item.scoreAfter, item.phase);
   const candidate = formatRoundScore(item.candidateScoreAfter, item.phase);
   if (item.phase === "local") {
+    if (localGateCalibrated.value) {
+      const keptPredicted = formatPredictedSemrush(item.predictedSemrushAfter);
+      const candidatePredicted =
+        item.candidatePredictedSemrush != null
+          ? formatPredictedSemrush(item.candidatePredictedSemrush)
+          : null;
+      if (candidatePredicted) {
+        return `AI 改稿后规则分 ${candidate}，预测 ${candidatePredicted} 未超过保留稿（规则分 ${kept}，预测 ${keptPredicted}），已回滚。`;
+      }
+      return `AI 改稿后规则分 ${candidate}，预测 Semrush 未超过保留稿（规则分 ${kept}），已回滚。`;
+    }
     return `AI 改稿后本地预检为 ${candidate}，未超过保留稿 ${kept}，已回滚。`;
   }
   const keptLocal =
@@ -934,7 +1285,7 @@ function formatRollbackDetail(item: ArticleJobOptimizeRound): string {
     return `Semrush 候选 ${candidate}，但本地分 ${candidateLocal} 低于历史保留门槛，已保留 Semrush ${kept}、本地 ${keptLocal} 的最优稿（当前策略：Semrush 优先）。`;
   }
   if (item.rollbackReason === "both") {
-    return `Semrush 候选 ${candidate} 未提升，且本地分 ${candidateLocal} 低于门槛 ${LOCAL_SEO_PASS_THRESHOLD}，已保留 Semrush ${kept}、本地 ${keptLocal} 的最优稿。`;
+    return `Semrush 候选 ${candidate} 未提升，且本地分 ${candidateLocal} 低于门槛 ${localPassThreshold.value}，已保留 Semrush ${kept}、本地 ${keptLocal} 的最优稿。`;
   }
   return `Semrush 候选 ${candidate} 未超过保留稿 ${kept}（本地 ${candidateLocal}），已回滚。`;
 }
@@ -1001,14 +1352,14 @@ function readabilityMetricClass(value: number, maxAllowed: number) {
 
 const localTagType = computed(() => {
   if (localScore.value == null) return "info";
-  if (localScore.value >= LOCAL_SEO_PASS_THRESHOLD) return "success";
+  if (localScore.value >= localPassThreshold.value) return "success";
   if (localScore.value >= 60) return "warning";
   return "danger";
 });
 
 const semrushTagType = computed(() => {
   if (semrushScore.value == null) return "info";
-  if (semrush.value?.passed === true || semrushScore.value >= SEMRUSH_PASS_THRESHOLD) {
+  if (semrush.value?.passed === true || semrushScore.value >= semrushPassThreshold.value) {
     return "success";
   }
   if (semrushScore.value >= 8) return "warning";

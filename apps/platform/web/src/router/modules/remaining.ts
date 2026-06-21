@@ -155,6 +155,35 @@ export default [
             }
           },
           {
+            path: "settings/score-lab",
+            name: "SeoFactoryScoreLab",
+            component: () =>
+              import("@/views/projects/seo-factory/ScoreCalibrationLabView.vue"),
+            meta: {
+              title: "评分校准实验室",
+              roles: ["admin"],
+              showLink: false
+            }
+          },
+          {
+            path: "content-score",
+            name: "SeoFactoryContentScore",
+            component: () =>
+              import("@/views/projects/seo-factory/ArticleContentScoreTrialView.vue"),
+            meta: {
+              title: "内容评分",
+              roles: ["admin"],
+              showLink: false
+            }
+          },
+          {
+            path: "settings/content-score-trial",
+            redirect: (to) => ({
+              name: "SeoFactoryContentScore",
+              params: { projectId: to.params.projectId }
+            })
+          },
+          {
             path: "settings",
             name: "SeoFactorySettings",
             component: () => import("@/views/projects/seo-factory/ProjectSettingsView.vue"),

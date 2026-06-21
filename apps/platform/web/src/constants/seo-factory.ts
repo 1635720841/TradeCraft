@@ -8,8 +8,26 @@ export const LOCAL_SEO_PASS_THRESHOLD = 95;
 /** 与后端 SEMRUSH_PASS_THRESHOLD 保持一致（终检权威分） */
 export const SEMRUSH_PASS_THRESHOLD = 9.0;
 
+/** 与后端 SCORE_CALIBRATION_LOCAL_ALIGN_SOFT_PASS_MARGIN 一致：预测分接近通过线可进 Semrush RPA */
+export const SCORE_CALIBRATION_LOCAL_ALIGN_SOFT_PASS_MARGIN = 0.78;
+
+/** 与后端 SCORE_CALIBRATION_HIGH_LOCAL_SOFT_PASS_MARGIN 一致：规则分已高时放宽预测分软放行 */
+export const SCORE_CALIBRATION_HIGH_LOCAL_SOFT_PASS_MARGIN = 0.85;
+
+/** 与后端 LOCAL_SEO_MAX_OPTIMIZE_ROUNDS 保持一致 */
+export const LOCAL_SEO_MAX_OPTIMIZE_ROUNDS = 5;
+
+/** 与后端 LOCAL_SEO_RETRY_EXTRA_ROUNDS 保持一致 */
+export const LOCAL_SEO_RETRY_EXTRA_ROUNDS = 3;
+
+/** 与后端 SEMRUSH_MAX_OPTIMIZE_ROUNDS 保持一致 */
+export const SEMRUSH_MAX_OPTIMIZE_ROUNDS = 4;
+
+/** 与后端 SEMRUSH_RETRY_EXTRA_ROUNDS 保持一致 */
+export const SEMRUSH_RETRY_EXTRA_ROUNDS = 4;
+
 /** 手动 Semrush 检测超过此时长无结果视为僵死（与后端一致） */
-export const SEMRUSH_MANUAL_CHECK_STALE_MS = 5 * 60 * 1000;
+export const SEMRUSH_MANUAL_CHECK_STALE_MS = 15 * 60 * 1000;
 
 /** 工作流 OPTIMIZING 无心跳超过此时长视为僵死（与后端一致） */
 export const SEMRUSH_OPTIMIZING_ORPHAN_STALE_MS = 8 * 60 * 1000;

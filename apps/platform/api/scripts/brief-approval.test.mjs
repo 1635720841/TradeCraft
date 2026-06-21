@@ -38,14 +38,22 @@ describe('parseSiteWorkflowSettings', () => {
     assert.deepEqual(parseSiteWorkflowSettings({ requireBriefApproval: true }), {
       requireBriefApproval: true,
       enableParaphrase: true,
+      enableIllustration: true,
     });
     assert.deepEqual(parseSiteWorkflowSettings({}), {
       requireBriefApproval: false,
       enableParaphrase: true,
+      enableIllustration: true,
     });
     assert.deepEqual(parseSiteWorkflowSettings({ enableParaphrase: false }), {
       requireBriefApproval: false,
       enableParaphrase: false,
+      enableIllustration: true,
+    });
+    assert.deepEqual(parseSiteWorkflowSettings({ enableIllustration: false }), {
+      requireBriefApproval: false,
+      enableParaphrase: true,
+      enableIllustration: false,
     });
   });
 });

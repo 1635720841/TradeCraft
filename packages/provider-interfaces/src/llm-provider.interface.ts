@@ -62,6 +62,16 @@ export interface OptimizeInput {
   focusDimensions?: string;
   /** 接近门槛且可读性为瓶颈时，本轮强制优先拆句 */
   readabilityPriority?: boolean;
+  /** 校准对齐：SERP 实体未满时优先补词 */
+  serpPriority?: boolean;
+  /** 校准对齐：Flesch 低于目标时优先提可读性指数 */
+  fleschPriority?: boolean;
+  /** 校准对齐：难读句 >2 时外科式改写指定原句 */
+  hardSentencePriority?: boolean;
+  /** 校准对齐：标题超长/词数不当时优先改 H1 */
+  titlePriority?: boolean;
+  /** 当前标题（draft.title 或 H1，供标题优先轮注入 Prompt） */
+  articleTitle?: string;
   /** 长句/长段诊断（英文，注入 Prompt） */
   readabilityAudit?: string;
   pointsToGo?: number;
@@ -69,8 +79,16 @@ export interface OptimizeInput {
   scoreGapPlan?: string;
   /** 关键词与 SERP 实体已满分，本轮禁止扩写/凑词 */
   contentCoverageMaxed?: boolean;
+  /** SERP 实体已 25/25，禁止再凑实体句 */
+  serpCoverageMaxed?: boolean;
+  /** 关键词覆盖未满分，本轮优先调密度/开篇/H2 */
+  keywordDensityFocus?: boolean;
   /** 可读性优化轮须保留的已命中 SEO 短语（exact match） */
   protectedSeoPhrases?: string[];
+  /** 本地对齐 Sem：优化目标为预测 Semrush 分（0–10），localScoreTarget 仍为 0–100 参考 */
+  calibratedLocalAlign?: boolean;
+  predictedSemrush?: number;
+  predictedSemrushTarget?: number;
 }
 
 export interface OptimizeOutput {

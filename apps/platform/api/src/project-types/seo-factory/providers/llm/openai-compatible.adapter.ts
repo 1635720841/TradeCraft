@@ -56,6 +56,108 @@ const BRIEF_SUMMARY_FALLBACK_EN =
 const SUGGESTION_FALLBACK_ZH = '（无具体条目，请按可读性、去 AI 感与原创性整体润色）';
 const KEYWORD_FALLBACK_ZH = '（无额外实体词，保持现有术语覆盖）';
 
+function buildTitlePriorityBlock(input: OptimizeInput): string {
+  if (!input.titlePriority || input.optimizePhase === 'semrush') return '';
+  const title =
+    input.articleTitle?.trim() ||
+    input.content.match(/^#\s+(.+)$/m)?.[1]?.trim() ||
+    '(see H1 in content)';
+  const seoProtection = buildSeoProtectionBlock(input);
+  return [
+    '## TITLE PRIORITY (Semrush calibration — this round ONLY)',
+    '',
+    'SERP and body coverage are adequate. **Predicted Semrush is blocked by title issues** (SWA sidebar).',
+    '',
+    `Current title: **${title.slice(0, 120)}**`,
+    '',
+    `- Shorten to **≤60 characters** (search snippet limit)`,
+    `- Use **5–12 words** in the title`,
+    '- Keep the target keyword near the start',
+    '- Update the Markdown H1 (`# Title`) at the top of the article',
+    '- Do **not** add SERP entities or rewrite body paragraphs this round',
+    seoProtection,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function buildHardSentencePriorityBlock(input: OptimizeInput): string {
+  if (!input.hardSentencePriority || input.optimizePhase === 'semrush') return '';
+  const audit =
+    input.readabilityAudit?.trim() ||
+    'Scan the body for multi-clause sentences (2+ commas or 3+ and/or) and split each into 2 shorter sentences.';
+  const seoProtection = buildSeoProtectionBlock(input);
+  return [
+    '## HARD-TO-READ SENTENCE PRIORITY (Semrush calibration — this round ONLY)',
+    '',
+    'SERP and keyword coverage are maxed. **Predicted Semrush is blocked by hard-to-read sentences (>2).**',
+    '',
+    '**SURGICAL MODE — change ONLY the sentences listed below. Do NOT add SERP entities, new paragraphs, or rewrite unlisted sentences.**',
+    '',
+    '- Split each flagged sentence into **2 shorter sentences** (≤22 words each)',
+    '- Reduce and/or coordination; break multi-clause sentences at commas',
+    '- Do **not** add entity terms or keyword filler — shorten surrounding text only',
+    '',
+    audit,
+    seoProtection,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function buildFleschPriorityBlock(input: OptimizeInput): string {
+  if (!input.fleschPriority || input.optimizePhase === 'semrush') return '';
+  return [
+    '## FLESCH PRIORITY (Semrush calibration — this round ONLY)',
+    '',
+    'SERP entity coverage is adequate (≥20/25). **Raise Flesch toward ~50** without adding length.',
+    '',
+    '- Replace **every** Semrush complex word with simpler synonyms',
+    '- Split sentences over **22 words**; keep paragraphs ≤ **65 words**',
+    '- Use shorter words (fewer syllables) — do NOT add filler paragraphs',
+    '- Preserve CRITICAL SEO CONSTRAINT phrases exactly',
+  ].join('\n');
+}
+
+function buildSerpPriorityBlock(input: OptimizeInput): string {
+  if (!input.serpPriority || input.optimizePhase === 'semrush') return '';
+  return [
+    '## SERP ENTITY PRIORITY (this round ONLY — Semrush calibration)',
+    '',
+    'Predicted Semrush is below target mainly because **SERP entity coverage** is under 20/25.',
+    '',
+    '- Weave **2–4 missing SERP entities** into **existing** sentences (one short clause each)',
+    '- Do **not** add filler paragraphs or keyword bullet lists',
+    '- Do **not** split sentences or change readability until SERP entities are covered',
+    '- Keep every phrase listed in CRITICAL SEO CONSTRAINT unchanged',
+  ].join('\n');
+}
+
+function buildSerpCoverageMaxedBlock(input: OptimizeInput): string {
+  if (!input.serpCoverageMaxed || input.contentCoverageMaxed) return '';
+  return [
+    '## SERP ENTITIES MAXED (25/25) — DO NOT ADD ENTITY SENTENCES',
+    '',
+    'SERP entity coverage is already full. Weaving more SERP terms **will not increase score** and often **drops readability or keyword density**.',
+    '',
+    '**Skip SERP weaving entirely this round.** Fix keyword density (0.8%–2.5%) or readability only.',
+  ].join('\n');
+}
+
+function buildKeywordDensityFocusBlock(input: OptimizeInput): string {
+  if (!input.keywordDensityFocus) return '';
+  return [
+    '## KEYWORD DENSITY FOCUS (this round)',
+    '',
+    'Keyword coverage is below max because density is in the **secondary band (0.4%–3.5%)** instead of **0.8%–2.5%**.',
+    '',
+    '- Nudge density into **0.8%–2.5%** by adding **one** natural full-keyword phrase in an existing sentence (opening or body)',
+    '- If density is **above 2.5%**, remove one redundant mention instead of adding more',
+    '- Keep opening keyword + H2 keyword — do not break them while editing',
+    '- Do **not** add keyword lists or `For procurement teams, relevant search terms include...` sentences',
+  ].join('\n');
+}
+
 function buildContentCoverageMaxedBlock(input: OptimizeInput): string {
   if (!input.contentCoverageMaxed) return '';
   return [
@@ -81,7 +183,61 @@ function buildSeoProtectionBlock(input: OptimizeInput): string {
   ].join('\n');
 }
 
+function buildCalibratedLocalAlignBlock(input: OptimizeInput): string {
+  const gap = typeof input.pointsToGo === 'number' ? String(input.pointsToGo) : '?';
+  const target = input.predictedSemrushTarget ?? SEMRUSH_PASS_THRESHOLD;
+  const current =
+    typeof input.predictedSemrush === 'number' ? String(input.predictedSemrush) : '?';
+  const localRef =
+    typeof input.localScore === 'number' ? String(input.localScore) : '?';
+  return [
+    '## SEMRUSH CALIBRATION ALIGN (primary goal this round)',
+    '',
+    `**Predicted Semrush ${current}/10 → need ≥${target}/10** (gap **${gap}** on 0–10 scale).`,
+    `Local pre-check ${localRef}/100 is **reference only** — do NOT optimize for local 0–100 when it is already high.`,
+    '',
+    'Improve Semrush SWA signals: SERP entities (if under 20/25), readability (≤22 words/sentence, ≤65 words/paragraph), complex-word fixes.',
+    'Follow suggestions tagged [Semrush 对齐] first — SERP before readability when both are flagged.',
+  ].join('\n');
+}
+
 function buildReadabilityPriorityBlock(input: OptimizeInput): string {
+  if (input.serpPriority && input.optimizePhase !== 'semrush') {
+    return buildSerpPriorityBlock(input);
+  }
+  if (input.titlePriority && input.optimizePhase !== 'semrush') {
+    return buildTitlePriorityBlock(input);
+  }
+  if (input.hardSentencePriority && input.optimizePhase !== 'semrush') {
+    return buildHardSentencePriorityBlock(input);
+  }
+  if (input.fleschPriority && input.optimizePhase !== 'semrush') {
+    return buildFleschPriorityBlock(input);
+  }
+  if (input.calibratedLocalAlign && input.optimizePhase !== 'semrush') {
+    const seoProtection = buildSeoProtectionBlock(input);
+    const audit =
+      input.readabilityAudit?.trim() ||
+      'Scan the body and split every sentence over 22 words and every paragraph over 65 words.';
+    const gap = typeof input.pointsToGo === 'number' ? String(input.pointsToGo) : '?';
+    const target = input.predictedSemrushTarget ?? SEMRUSH_PASS_THRESHOLD;
+    const current =
+      typeof input.predictedSemrush === 'number' ? String(input.predictedSemrush) : '?';
+    return [
+      '## SEMRUSH CALIBRATION PRIORITY (this round ONLY)',
+      '',
+      `Predicted Semrush **${current}/10** — **${gap} points** below **${target}/10**.`,
+      'Local 0–100 may already be maxed; **readability + SWA fixes are mandatory** to raise predicted Semrush.',
+      '',
+      '- Split **every** sentence over **22 words**; split paragraphs over **65 words**',
+      '- Replace Semrush complex words; rewrite hard-to-read sentences',
+      '- **Keep every SERP entity term** — shorten surrounding filler only',
+      '',
+      audit,
+      seoProtection,
+    ].join('\n');
+  }
+
   if (!input.readabilityPriority) return '';
   const seoProtection = buildSeoProtectionBlock(input);
   const audit =
@@ -201,9 +357,13 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
   }
 
   async generateOptimize(input: OptimizeInput): Promise<OptimizeOutput> {
-    const promptVersion = await this.loadPromptVersion(
-      input.optimizePhase === 'semrush' ? 'semrushOptimize' : 'localOptimize',
-    );
+    const useCalibratedPrompt =
+      input.calibratedLocalAlign === true && input.optimizePhase !== 'semrush';
+    const promptVersion = useCalibratedPrompt
+      ? 'seo_optimize_calibrated_v1'
+      : await this.loadPromptVersion(
+          input.optimizePhase === 'semrush' ? 'semrushOptimize' : 'localOptimize',
+        );
     const template = await this.promptLoader.load(promptVersion);
     const suggestionBlock =
       input.suggestions.length > 0
@@ -243,11 +403,35 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
     const focusDimensions =
       input.focusDimensions?.trim() ||
       '(Address the lowest-scoring dimensions in the breakdown above.)';
-    const readabilityPriorityBlock = buildReadabilityPriorityBlock(input);
     const contentCoverageMaxedBlock = buildContentCoverageMaxedBlock(input);
-    const scoreGapPlan =
+    const serpCoverageMaxedBlock = buildSerpCoverageMaxedBlock(input);
+    const keywordDensityFocusBlock = buildKeywordDensityFocusBlock(input);
+    const scoreGapPlanRaw =
       input.scoreGapPlan?.trim() ||
       '(Use the breakdown above — fix the smallest gap dimension first.)';
+    const serpPriorityBlock = buildSerpPriorityBlock(input);
+    const titlePriorityBlock = buildTitlePriorityBlock(input);
+    const fleschPriorityBlock = buildFleschPriorityBlock(input);
+    const scoreGapPlan = input.calibratedLocalAlign
+      ? `${serpPriorityBlock ? `${serpPriorityBlock}\n\n` : ''}${titlePriorityBlock ? `${titlePriorityBlock}\n\n` : ''}${fleschPriorityBlock ? `${fleschPriorityBlock}\n\n` : ''}${useCalibratedPrompt ? '' : `${buildCalibratedLocalAlignBlock(input)}\n\n`}${scoreGapPlanRaw}`
+      : scoreGapPlanRaw;
+    const readabilityPriorityBlock = buildReadabilityPriorityBlock({
+      ...input,
+      readabilityPriority:
+        input.readabilityPriority === true ||
+        (input.calibratedLocalAlign === true &&
+          (input.pointsToGo ?? 0) > 0 &&
+          input.serpPriority !== true &&
+          input.titlePriority !== true &&
+          input.fleschPriority !== true &&
+          input.hardSentencePriority !== true),
+    });
+
+    const predictedSemrush =
+      typeof input.predictedSemrush === 'number' ? String(input.predictedSemrush) : '(unknown)';
+    const predictedSemrushTarget = String(
+      input.predictedSemrushTarget ?? SEMRUSH_PASS_THRESHOLD,
+    );
 
     const userContent = this.fillTemplate(template, {
       ...this.buildPromptVars(input),
@@ -256,11 +440,15 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
       localScore,
       localScoreTarget,
       localScoreBreakdown,
+      predictedSemrush,
+      predictedSemrushTarget,
       scoreGapPlan,
       optimizeHistoryContext,
       focusDimensions,
       readabilityPriorityBlock,
       contentCoverageMaxedBlock,
+      serpCoverageMaxedBlock,
+      keywordDensityFocusBlock,
       semrushCompetitorWordCount: semrushWordTarget,
       semrushCurrentWordCount: semrushCurrentWords,
       semrushReadabilityScore: semrushReadability,

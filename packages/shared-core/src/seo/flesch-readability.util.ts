@@ -67,3 +67,17 @@ export function isFleschAlignedWithSemrush(
 ): boolean {
   return fleschDeltaFromTarget(score, target) <= tolerance;
 }
+
+/** Flesch 向 Semrush 目标靠近至少 minDelta 分 */
+export function isFleschProgressTowardTarget(input: {
+  before: number;
+  after: number;
+  target?: number;
+  minDelta?: number;
+}): boolean {
+  const target = input.target ?? SEMRUSH_FLESCH_TARGET_DEFAULT;
+  const minDelta = input.minDelta ?? 1;
+  const beforeGap = fleschDeltaFromTarget(input.before, target);
+  const afterGap = fleschDeltaFromTarget(input.after, target);
+  return afterGap + minDelta <= beforeGap;
+}

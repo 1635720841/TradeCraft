@@ -56,8 +56,23 @@ export interface SeoScore {
   actionableIssues?: SemrushActionableIssue[];
   /** 建议来源：api=拦截到 Semrush 接口；dom=页面侧栏抓取；mixed=两者合并 */
   analysisSource?: 'api' | 'dom' | 'mixed';
+  /** 校准模型代理分（优化轮降频 RPA 时） */
+  calibrationProxy?: boolean;
+  /** 校准预测 Semrush 分 */
+  calibrationPredicted?: number;
   /** 调试：命中的 Semrush API URL */
   apiUrls?: string[];
+  /** 可复现检测包：对验手动 Semrush 与回归测试 */
+  semrushCheckRecord?: {
+    contentHash: string;
+    submittedKeywords?: string[];
+    nodeKey?: string;
+    checkedAt: string;
+    domScore?: number;
+    apiScore?: number;
+    currentWordCount?: number;
+    competitorWordCount?: number;
+  };
 }
 
 export interface SeoCheckInput {

@@ -71,6 +71,11 @@ const SIDEBAR_HEADER_RULES: Array<{
   { re: /考虑使用主动语态|Consider using active voice/i, rule: 'passive_voice', category: 'readability' },
   { re: /考虑移除或替换|Consider removing or replacing/i, rule: 'filler_phrase', category: 'tone' },
   { re: /替换太过复杂的词语|Replace overly complex words/i, rule: 'complex_word', category: 'readability' },
+  {
+    re: /重写难以阅读的句子|Rewrite sentences that are difficult to read/i,
+    rule: 'other',
+    category: 'readability',
+  },
 ];
 
 export function parseActionableIssuesFromSidebarText(

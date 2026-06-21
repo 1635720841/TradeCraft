@@ -18,6 +18,13 @@ import {
   SEMRUSH_CASUAL_SENTENCE_HARD_MAX,
   SEMRUSH_CASUAL_SENTENCE_SOFT_MAX,
 } from './semrush-tone.util';
+import {
+  detectHardToReadSentences,
+  detectSemrushComplexWordSamples,
+  inferSemrushWordCountTarget,
+} from './semrush-readability-align.util';
+import { isSemrushKeywordPresentInContent } from './semrush-keyword-match.util';
+import { countSemanticSectionHeadings } from './article-score-content.util';
 
 export const LOCAL_SEO_PASS_THRESHOLD = 95;
 /** 与 Semrush SWA 对齐：本地预检超长段阈值 */
@@ -30,6 +37,8 @@ export interface SerpOrganicSnippet {
 
 export interface LocalSeoScoreInput {
   keyword: string;
+  /** Semrush SWA 提交的全部目标词（多 Tag）；缺省仅评 keyword */
+  submittedKeywords?: string[];
   content: string;
   serpOrganic?: SerpOrganicSnippet[];
   targetWordCount?: number;
@@ -75,6 +84,12 @@ export interface LocalSeoScoreResult {
     casualSentenceHits?: number;
     /** 随意句原文抽样（供 UI 与 LLM 定向改写） */
     casualSentenceSamples?: Array<{ text: string; reason: string }>;
+    /** Semrush 复杂词命中数 */
+    semrushComplexWordHits?: number;
+    semrushComplexWordSamples?: Array<{ term: string; suggestion: string }>;
+    /** Semrush「难以阅读」句命中数 */
+    hardToReadSentenceHits?: number;
+    hardToReadSentenceSamples?: Array<{ text: string; wordCount: number; reasons: string[] }>;
   };
 }
 
@@ -108,7 +123,9 @@ function countH2(text: string): number {
 }
 
 function hasListItems(text: string): boolean {
-  return /^-\s+/m.test(text);
+  if (/^-\s+/m.test(text)) return true;
+  // Semrush plain text 枚举块（including: / exercises include: 后多行短语）
+  return /:\s*\n\n[A-Z][^\n]{2,80}(\n[A-Z][^\n]{2,80}){2,}/m.test(text);
 }
 
 interface WeightedTerm {
@@ -158,37 +175,108 @@ function extractSerpTerms(organic: SerpOrganicSnippet[], keyword: string): Weigh
 
 function scoreKeywordCoverage(keyword: string, content: string): { score: number; suggestions: string[] } {
   const suggestions: string[] = [];
-  let score = 0;
+  const keywordLower = keyword.toLowerCase().trim();
+  if (!keywordLower) {
+    return { score: 0, suggestions: ['请填写目标关键词'] };
+  }
+
+  const present = isSemrushKeywordPresentInContent(content, keyword);
+  if (!present) {
+    suggestions.push('目标关键词尚未写入正文（Semrush Tag 仍为灰）');
+    return { score: 2, suggestions };
+  }
+
+  // SWA Tag 变绿：基础分（对齐 SEO 维度 ≥8.5/10）
+  let score = 21;
   const wordCount = Math.max(countWords(content), 1);
   const keywordHits = countPhrase(content, keyword);
-  const density = (keywordHits * keyword.split(/\s+/).length) / wordCount;
+  const density = (keywordHits * keyword.split(/\s+/).filter(Boolean).length) / wordCount;
+  const firstHeading = content.match(/^#{1,3}\s+.+$/m)?.[0]?.toLowerCase() ?? '';
+  const opening = content.slice(0, 200).toLowerCase();
 
-  if (content.slice(0, 200).toLowerCase().includes(keyword.toLowerCase())) {
-    score += 7;
+  if (opening.includes(keywordLower) || firstHeading.includes(keywordLower)) {
+    score += 2;
   } else {
-    suggestions.push('在正文开头前 200 个字符内自然出现目标关键词（完整短语）');
+    suggestions.push('可在正文开头或主标题中再自然出现一次目标词');
   }
 
   if (density >= 0.008 && density <= 0.025) {
-    score += 10;
+    score += 2;
   } else if (density >= 0.004 && density <= 0.035) {
-    score += 6;
-    suggestions.push('调整关键词密度至约 0.8%–2.5%');
+    score += 1;
+    suggestions.push('调整关键词密度至约 0.8%–2.5% 可更接近 Semrush');
+  } else if (density < 0.004) {
+    suggestions.push('长文可适当再自然提及 1 次目标词（Semrush 密度建议 0.8%–2.5%）');
   } else {
-    suggestions.push('关键词出现过少或堆砌，请调整密度至约 0.8%–2.5%');
-  }
-
-  const h2Lines = content.match(/^##\s+.+$/gm) ?? [];
-  const keywordInHeading = h2Lines.some((line) =>
-    line.toLowerCase().includes(keyword.toLowerCase()),
-  );
-  if (keywordInHeading) {
-    score += 8;
-  } else {
-    suggestions.push('至少在一个 H2 标题中包含目标关键词');
+    suggestions.push('关键词密度偏高，请调整至约 0.8%–2.5%');
   }
 
   return { score: Math.min(score, 25), suggestions };
+}
+
+function mergeKeywordLists(primary: string, extra?: string[]): string[] {
+  const merged: string[] = [];
+  const seen = new Set<string>();
+  for (const item of [primary, ...(extra ?? [])]) {
+    const trimmed = item.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(trimmed);
+  }
+  return merged;
+}
+
+/** 多目标词：各词独立计分后取平均（对齐 SWA 多 Tag） */
+function scoreKeywordCoverageList(keywords: string[], content: string): { score: number; suggestions: string[] } {
+  if (keywords.length === 0) {
+    return { score: 0, suggestions: ['请填写至少一个目标关键词'] };
+  }
+  if (keywords.length === 1) {
+    return scoreKeywordCoverage(keywords[0], content);
+  }
+
+  let total = 0;
+  const suggestions: string[] = [];
+  for (const keyword of keywords) {
+    const part = scoreKeywordCoverage(keyword, content);
+    total += part.score;
+    suggestions.push(...part.suggestions);
+  }
+
+  return {
+    score: Math.min(Math.round(total / keywords.length), 25),
+    suggestions: [...new Set(suggestions)],
+  };
+}
+
+/** 关键词密度次档时，在首段自然补 1 次完整短语（确定性 +4 分路径） */
+export function applyKeywordDensityNudge(keyword: string, content: string): string {
+  const trimmed = keyword.trim();
+  if (!trimmed) return content;
+
+  const wordCount = Math.max(countWords(content), 1);
+  const hits = countPhrase(content, trimmed);
+  const kwWords = trimmed.split(/\s+/).filter(Boolean).length;
+  const density = (hits * kwWords) / wordCount;
+
+  if (density >= 0.008 && density <= 0.025) return content;
+  if (density < 0.008) {
+    const lines = content.split('\n');
+    let targetIdx = -1;
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i].trim();
+      if (!line || line.startsWith('#') || line.startsWith('![') || /^-\s+/.test(line)) continue;
+      targetIdx = i;
+      break;
+    }
+    if (targetIdx < 0) return content;
+    const weave = `Teams evaluating ${trimmed} should weigh compatibility, safety limits, and field service needs together.`;
+    lines[targetIdx] = `${lines[targetIdx].trim()} ${weave}`;
+    return lines.join('\n');
+  }
+  return content;
 }
 
 function scoreSerpAlignment(
@@ -202,7 +290,13 @@ function scoreSerpAlignment(
   recommendedKeywords: string[];
 } {
   if (serpTerms.length === 0) {
-    return { score: 20, matched: 0, total: 0, suggestions: [], recommendedKeywords: [] };
+    return {
+      score: 15,
+      matched: 0,
+      total: 0,
+      suggestions: ['无 SERP 实体词可对照；跑 SERP 分析后重评可提高 Semrush 对齐准确度'],
+      recommendedKeywords: [],
+    };
   }
 
   const draftTokens = new Set(tokenize(content));
@@ -247,19 +341,22 @@ function scoreStructure(
 ): { score: number; suggestions: string[] } {
   const suggestions: string[] = [];
   let score = 0;
+  const sectionCount = countSemanticSectionHeadings(content);
   const h2Count = countH2(content);
   const wordCount = countWords(content);
 
-  if (h2Count >= 4) {
+  if (sectionCount >= 4 || h2Count >= 4) {
     score += 8;
   } else {
-    suggestions.push('增加 H2 章节至至少 4 个');
+    suggestions.push('增加章节标题至至少 4 个（H2 或 Module 小节）');
   }
 
   const lengthTarget =
     typeof competitorWordCount === 'number' && competitorWordCount > 0
       ? competitorWordCount
-      : targetWordCount;
+      : targetWordCount > 0
+        ? targetWordCount
+        : inferSemrushWordCountTarget(wordCount);
 
   if (typeof competitorWordCount === 'number' && competitorWordCount > 0) {
     const gap = competitorWordCount - wordCount;
@@ -277,7 +374,7 @@ function scoreStructure(
       suggestions.push(
         `正文偏长（约 ${wordCount} 词），Semrush 竞品标杆约 ${competitorWordCount} 词`,
       );
-      score += 4;
+      score += wordCount > competitorWordCount + 120 ? 2 : 4;
     } else {
       score += 8;
     }
@@ -292,8 +389,9 @@ function scoreStructure(
       );
     } else if (ratio > 1.15) {
       suggestions.push(
-        `正文过长（约 ${wordCount} 词），须删减以符合 Semrush 竞品长度（目标约 ${lengthTarget} 词）`,
+        `正文较长（约 ${wordCount} 词），Semrush 竞品标杆约 ${lengthTarget} 词；可在侧栏填入标杆词数后重评`,
       );
+      score += h2Count >= 4 || sectionCount >= 4 ? 4 : 2;
     } else if (ratio >= 0.5) {
       score += 4;
       suggestions.push(`正文篇幅偏短（当前约 ${wordCount} 词，目标 ${lengthTarget}）`);
@@ -302,7 +400,7 @@ function scoreStructure(
     }
   }
 
-  if (hasListItems(content)) {
+  if (hasListItems(content) || sectionCount >= 8) {
     score += 4;
   } else {
     suggestions.push('适当使用列表提升可读性与结构得分');
@@ -324,9 +422,12 @@ function scoreReadability(
   fleschReadingEase: number;
   casualSentenceHits: number;
   casualSentenceSamples: Array<{ text: string; reason: string }>;
+  semrushComplexWordHits: number;
+  semrushComplexWordSamples: Array<{ term: string; suggestion: string }>;
+  hardToReadSentenceHits: number;
+  hardToReadSentenceSamples: Array<{ text: string; wordCount: number; reasons: string[] }>;
 } {
   const suggestions: string[] = [];
-  let score = 20;
 
   const bodyParagraphs = content
     .split(/\n\n+/)
@@ -337,54 +438,73 @@ function scoreReadability(
   for (const paragraph of bodyParagraphs) {
     if (countWords(paragraph) > LOCAL_PARAGRAPH_MAX_WORDS) longParagraphsOver65 += 1;
   }
-  if (longParagraphsOver65 > 1) {
-    score -= 4;
-    suggestions.push(`拆分长段（Semrush 可读性：单段建议不超过约 ${LOCAL_PARAGRAPH_MAX_WORDS} 词）`);
-  }
 
   const sentences = content.split(/[.!?]+/).filter((s) => countWords(s) >= 4);
   let longSentencesOver22 = 0;
   for (const sentence of sentences) {
     if (countWords(sentence) > 22) longSentencesOver22 += 1;
   }
-  if (longSentencesOver22 > 2) {
-    score -= 4;
-    suggestions.push('重写难以阅读的句子（Semrush：单句建议 ≤22 词）');
-  }
 
   const passiveMatches = content.match(/\b(is|are|was|were|been|being)\s+\w+ed\b/gi) ?? [];
   const passiveVoiceHits = passiveMatches.length;
-  if (passiveVoiceHits > 6) {
-    score -= 2;
-    suggestions.push('考虑使用主动语态（减少被动句）');
-  }
 
-  if (/\bit is\b/i.test(content) || /\bthere (is|are)\b/i.test(content)) {
-    score -= 1;
-    suggestions.push('删除 it is / there is 等填充词');
-  }
+  const semrushComplexWordSamples = detectSemrushComplexWordSamples(content);
+  const semrushComplexWordHits = semrushComplexWordSamples.length;
 
-  const complexWordHits = (
-    content.match(
-      /\b(utilize|utilise|facilitate|commence|aforementioned|leverage|in order to|due to the fact that|overtemperature)\b/gi,
-    ) ?? []
-  ).length;
-  if (complexWordHits > 2) {
-    score -= 2;
-    suggestions.push('替换太过复杂的词语（用 use/help/start 等常用词）');
-  }
+  const hardToReadSentenceSamples = detectHardToReadSentences(content);
+  const hardToReadSentenceHits = hardToReadSentenceSamples.length;
 
   const fleschReadingEase = calculateFleschReadingEase(content);
-  if (
-    !isFleschAlignedWithSemrush(
-      fleschReadingEase,
-      readabilityTarget,
-      SEMRUSH_FLESCH_TOLERANCE,
-    )
-  ) {
-    const delta = fleschReadingEase - readabilityTarget;
-    score -= 3;
-    if (delta > SEMRUSH_FLESCH_TOLERANCE) {
+  const fleschAligned = isFleschAlignedWithSemrush(
+    fleschReadingEase,
+    readabilityTarget,
+    SEMRUSH_FLESCH_TOLERANCE,
+  );
+
+  const casualSentenceMatches = detectSemrushCasualSentences(content);
+  const casualSentenceHits = casualSentenceMatches.length;
+
+  /** Semrush SWA 可读性轴 0–10：侧栏仍有红项时 Overall 仍可 ≥9 */
+  let swaReadability = 10;
+
+  if (longParagraphsOver65 > 1) {
+    swaReadability -= 0.6;
+    suggestions.push(`拆分长段（Semrush 可读性：单段建议不超过约 ${LOCAL_PARAGRAPH_MAX_WORDS} 词）`);
+  }
+  if (longSentencesOver22 > 2) {
+    swaReadability -= Math.min(1.2, (longSentencesOver22 - 2) * 0.08);
+    suggestions.push('重写难以阅读的句子（Semrush：单句建议 ≤22 词）');
+  }
+  if (passiveVoiceHits > 6) {
+    swaReadability -= 0.4;
+    suggestions.push('考虑使用主动语态（减少被动句）');
+  }
+  if (/\bit is\b/i.test(content) || /\bthere (is|are)\b/i.test(content)) {
+    swaReadability -= 0.2;
+    suggestions.push('删除 it is / there is 等填充词');
+  }
+  if (semrushComplexWordHits > 0) {
+    swaReadability -= Math.min(1.2, semrushComplexWordHits * 0.25);
+    suggestions.push(
+      `替换 Semrush 复杂词（${semrushComplexWordHits} 处）：${semrushComplexWordSamples
+        .slice(0, 4)
+        .map((s) => `${s.term}→${s.suggestion}`)
+        .join('、')}`,
+    );
+  }
+  if (hardToReadSentenceHits > 2) {
+    swaReadability -= Math.min(1.8, (hardToReadSentenceHits - 2) * 0.035);
+    suggestions.push(
+      `重写难以阅读的句子（${hardToReadSentenceHits} 处）：拆分长句、减少 and/or 并列`,
+    );
+  } else if (hardToReadSentenceHits > 0) {
+    swaReadability -= 0.4;
+    suggestions.push(`优化难读句（${hardToReadSentenceHits} 处），对齐 Semrush 侧栏`);
+  }
+  if (!fleschAligned) {
+    const delta = Math.abs(fleschReadingEase - readabilityTarget);
+    swaReadability -= fleschReadingEase < readabilityTarget - SEMRUSH_FLESCH_TOLERANCE && delta > 20 ? 0.5 : 0.35;
+    if (fleschReadingEase > readabilityTarget + SEMRUSH_FLESCH_TOLERANCE) {
       suggestions.push(
         `Flesch 可读性 ${fleschReadingEase} 偏易（Semrush 目标约 ${readabilityTarget}）：略增句长或用更正式词`,
       );
@@ -394,17 +514,37 @@ function scoreReadability(
       );
     }
   }
-
-  const casualSentenceMatches = detectSemrushCasualSentences(content);
-  const casualSentenceHits = casualSentenceMatches.length;
   if (casualSentenceHits > SEMRUSH_CASUAL_SENTENCE_HARD_MAX) {
-    score -= 4;
+    swaReadability -= 0.8;
     suggestions.push(
       `语气偏随意（${casualSentenceHits} 处）：将 RFQ 问句、Next/Can users 等改为 B2B 正式表述`,
     );
   } else if (casualSentenceHits > SEMRUSH_CASUAL_SENTENCE_SOFT_MAX) {
-    score -= 2;
+    swaReadability -= 0.4;
     suggestions.push(`语气略随意（${casualSentenceHits} 处随意句），对齐 Semrush「有点正式」`);
+  }
+
+  swaReadability = Math.max(5, Math.min(10, swaReadability));
+
+  const semrushReadabilityReady =
+    semrushComplexWordHits === 0 &&
+    casualSentenceHits <= SEMRUSH_CASUAL_SENTENCE_SOFT_MAX &&
+    hardToReadSentenceHits <= 2 &&
+    longSentencesOver22 <= 2 &&
+    longParagraphsOver65 <= 1 &&
+    fleschAligned;
+
+  let score = Math.round((swaReadability / 10) * 20);
+  if (!semrushReadabilityReady) {
+    score = Math.min(score, 16);
+    if (score >= 16 && suggestions.length < 6) {
+      suggestions.push(
+        'Semrush 可读性未齐：须清零复杂词/随意句/难读句，长句≤2、长段≤1，Flesch 对齐目标后再拿满分',
+      );
+    }
+  }
+  if (swaReadability < 9.5) {
+    score = Math.min(score, Math.round((swaReadability / 10) * 20));
   }
 
   if (score < 14 && suggestions.length === 0) {
@@ -420,6 +560,10 @@ function scoreReadability(
     fleschReadingEase,
     casualSentenceHits,
     casualSentenceSamples: casualSentenceMatches.slice(0, 8),
+    semrushComplexWordHits,
+    semrushComplexWordSamples: semrushComplexWordSamples.slice(0, 8),
+    hardToReadSentenceHits,
+    hardToReadSentenceSamples: hardToReadSentenceSamples.slice(0, 6),
   };
 }
 
@@ -497,11 +641,39 @@ export function buildLocalScoreGapPlan(
       `- Casual tone hits: **${m.casualSentenceHits}** (max **${SEMRUSH_CASUAL_SENTENCE_SOFT_MAX}** soft / **${SEMRUSH_CASUAL_SENTENCE_HARD_MAX}** hard)`,
     );
   }
+  if (typeof m.semrushComplexWordHits === 'number' && m.semrushComplexWordHits > 0) {
+    lines.push(
+      `- Semrush complex words: **${m.semrushComplexWordHits}** (each costs 1–4 readability pts — replace with simpler terms)`,
+    );
+  }
+  if (typeof m.hardToReadSentenceHits === 'number' && m.hardToReadSentenceHits > 0) {
+    lines.push(
+      `- Hard-to-read sentences: **${m.hardToReadSentenceHits}** (max **2** allowed — split long/multi-clause sentences)`,
+    );
+  }
+  if (result.breakdown.keywordCoverage < DIMENSION_MAX.keywordCoverage) {
+    if (typeof m.keywordDensity === 'number') {
+      lines.push(
+        `- Keyword density: **${m.keywordDensity}%** (full band **0.8%–2.5%** → +10 pts; secondary **0.4%–3.5%** → +6 only)`,
+      );
+    }
+    if (result.breakdown.serpTermAlignment >= DIMENSION_MAX.serpTermAlignment) {
+      lines.push('- SERP entities: **25/25 maxed** — adding entity sentences will NOT raise score');
+    }
+  }
 
   if (gap === 1) {
+    const serpMaxed = result.breakdown.serpTermAlignment >= DIMENSION_MAX.serpTermAlignment;
     lines.push(
       '',
-      '**+1 point mode**: Make ONE scorer-visible fix (split 1 long sentence to ≤22 words, OR remove 1 passive, OR add 1 bullet list if structure −4). Do NOT add new paragraphs or SERP filler sentences.',
+      serpMaxed
+        ? '**+1 point mode (SERP maxed)**: Fix ONE readability penalty only — replace 1 complex word, OR split 1 hard sentence, OR align Flesch ±8. Do NOT add SERP/entity sentences or new paragraphs.'
+        : '**+1 point mode**: Make ONE scorer-visible fix (split 1 long sentence to ≤22 words, OR remove 1 passive, OR nudge keyword density into 0.8%–2.5%). Do NOT add SERP filler sentences.',
+    );
+  } else if (gap <= 2 && result.breakdown.keywordCoverage < DIMENSION_MAX.keywordCoverage) {
+    lines.push(
+      '',
+      '**Near-pass keyword mode**: Adjust keyword density into **0.8%–2.5%** (worth +4 pts if currently in secondary band). Prefer editing existing sentences — do not add keyword bullet lists.',
     );
   }
 
@@ -512,11 +684,15 @@ export function buildLocalScoreGapPlan(
 export function scoreLocalSeo(input: LocalSeoScoreInput): LocalSeoScoreResult {
   const content = input.content ?? '';
   const keyword = input.keyword.trim();
-  const targetWordCount = input.targetWordCount ?? 1500;
+  const keywordList = mergeKeywordLists(keyword, input.submittedKeywords);
+  const primaryKeyword = keywordList[0] ?? keyword;
+  const wordCountPreview = countWords(content);
+  const targetWordCount =
+    input.targetWordCount ?? inferSemrushWordCountTarget(wordCountPreview);
   const readabilityTarget = input.readabilityTarget ?? SEMRUSH_FLESCH_TARGET_DEFAULT;
-  const serpTerms = extractSerpTerms(input.serpOrganic ?? [], keyword);
+  const serpTerms = extractSerpTerms(input.serpOrganic ?? [], primaryKeyword);
 
-  const keywordPart = scoreKeywordCoverage(keyword, content);
+  const keywordPart = scoreKeywordCoverageList(keywordList, content);
   const serpPart = scoreSerpAlignment(content, serpTerms);
   const structurePart = scoreStructure(content, targetWordCount, input.competitorWordCount);
   const readabilityPart = scoreReadability(content, readabilityTarget);
@@ -546,8 +722,9 @@ export function scoreLocalSeo(input: LocalSeoScoreInput): LocalSeoScoreResult {
   ].slice(0, 8);
 
   const wordCount = countWords(content);
-  const keywordHits = countPhrase(content, keyword);
-  const keywordDensity = (keywordHits * keyword.split(/\s+/).length) / Math.max(wordCount, 1);
+  const keywordHits = countPhrase(content, primaryKeyword);
+  const keywordDensity =
+    (keywordHits * primaryKeyword.split(/\s+/).length) / Math.max(wordCount, 1);
 
   const longSentenceSamples = extractLongSentences(content).slice(0, 8);
   const longParagraphSamples = extractLongParagraphs(content, LOCAL_PARAGRAPH_MAX_WORDS).slice(0, 6);
@@ -569,6 +746,20 @@ export function scoreLocalSeo(input: LocalSeoScoreInput): LocalSeoScoreResult {
       fleschReadingEase: readabilityPart.fleschReadingEase,
       fleschTarget: readabilityTarget,
       casualSentenceHits: readabilityPart.casualSentenceHits,
+      casualSentenceSamples:
+        readabilityPart.casualSentenceSamples.length > 0
+          ? readabilityPart.casualSentenceSamples
+          : undefined,
+      semrushComplexWordHits: readabilityPart.semrushComplexWordHits,
+      semrushComplexWordSamples:
+        readabilityPart.semrushComplexWordSamples.length > 0
+          ? readabilityPart.semrushComplexWordSamples
+          : undefined,
+      hardToReadSentenceHits: readabilityPart.hardToReadSentenceHits,
+      hardToReadSentenceSamples:
+        readabilityPart.hardToReadSentenceSamples.length > 0
+          ? readabilityPart.hardToReadSentenceSamples
+          : undefined,
       longSentenceSamples: longSentenceSamples.length > 0 ? longSentenceSamples : undefined,
       longParagraphSamples: longParagraphSamples.length > 0 ? longParagraphSamples : undefined,
     },

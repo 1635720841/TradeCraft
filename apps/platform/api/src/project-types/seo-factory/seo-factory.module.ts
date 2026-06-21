@@ -10,8 +10,10 @@
 
 import { Module } from '@nestjs/common';
 import { ArticleJobModule } from './modules/article-job/article-job.module';
+import { ArticleScoreModule } from './modules/article-score/article-score.module';
 import { ExportModule } from './modules/export/export.module';
 import { GscModule } from './modules/gsc/gsc.module';
+import { ScoreCalibrationModule } from './modules/score-calibration/score-calibration.module';
 import { KeywordPoolModule } from './modules/keyword-pool/keyword-pool.module';
 import { LinkingModule } from './modules/linking/linking.module';
 import { SiteModule } from './modules/site/site.module';
@@ -31,9 +33,11 @@ import { SeoFactoryQueueModule } from './seo-factory-queue.module';
     SiteModule,
     LinkingModule,
     ArticleJobModule,
+    ArticleScoreModule,
     ExportModule,
     KeywordPoolModule,
     GscModule,
+    ScoreCalibrationModule,
   ],
   providers: [ArticleJobProcessor, GscSyncProcessor],
 })

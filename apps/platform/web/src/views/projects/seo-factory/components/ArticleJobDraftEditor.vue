@@ -40,7 +40,16 @@
         </el-form-item>
       </el-col>
 
-      <el-col :xs="24" :xl="12">
+      <el-col :xs="24" :xl="12" class="draft-editor-form__col">
+        <ArticleJobContentScorePanel
+          class="mb-4"
+          :project-id="projectId"
+          :job-id="jobId"
+          :content="form.content"
+          :can-score="Boolean(form.content.trim())"
+          :saved-snapshot="contentScoreSnapshot"
+          @scored="emit('content-scored')"
+        />
         <div class="draft-live-preview">
           <div class="mb-2 text-sm font-medium text-gray-700">实时预览</div>
           <div class="draft-live-preview__panel rounded border border-gray-200 bg-gray-50 p-4">
@@ -83,8 +92,9 @@
 
 <script setup lang="ts">
 import { computed, reactive, watch } from "vue";
-import type { ArticleJobArticleImage, ArticleJobBriefData, ArticleJobDraftData } from "@/api/seo-factory/types";
+import type { ArticleJobArticleImage, ArticleJobBriefData, ArticleJobContentScoreSnapshot, ArticleJobDraftData } from "@/api/seo-factory/types";
 import { countDraftWords, isDraftFormDirty, resolveDraftTitleAndMeta } from "@/utils/seo-factory/draft-edit-preview";
+import ArticleJobContentScorePanel from "./seo/ArticleJobContentScorePanel.vue";
 import ArticleJobDraftHtmlBody from "./ArticleJobDraftHtmlBody.vue";
 import ArticleJobDraftTipTapEditor from "./ArticleJobDraftTipTapEditor.vue";
 
@@ -99,6 +109,7 @@ const props = defineProps<{
   saving?: boolean;
   canSave?: boolean;
   editBlockedReason?: string;
+  contentScoreSnapshot?: ArticleJobContentScoreSnapshot | null;
 }>();
 
 const emit = defineEmits<{
@@ -107,6 +118,7 @@ const emit = defineEmits<{
   "save-advanced": [];
   cancel: [];
   change: [];
+  "content-scored": [];
 }>();
 
 const baseline = reactive({
@@ -181,17 +193,33 @@ defineExpose({ getPayload, isDirty, markSaved });
 
 .draft-content-item :deep(.el-form-item__content) {
   width: 100%;
+  height: 100%;
+}
+
+.draft-live-preview {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .draft-live-preview__panel {
-  max-height: min(78vh, 900px);
-  overflow: auto;
+  flex: 1;
+  min-height: 0;
+  max-height: min(72vh, 820px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 @media (min-width: 1280px) {
   .draft-live-preview {
     position: sticky;
     top: 0.5rem;
+    max-height: min(72vh, 820px);
+  }
+
+  .draft-editor-form__col :deep(.draft-tiptap-editor) {
+    max-height: min(72vh, 820px);
   }
 }
 </style>

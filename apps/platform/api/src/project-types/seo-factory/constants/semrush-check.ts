@@ -1,5 +1,5 @@
-/** 手动 Semrush 检测超时（毫秒），超过视为僵死任务 */
-export const SEMRUSH_MANUAL_CHECK_STALE_MS = 5 * 60 * 1000;
+/** 手动 Semrush 检测超时（毫秒），须大于队列主等待+宽限，避免 RPA 仍在跑时被僵死清理 */
+export const SEMRUSH_MANUAL_CHECK_STALE_MS = 15 * 60 * 1000;
 
 /** OPTIMIZING 且无 pending 时，超过此时长视为僵死（工作流崩溃或状态未回写） */
 export const SEMRUSH_OPTIMIZING_ORPHAN_STALE_MS = Number(

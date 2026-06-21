@@ -8,19 +8,15 @@
  * - PlaywrightQueueModule
  */
 
-import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
-import { PLAYWRIGHT_QUEUE } from '../../core/queue/queue.constants';
+import { SeoFactoryQueueModule } from './seo-factory-queue.module';
 import { PlaywrightJobProcessor } from './processors/playwright-job.processor';
 import { SeoFactoryProvidersModule } from './providers/seo-factory-providers.module';
 import { SemrushQueueService } from './services/semrush-queue.service';
 
 @Module({
-  imports: [
-    BullModule.registerQueue({ name: PLAYWRIGHT_QUEUE }),
-    SeoFactoryProvidersModule,
-  ],
+  imports: [SeoFactoryQueueModule, SeoFactoryProvidersModule],
   providers: [SemrushQueueService, PlaywrightJobProcessor],
-  exports: [SemrushQueueService, BullModule],
+  exports: [SemrushQueueService, SeoFactoryQueueModule],
 })
 export class PlaywrightQueueModule {}

@@ -52,7 +52,12 @@ const JOBS_ROUTE_NAMES = new Set([
 
 const KEYWORDS_ROUTE_NAMES = new Set(["SeoFactoryKeywords", "SeoFactoryTopicClusters"]);
 
-const SETTINGS_ROUTE_NAMES = new Set(["SeoFactorySettings", "SeoFactoryGsc"]);
+const SETTINGS_ROUTE_NAMES = new Set([
+  "SeoFactorySettings",
+  "SeoFactoryGsc",
+  "SeoFactoryScoreLab",
+  "SeoFactoryContentScore"
+]);
 
 const route = useRoute();
 const router = useRouter();

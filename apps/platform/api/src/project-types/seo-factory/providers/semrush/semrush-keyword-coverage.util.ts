@@ -3,71 +3,14 @@
  */
 
 import type { SeoScore, SemrushActionableIssue } from '@wm/provider-interfaces';
+import {
+  findMissingSemrushKeywords,
+  isSemrushKeywordPresentInContent,
+  stripMarkdownForKeywordMatch,
+} from '@wm/shared-core';
 import { dedupeActionableIssues } from './semrush-actionable.util';
 
-export function stripMarkdownForKeywordMatch(content: string): string {
-  return content
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/`[^`]+`/g, ' ')
-    .replace(/!\[[^\]]*]\([^)]+\)/g, ' ')
-    .replace(/\[[^\]]*]\([^)]+\)/g, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/[#>*_~|-]/g, ' ')
-    .replace(/[/\\]/g, ' ')
-    .replace(/[.,;:!?()[\]{}'"`]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
-}
-
-/** SWA 按原短语（不区分大小写）检测是否出现在正文中；支持连字符与轻量词形变体 */
-export function isSemrushKeywordPresentInContent(content: string, keyword: string): boolean {
-  const needle = keyword
-    .trim()
-    .toLowerCase()
-    .replace(/[/\\]/g, ' ')
-    .replace(/[.,;:!?()[\]{}'"`]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (needle.length < 2) return true;
-
-  const haystack = stripMarkdownForKeywordMatch(content);
-  if (haystack.includes(needle)) return true;
-
-  // 连字符变体：lithium-iron-phosphate ↔ lithium iron phosphate
-  const relaxed = needle.replace(/-/g, ' ');
-  if (relaxed !== needle && haystack.includes(relaxed)) return true;
-
-  return isFlexiblePhrasePresent(haystack, needle);
-}
-
-const FILLER_BETWEEN_TOKENS =
-  '(?:\\s+(?:their|the|your|a|an|of|on|for|to|in|at|with|and|or|is|are|can|i)\\s+)*';
-
-/** 词形变体 + 介词插入（对齐 9.5+ 样例：grind teeth ↔ grinding their teeth） */
-function flexTokenPattern(token: string): string {
-  const esc = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  if (token.length >= 4) return `${esc}(?:ing|s|ed|er|ers)?`;
-  return esc;
-}
-
-function isFlexiblePhrasePresent(haystack: string, phrase: string): boolean {
-  const tokens = phrase.split(/\s+/).filter((w) => w.length >= 2);
-  if (tokens.length < 2) return false;
-
-  const pattern = tokens
-    .map((token, index) => {
-      const part = `\\b${flexTokenPattern(token)}\\b`;
-      return index === 0 ? part : `${FILLER_BETWEEN_TOKENS}${part}`;
-    })
-    .join('');
-
-  try {
-    return new RegExp(pattern, 'i').test(haystack);
-  } catch {
-    return false;
-  }
-}
+export { findMissingSemrushKeywords, isSemrushKeywordPresentInContent, stripMarkdownForKeywordMatch };
 
 /** 9.5+ SWA 高分文章的关键词融合范式（供 LLM Prompt 引用） */
 export const HIGH_SCORE_KEYWORD_WEAVING_EXEMPLARS = [
@@ -98,24 +41,6 @@ export function buildContextualKeywordWeavingInstruction(missingKeywords: string
     '9.5+ 高分样例（Foot Skin Blisters 9.6 / Magnesium Teeth Grinding 9.5）：',
     exemplarBlock,
   ].join('\n');
-}
-
-export function findMissingSemrushKeywords(content: string, keywords: string[]): string[] {
-  const missing: string[] = [];
-  const seen = new Set<string>();
-
-  for (const keyword of keywords) {
-    const trimmed = keyword.trim();
-    if (!trimmed) continue;
-    const key = trimmed.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    if (!isSemrushKeywordPresentInContent(content, trimmed)) {
-      missing.push(trimmed);
-    }
-  }
-
-  return missing;
 }
 
 export function mergeSemrushKeywordLists(...lists: Array<string[] | undefined>): string[] {

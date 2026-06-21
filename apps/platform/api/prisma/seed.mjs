@@ -27,6 +27,7 @@ const PROMPT_LABELS = {
   seo_optimize_v1: 'SEO 优化 v1',
   seo_optimize_v2: 'SEO 优化 v2',
   seo_optimize_v3: 'SEO 优化 v3',
+  seo_optimize_calibrated_v1: 'SEO 优化（Sem 校准对齐）v1',
   seo_optimize_semrush_v1: 'Semrush 优化 v1',
   seo_rewrite_v1: 'AI 改写 v1',
   seo_keyword_seed_v1: '关键词种子 v1',

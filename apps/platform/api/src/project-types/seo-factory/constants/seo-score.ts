@@ -40,8 +40,32 @@ export const SEMRUSH_ULTRA_NEAR_MISS_EXTRA_ROUNDS = 2;
 /** Semrush 终检 RPA 分数波动容差（回滚判定） */
 export const SEMRUSH_SCORE_ROLLBACK_TOLERANCE = 0.05;
 
+/** ≥此分启用手术式/轻量优化，禁止整篇 rewrite（8.8+） */
+export const SEMRUSH_SURGICAL_MODE_THRESHOLD = 8.8;
+
+/** Semrush 词数缺口达到此值时触发确定性 FAQ 增补 */
+export const SEMRUSH_WORD_GAP_INJECT_MIN = 80;
+
 /** Semrush Overall Score 通过线 */
 export const SEMRUSH_PASS_THRESHOLD = 9.0;
+
+/** 本地对齐 Sem：预测分距通过线在此范围内仍放行进 Semrush RPA（终检仍以真分为准） */
+export const SCORE_CALIBRATION_LOCAL_ALIGN_SOFT_PASS_MARGIN = 0.78;
+
+/** 本地分已达标时：预测分距通过线在此范围内仍放行 RPA（如本地 96 + 预测 8.17） */
+export const SCORE_CALIBRATION_HIGH_LOCAL_SOFT_PASS_MARGIN = 0.85;
+
+/** 校准模式：预测分微幅回退仍接受候选（Flesch/SERP 有进展） */
+export const SCORE_CALIBRATION_PREDICTED_ACCEPT_TOLERANCE = 0.05;
+
+/** 降频 RPA：校准模型 MAE 须低于此值 */
+export const SCORE_CALIBRATION_REDUCE_RPA_MAX_MODEL_MAE = 0.35;
+
+/** 降频 RPA：预测分低于 best 超过此值则跳过 RPA 直接回滚 */
+export const SCORE_CALIBRATION_SKIP_REJECT_DELTA = 0.15;
+
+/** 单任务最多保留校准影子日志条数 */
+export const SCORE_CALIBRATION_SHADOW_MAX = 40;
 
 /** Semrush SWA 提交词表下限（正文已覆盖短语） */
 export const SEMRUSH_SUBMITTED_KEYWORD_MIN = 8;

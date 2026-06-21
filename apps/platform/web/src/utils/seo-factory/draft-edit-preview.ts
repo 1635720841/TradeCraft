@@ -20,7 +20,9 @@ import {
 } from "@/utils/seo-factory/cms-publish-status";
 import {
   buildPrePublishChecklistItems,
+  canContentScoreSubstituteSemrushStale,
   prePublishChecklistAllDone as sharedPrePublishAllDone,
+  type ContentScoreSnapshot,
 } from "@wm/shared-core";
 
 export interface DraftEditPreviewFields {
@@ -198,6 +200,9 @@ export function buildPublishChecklist(input: {
   ymylReview?: ArticleJobYmylReview | null;
   semrushRunning?: boolean;
   resolvingAction?: string | null;
+  contentScore?: ContentScoreSnapshot | null;
+  draftContent?: string;
+  reduceRpaEnabled?: boolean;
 }): PublishChecklistItem[] {
   const affected = input.staleness?.affected;
   if (!affected) return [];
@@ -219,15 +224,29 @@ export function buildPublishChecklist(input: {
   }
 
   if (affected.semrush) {
-    items.push({
-      id: "semrush",
-      label: "Semrush 终检",
-      hint: input.semrushRunning ? "检测进行中…" : "约 2–5 分钟",
-      done: false,
-      action: "rerun_semrush",
-      loading: input.resolvingAction === "rerun_semrush" || Boolean(input.semrushRunning),
-      disabled: Boolean(input.semrushRunning)
+    const scoreCovers = canContentScoreSubstituteSemrushStale({
+      snapshot: input.contentScore,
+      currentContent: input.draftContent ?? "",
+      reduceRpaEnabled: input.reduceRpaEnabled
     });
+    if (!scoreCovers) {
+      items.push({
+        id: "semrush",
+        label: "Semrush 终检",
+        hint: input.semrushRunning ? "检测进行中…" : "约 2–5 分钟",
+        done: false,
+        action: "rerun_semrush",
+        loading: input.resolvingAction === "rerun_semrush" || Boolean(input.semrushRunning),
+        disabled: Boolean(input.semrushRunning)
+      });
+    } else {
+      items.push({
+        id: "semrush",
+        label: "内容评分已达标",
+        hint: `校准分 ${input.contentScore?.overall ?? "—"} / 10（高置信，可暂不跑 Semrush）`,
+        done: true
+      });
+    }
   }
 
   if (affected.ymyl || ymylNeedsReview(input.ymylReview)) {

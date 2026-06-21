@@ -20,3 +20,11 @@ export class BatchPublishArticleJobsDto {
   @IsIn(['draft', 'publish'])
   status?: 'draft' | 'publish';
 }
+
+export class BatchDeleteArticleJobsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(MAX_BATCH_ACTION_LIMIT)
+  @IsUUID('4', { each: true })
+  jobIds!: string[];
+}

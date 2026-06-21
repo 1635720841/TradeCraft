@@ -349,12 +349,17 @@ export function buildFallbackSemrushSuggestions(result: SeoScore, content: strin
 }
 
 /** Semrush 优化后 boost 参数：60 词/3 句/段内列表化 */
-export function buildSemrushBoostOptions(targetWordCount: number): BoostLocalSeoContentOptions {
+export function buildSemrushBoostOptions(
+  targetWordCount: number,
+  surgical = false,
+): BoostLocalSeoContentOptions {
   return {
     targetWordCount,
     maxParagraphWords: SEMRUSH_PARAGRAPH_MAX_WORDS,
     maxParagraphSentences: SEMRUSH_PARAGRAPH_MAX_SENTENCES,
     convertInlineLists: true,
+    skipSentenceFix: surgical,
+    skipWordCap: surgical,
   };
 }
 

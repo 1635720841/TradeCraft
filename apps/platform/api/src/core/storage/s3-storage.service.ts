@@ -8,7 +8,9 @@
 
 import { Injectable } from '@nestjs/common';
 import {
+  DeleteObjectsCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
   type S3ClientConfig,
@@ -78,5 +80,40 @@ export class S3StorageService {
       if (status === 404) return null;
       throw error;
     }
+  }
+
+  /** 删除 key 前缀下所有对象 */
+  async deleteByPrefix(prefix: string): Promise<number> {
+    const normalized = prefix.replace(/\\/g, '/').replace(/^\/+/, '');
+    let removed = 0;
+    let continuationToken: string | undefined;
+
+    do {
+      const listed = await this.client.send(
+        new ListObjectsV2Command({
+          Bucket: this.bucket,
+          Prefix: normalized,
+          ContinuationToken: continuationToken,
+        }),
+      );
+
+      const keys = (listed.Contents ?? [])
+        .map((item) => item.Key)
+        .filter((key): key is string => Boolean(key));
+
+      if (keys.length > 0) {
+        await this.client.send(
+          new DeleteObjectsCommand({
+            Bucket: this.bucket,
+            Delete: { Objects: keys.map((Key) => ({ Key })) },
+          }),
+        );
+        removed += keys.length;
+      }
+
+      continuationToken = listed.IsTruncated ? listed.NextContinuationToken : undefined;
+    } while (continuationToken);
+
+    return removed;
   }
 }

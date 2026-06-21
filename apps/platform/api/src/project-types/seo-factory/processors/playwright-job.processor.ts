@@ -17,7 +17,10 @@ import {
   type SeoScore,
 } from '@wm/provider-interfaces';
 import { PLAYWRIGHT_QUEUE } from '../../../core/queue/queue.constants';
+import { PrismaService } from '../../../core/database/prisma.service';
+import { LoggerService } from '../../../core/logger/logger.service';
 import { readPlaywrightQueueOptions } from '../../../core/queue/playwright-queue.config';
+import { persistSemrushQueueCheckpoint } from '../utils/semrush-queue-checkpoint.util';
 import type { PlaywrightJobPayload } from '../services/semrush-queue.service';
 
 const queueOptions = readPlaywrightQueueOptions();
@@ -29,11 +32,30 @@ const queueOptions = readPlaywrightQueueOptions();
 export class PlaywrightJobProcessor extends WorkerHost {
   constructor(
     @Inject(SEO_CHECKER_PROVIDER) private readonly semrushChecker: ISeoCheckerProvider,
+    private readonly prisma: PrismaService,
+    private readonly logger: LoggerService,
   ) {
     super();
   }
 
   async process(job: Job<PlaywrightJobPayload>): Promise<SeoScore> {
-    return this.semrushChecker.checkScore(job.data.input);
+    const result = await this.semrushChecker.checkScore(job.data.input);
+    await persistSemrushQueueCheckpoint(
+      this.prisma,
+      job.data.jobId,
+      result,
+      job.data.input.content,
+      this.logger,
+    ).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn('Semrush queue checkpoint persist failed', {
+        traceId: job.data.traceId,
+        jobId: job.data.jobId,
+        action: 'semrush_queue.checkpoint_failed',
+        bullJobId: job.id,
+        error: message,
+      });
+    });
+    return result;
   }
 }

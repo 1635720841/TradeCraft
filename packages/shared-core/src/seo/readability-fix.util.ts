@@ -381,6 +381,10 @@ export interface BoostLocalSeoContentOptions {
   maxParagraphSentences?: number;
   /** 将段内 dash 枚举转为 Markdown 列表 */
   convertInlineLists?: boolean;
+  /** 手术式轮：跳过拆句，避免破坏已改句子 */
+  skipSentenceFix?: boolean;
+  /** 手术式轮：跳过篇幅压线删减 */
+  skipWordCap?: boolean;
 }
 
 /**
@@ -404,12 +408,14 @@ export function boostLocalSeoContent(
   if (options.convertInlineLists) {
     result = convertInlineDashEnumerations(result);
   }
-  result = applyReadabilitySentenceFix(result);
+  if (!options.skipSentenceFix) {
+    result = applyReadabilitySentenceFix(result);
 
-  for (let i = 0; i < 8; i += 1) {
-    const next = applyReadabilitySentenceFix(result);
-    if (next === result) break;
-    result = next;
+    for (let i = 0; i < 8; i += 1) {
+      const next = applyReadabilitySentenceFix(result);
+      if (next === result) break;
+      result = next;
+    }
   }
 
   result = applyReadabilityParagraphFix(result, paraFixOpts);
@@ -420,7 +426,7 @@ export function boostLocalSeoContent(
     result = next;
   }
 
-  if (countWords(result) > wordCap) {
+  if (!options.skipWordCap && countWords(result) > wordCap) {
     result = trimBodyToWordCap(result, wordCap);
   }
 

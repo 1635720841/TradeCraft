@@ -18,6 +18,7 @@ initHttpDispatcher();
 
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { json, urlencoded } from 'express';
 import { networkInterfaces } from 'node:os';
 import { AppModule } from './app.module';
 
@@ -34,8 +35,14 @@ function getLocalIPv4Addresses(): string[] {
   return addresses;
 }
 
+/** 与 ScoreArticleContentTrialDto.content @MaxLength(200_000) 对齐，留 JSON 转义余量 */
+const JSON_BODY_LIMIT = process.env.API_JSON_BODY_LIMIT ?? '1mb';
+
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
+
+  app.use(json({ limit: JSON_BODY_LIMIT }));
+  app.use(urlencoded({ extended: true, limit: JSON_BODY_LIMIT }));
 
   app.enableCors({ origin: true });
 

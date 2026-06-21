@@ -3,6 +3,7 @@
  */
 
 import { Injectable } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import type {
   ISeoCheckerProvider,
   SeoCheckInput,
@@ -137,6 +138,18 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
           const contentMeta = `Semrush评测文章: ${contentTitle.slice(0, 80)} | words:${contentWords}`;
           result.semrushEvaluationRoute = routeMeta;
           result.semrushEvaluationContentFingerprint = contentMeta;
+          result.semrushCheckRecord = {
+            contentHash: createHash('sha256').update(input.content).digest('hex').slice(0, 16),
+            submittedKeywords:
+              input.submittedKeywords ??
+              [input.keyword, ...(input.recommendedKeywords ?? [])],
+            nodeKey,
+            checkedAt: new Date().toISOString(),
+            domScore: extracted.domScore,
+            apiScore: extracted.apiScore,
+            currentWordCount: result.semrushCurrentWordCount,
+            competitorWordCount: result.semrushCompetitorWordCount,
+          };
 
           if (
             (result.semrushMissingTargetKeywords?.length ?? 0) > 0 ||
@@ -1169,7 +1182,13 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
     nodeKey: string,
     nodeLabel: string,
     resolvedScore?: number,
-  ): Promise<SeoScore & { domUncoveredSeoKeywords?: string[] }> {
+  ): Promise<
+    SeoScore & {
+      domUncoveredSeoKeywords?: string[];
+      domScore?: number;
+      apiScore?: number;
+    }
+  > {
     const apiCaptured = pickBestRecommendationsCapture(captured);
     const apiPrefetched = apiCaptured ?? (await this.fetchRecommendationsWhenReady(page, 5_000));
     const domScore = this.resolveScore(
@@ -1357,6 +1376,8 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
       analysisSource,
       apiUrls: apiUrls.length > 0 ? apiUrls : undefined,
       domUncoveredSeoKeywords: domExtracted.domUncoveredSeoKeywords,
+      domScore: finalDomScore ?? domScore ?? undefined,
+      apiScore: finalApiScore ?? apiScore ?? undefined,
     };
   }
 

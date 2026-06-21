@@ -6,7 +6,7 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { PutObjectResult, StoredObject } from './storage.types';
 
@@ -39,6 +39,18 @@ export class LocalStorageService {
       return { body, contentType: meta.contentType ?? 'application/octet-stream' };
     } catch {
       return null;
+    }
+  }
+
+  /** 删除 key 前缀下所有对象（含 .meta.json） */
+  async deleteByPrefix(prefix: string): Promise<number> {
+    const normalized = prefix.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
+    const dirPath = this.resolvePath(normalized);
+    try {
+      await rm(dirPath, { recursive: true, force: true });
+      return 1;
+    } catch {
+      return 0;
     }
   }
 

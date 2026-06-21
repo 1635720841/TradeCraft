@@ -103,4 +103,14 @@ export class ArticleJobDraftImageService {
       contentType: stored.contentType ?? 'application/octet-stream',
     };
   }
+
+  /** 删除任务下全部存储资源（导出包、稿件插图等） */
+  async deleteJobStorage(
+    organizationId: string,
+    projectId: string,
+    jobId: string,
+  ): Promise<number> {
+    const prefix = `${organizationId}/${projectId}/${jobId}/`;
+    return this.storage.deleteByPrefix(prefix);
+  }
 }

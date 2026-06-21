@@ -57,12 +57,23 @@ export interface GenerateOptimizeMeta {
   /** 本轮仅聚焦的评分维度文案（英文） */
   focusDimensions?: string;
   readabilityPriority?: boolean;
+  serpPriority?: boolean;
+  fleschPriority?: boolean;
+  hardSentencePriority?: boolean;
+  titlePriority?: boolean;
+  articleTitle?: string;
   readabilityAudit?: string;
   pointsToGo?: number;
   scoreGapPlan?: string;
   contentCoverageMaxed?: boolean;
+  serpCoverageMaxed?: boolean;
+  keywordDensityFocus?: boolean;
   /** 已命中的 SEO 短语，可读性优化轮禁止删改 */
   protectedSeoPhrases?: string[];
+  /** 本地对齐 Sem：LLM 以预测 Semrush 0–10 为优化目标 */
+  calibratedLocalAlign?: boolean;
+  predictedSemrush?: number;
+  predictedSemrushTarget?: number;
 }
 
 export interface OptimizeRoundBreakdown {
@@ -87,6 +98,11 @@ export interface DraftOptimizeRound {
   /** 该阶段主分数（本地轮=本地分 /10→/100，Semrush 轮=x/10） */
   scoreBefore?: number;
   scoreAfter?: number;
+  /** 本地对齐轮：校准预测 Semrush（0–10） */
+  predictedSemrushBefore?: number;
+  predictedSemrushAfter?: number;
+  /** 回滚时候选稿预测 Semrush */
+  candidatePredictedSemrush?: number;
   /** Semrush 轮次后本地分（可能随改写变化） */
   localScoreAfter?: number;
   breakdownAfter?: OptimizeRoundBreakdown;
@@ -97,7 +113,7 @@ export interface DraftOptimizeRound {
   /** Semrush 轮回滚时候选稿本地分 */
   candidateLocalScoreAfter?: number;
   /** 回滚原因 */
-  rollbackReason?: 'score_regressed' | 'keyword_coverage_regressed' | 'local_below_threshold' | 'both';
+  rollbackReason?: 'score_regressed' | 'predicted_semrush_regressed' | 'keyword_coverage_regressed' | 'local_below_threshold' | 'both';
 }
 
 export type ManualRewriteMode = 'suggestions' | 'instruction';
@@ -272,11 +288,21 @@ export class LlmService {
         meta?.focusDimensions ??
         '(Address the lowest-scoring dimensions in the breakdown above.)',
       readabilityPriority: meta?.readabilityPriority,
+      serpPriority: meta?.serpPriority,
+      fleschPriority: meta?.fleschPriority,
+      hardSentencePriority: meta?.hardSentencePriority,
+      titlePriority: meta?.titlePriority,
+      articleTitle: meta?.articleTitle,
       readabilityAudit: meta?.readabilityAudit,
       pointsToGo: meta?.pointsToGo,
       scoreGapPlan: meta?.scoreGapPlan,
       contentCoverageMaxed: meta?.contentCoverageMaxed,
+      serpCoverageMaxed: meta?.serpCoverageMaxed,
+      keywordDensityFocus: meta?.keywordDensityFocus,
       protectedSeoPhrases: meta?.protectedSeoPhrases,
+      calibratedLocalAlign: meta?.calibratedLocalAlign,
+      predictedSemrush: meta?.predictedSemrush,
+      predictedSemrushTarget: meta?.predictedSemrushTarget,
     });
 
     const optimizeHistory = [...(existingDraft?.optimizeHistory ?? [])];
@@ -291,15 +317,21 @@ export class LlmService {
         warnings: optimized.warnings,
         optimizedAt: new Date().toISOString(),
         scoreBefore: meta.scoreBefore ?? meta.localScore,
+        predictedSemrushBefore:
+          meta.calibratedLocalAlign === true && typeof meta.predictedSemrush === 'number'
+            ? meta.predictedSemrush
+            : undefined,
       });
     }
 
+    const h1Title = optimized.content.match(/^#\s+(.+)$/m)?.[1]?.trim();
     await this.prisma.articleJob.update({
       where: { id: ctx.jobId },
       data: {
         draftData: {
           ...existingDraft,
           content: optimized.content,
+          ...(meta?.titlePriority === true && h1Title ? { title: h1Title } : {}),
           promptVersion: optimized.promptVersion,
           optimizeHistory,
         } as object,
@@ -423,6 +455,8 @@ export class LlmService {
       | 'rolledBack'
       | 'candidateScoreAfter'
       | 'candidateLocalScoreAfter'
+      | 'predictedSemrushAfter'
+      | 'candidatePredictedSemrush'
       | 'rollbackReason'
     >,
   ): Promise<void> {

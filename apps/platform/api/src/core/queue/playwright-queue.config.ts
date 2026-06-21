@@ -12,6 +12,7 @@ export interface PlaywrightQueueOptions {
   concurrency: number;
   limiter: { max: number; duration: number };
   jobTimeoutMs: number;
+  jobGraceMs: number;
 }
 
 export function isPlaywrightQueueEnabled(): boolean {
@@ -25,13 +26,16 @@ export function readPlaywrightQueueOptions(): PlaywrightQueueOptions {
     process.env.PLAYWRIGHT_QUEUE_RATE_LIMIT_DURATION_MS,
     60_000,
   );
-  /** Semrush RPA 含导航+设词+分析，最坏可超 3min；默认 6min 避免 BullMQ 先杀 worker */
-  const jobTimeoutMs = parsePositiveInt(process.env.PLAYWRIGHT_QUEUE_JOB_TIMEOUT_MS, 360_000);
+  /** Semrush RPA 含导航+设词+侧栏抓取，单次最坏可超 6min；默认 10min 主等待 */
+  const jobTimeoutMs = parsePositiveInt(process.env.PLAYWRIGHT_QUEUE_JOB_TIMEOUT_MS, 600_000);
+  /** 主等待超时后 RPA 仍 active 时的续等宽限（不 cancel Worker） */
+  const jobGraceMs = parsePositiveInt(process.env.PLAYWRIGHT_QUEUE_JOB_GRACE_MS, 180_000);
 
   return {
     concurrency,
     limiter: { max: limitMax, duration: limitDuration },
     jobTimeoutMs,
+    jobGraceMs,
   };
 }
 

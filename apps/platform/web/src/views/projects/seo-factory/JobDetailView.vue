@@ -20,6 +20,7 @@
             >
               重新生成
             </el-button>
+            <el-button type="danger" :loading="deleting" @click="handleDelete">删除任务</el-button>
             <el-button @click="goBack">返回列表</el-button>
           </div>
         </div>
@@ -203,7 +204,7 @@
               <el-descriptions-item label="本地预检">
                 <el-tag
                   v-if="effectiveLocalSeoScore != null"
-                  :type="effectiveLocalSeoScore >= LOCAL_SEO_PASS_THRESHOLD ? 'success' : 'warning'"
+                  :type="effectiveLocalSeoScore >= localPassThreshold ? 'success' : 'warning'"
                   size="small"
                 >
                   {{ effectiveLocalSeoScore }} / 100
@@ -273,6 +274,9 @@
             :semrush-score="job.semrushScore"
             :seo-check-data="job.seoCheckData"
             :optimize-history="job.draftData?.optimizeHistory"
+            :local-pass-threshold="localPassThreshold"
+            :semrush-pass-threshold="semrushPassThreshold"
+            :local-align-enabled="job.siteWorkflow?.scoreCalibrationLocalAlign === true"
             :local-score-stale="draftStaleness?.affected?.localSeo"
             :semrush-score-stale="draftStaleness?.affected?.semrush"
             :can-check="hasDraftContent"
@@ -333,6 +337,8 @@
             :saving="draftSaving"
             :can-save="canSaveDraftEdit"
             :edit-blocked-reason="draftEditBlockedReason"
+            :content-score-snapshot="job.seoCheckData?.contentScore"
+            @content-scored="fetchOnce"
             @save="handleQuickSave"
             @save-preview="handleSaveAndPreview"
             @save-advanced="() => openDraftSaveDialog(false)"
@@ -443,6 +449,7 @@ import {
   acceptArticleRewrite,
   cancelSemrushCheck,
   discardArticleRewrite,
+  deleteArticleJob,
   downloadArticleExportHtml,
   downloadArticleExportJsonLd,
   downloadArticleExportPackage,
@@ -478,7 +485,7 @@ import { useArticleJobPolling } from "@/composables/seo-factory/useArticleJobPol
 import { WORDPRESS_CMS_UI_ENABLED } from "@/constants/feature-flags";
 import { message } from "@/utils/message";
 import { jobStatusDict, keywordIntentDict } from "@/constants/dicts/seo-factory";
-import { LOCAL_SEO_PASS_THRESHOLD } from "@/constants/seo-factory";
+import { LOCAL_SEO_PASS_THRESHOLD, SEMRUSH_PASS_THRESHOLD } from "@/constants/seo-factory";
 import { dictLabel, dictTagType } from "@/utils/dict";
 import { canPublishJobToCms, cmsPublishActionLabel } from "@/utils/seo-factory/cms-publish-status";
 import { workflowStepLabel } from "@/utils/seo-factory/workflow-progress";
@@ -524,6 +531,7 @@ const { job, loading, polling, fetchOnce, startPolling } = useArticleJobPolling(
 
 const semrushChecking = ref(false);
 const retrying = ref(false);
+const deleting = ref(false);
 const rerunningOptimization = ref(false);
 const rerunningParaphrase = ref(false);
 const serpRefreshing = ref(false);
@@ -682,6 +690,20 @@ const workflowProgress = computed(
 
 const effectiveLocalSeoScore = computed(() => resolveEffectiveLocalSeoScore(job.value));
 
+const localPassThreshold = computed(
+  () =>
+    job.value?.siteWorkflow?.localPassThreshold ??
+    job.value?.seoCheckData?.scoreThresholds?.localPassThreshold ??
+    LOCAL_SEO_PASS_THRESHOLD
+);
+
+const semrushPassThreshold = computed(
+  () =>
+    job.value?.siteWorkflow?.semrushPassThreshold ??
+    job.value?.seoCheckData?.scoreThresholds?.semrushPassThreshold ??
+    SEMRUSH_PASS_THRESHOLD
+);
+
 const displayErrorMessage = computed(() => resolveJobDisplayErrorMessage(job.value));
 
 const ymylReview = computed(() => job.value?.seoCheckData?.ymylReview ?? null);
@@ -699,7 +721,10 @@ const publishChecklistItems = computed(() =>
     outputUrl: job.value?.outputUrl,
     ymylReview: ymylReview.value,
     semrushRunning: isSemrushChecking.value,
-    resolvingAction: draftResolving.value
+    resolvingAction: draftResolving.value,
+    contentScore: job.value?.seoCheckData?.contentScore,
+    draftContent: job.value?.draftData?.content ?? "",
+    reduceRpaEnabled: job.value?.seoCheckData?.calibration?.reduceRpaEnabled === true
   })
 );
 
@@ -971,6 +996,36 @@ async function handleRetry() {
     message(msg, { type: "error" });
   } finally {
     retrying.value = false;
+  }
+}
+
+async function handleDelete() {
+  if (!job.value || deleting.value) return;
+
+  const inProgress = job.value.status !== "FAILED" && job.value.status !== "COMPLETED";
+  let confirmText = `确定删除任务「${job.value.targetKeyword}」？删除后不可恢复，将一并清理队列、导出文件与稿件插图。`;
+  if (inProgress) {
+    confirmText += "\n\n该任务仍在进行中，删除后后台可能短暂报错，可忽略。";
+  }
+
+  try {
+    await ElMessageBox.confirm(confirmText, "删除任务", {
+      type: "warning",
+      confirmButtonText: "删除",
+      cancelButtonText: "取消",
+      confirmButtonClass: "el-button--danger"
+    });
+  } catch {
+    return;
+  }
+
+  deleting.value = true;
+  try {
+    await deleteArticleJob(projectId.value, jobId.value);
+    message("任务已删除", { type: "success" });
+    goBack();
+  } finally {
+    deleting.value = false;
   }
 }
 

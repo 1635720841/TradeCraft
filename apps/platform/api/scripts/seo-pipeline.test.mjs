@@ -16,6 +16,7 @@ const scorePath = pathToFileURL(
 
 const {
   canResumeSemrushOptimization,
+  isSemrushSurgicalTier,
   resolveLocalOptimizeRoundCap,
   resolveSemrushOptimizeRoundCap,
   shouldAcceptLocalCandidate,
@@ -176,6 +177,43 @@ describe('shouldAcceptSemrushCandidate', () => {
       shouldAcceptSemrushCandidate({ ...base, candidateOverall: 8.5, bestOverall: 8.8 }),
       false,
     );
+  });
+
+  it('accepts surgical-tier complex word improvement within band', () => {
+    assert.equal(
+      shouldAcceptSemrushCandidate({
+        candidateOverall: 8.75,
+        bestOverall: 8.9,
+        candidateMissingKeywordCount: 2,
+        bestMissingKeywordCount: 2,
+        readabilityImproved: false,
+        candidateComplexWordHits: 1,
+        bestComplexWordHits: 4,
+      }),
+      true,
+    );
+  });
+
+  it('accepts surgical-tier hard sentence improvement within band', () => {
+    assert.equal(
+      shouldAcceptSemrushCandidate({
+        candidateOverall: 8.78,
+        bestOverall: 8.9,
+        candidateMissingKeywordCount: 2,
+        bestMissingKeywordCount: 2,
+        readabilityImproved: false,
+        candidateHardSentenceHits: 1,
+        bestHardSentenceHits: 3,
+      }),
+      true,
+    );
+  });
+});
+
+describe('isSemrushSurgicalTier', () => {
+  it('activates at 8.8+', () => {
+    assert.equal(isSemrushSurgicalTier(8.8), true);
+    assert.equal(isSemrushSurgicalTier(8.79), false);
   });
 });
 

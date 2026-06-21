@@ -196,3 +196,12 @@ See a doctor if signs of infection appear.`;
     assert.equal(result.breakdown.keywordCoverage, 25);
   });
 });
+
+describe('Semrush-aligned readability cap', () => {
+  it('does not give full readability when complex words remain', () => {
+    const content = `# Smart BMS Guide\n\n## Overview\n\nTraceability and serviceability matter for smart bms teams.\n\n## Features\n\n- Item one\n- Item two\n\n## More\n\n## End\n\n## FAQ`;
+    const result = scoreLocalSeo({ keyword: 'smart bms', content, targetWordCount: 1200 });
+    assert.ok((result.metrics.semrushComplexWordHits ?? 0) > 0);
+    assert.ok(result.breakdown.readability <= 16);
+  });
+});

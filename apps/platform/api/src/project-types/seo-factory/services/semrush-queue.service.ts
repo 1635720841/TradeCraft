@@ -23,6 +23,7 @@ import {
   readPlaywrightQueueOptions,
 } from '../../../core/queue/playwright-queue.config';
 import { LoggerService } from '../../../core/logger/logger.service';
+import { waitForPlaywrightJobResult } from '../utils/semrush-queue-wait.util';
 
 export interface SemrushQueueMeta {
   traceId: string;
@@ -84,7 +85,23 @@ export class SemrushQueueService implements OnModuleInit, OnModuleDestroy {
       bullJobId: bullJob.id,
     });
 
-    const result = await bullJob.waitUntilFinished(this.queueEvents, this.options.jobTimeoutMs);
+    const result = await waitForPlaywrightJobResult(
+      bullJob,
+      this.queue,
+      this.queueEvents,
+      {
+        primaryTimeoutMs: this.options.jobTimeoutMs,
+        graceTimeoutMs: this.options.jobGraceMs,
+      },
+      (graceMeta) => {
+        this.logger.warn('Semrush queue primary wait timed out, grace wait started', {
+          traceId: meta.traceId,
+          jobId: meta.jobId,
+          action: 'semrush_queue.grace_wait',
+          ...graceMeta,
+        });
+      },
+    );
     return result as SeoScore;
   }
 }

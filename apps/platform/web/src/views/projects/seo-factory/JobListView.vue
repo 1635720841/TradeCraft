@@ -42,6 +42,7 @@
               />
             </el-select>
             <el-tag v-if="polling" type="info" size="small">自动刷新中</el-tag>
+            <el-button @click="goContentScore">内容评分</el-button>
             <el-button @click="goSites">站点</el-button>
             <el-button @click="() => fetchJobs()">刷新</el-button>
             <el-button type="primary" @click="goCreate">新建任务</el-button>
@@ -100,6 +101,14 @@
           @click="handleBatchExport"
         >
           批量导出{{ exportableSelected.length ? `（${exportableSelected.length}）` : "" }}
+        </el-button>
+        <el-button
+          size="small"
+          type="danger"
+          :loading="batchDeleting"
+          @click="handleBatchDelete"
+        >
+          批量删除（{{ selectedJobs.length }}）
         </el-button>
       </div>
 
@@ -162,7 +171,7 @@
             <ArticleJobProgressStepper :job="row as ArticleJobItem" compact />
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="240" fixed="right">
+        <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link @click="goDetail(row.id)">详情</el-button>
             <el-button
@@ -209,6 +218,14 @@
               @click="handlePublish((row as ArticleJobItem).id)"
             >
               推送
+            </el-button>
+            <el-button
+              type="danger"
+              link
+              :loading="deletingId === (row as ArticleJobItem).id"
+              @click="handleDelete((row as ArticleJobItem).id, (row as ArticleJobItem).targetKeyword)"
+            >
+              删除
             </el-button>
           </template>
         </el-table-column>
@@ -265,9 +282,11 @@ import {
   approveArticleBrief,
   approveArticleReview,
   batchApproveArticleBriefs,
+  batchDeleteArticleJobs,
   batchExportArticleJobs,
   batchPublishArticleJobs,
   batchRetryArticleJobs,
+  deleteArticleJob,
   listArticleJobs,
   publishArticleJob,
   rejectArticleReview,
@@ -311,6 +330,8 @@ const batchRetrying = ref(false);
 const batchBriefApproving = ref(false);
 const batchPublishing = ref(false);
 const batchExporting = ref(false);
+const batchDeleting = ref(false);
+const deletingId = ref<string | null>(null);
 const approvingBriefId = ref<string | null>(null);
 const reviewDialogVisible = ref(false);
 const reviewDialogAction = ref<"approve" | "reject">("approve");
@@ -631,6 +652,86 @@ async function handleBatchExport() {
   }
 }
 
+function buildDeleteConfirmMessage(keyword: string, inProgress: boolean): string {
+  const base = `确定删除任务「${keyword}」？删除后不可恢复，将一并清理队列任务、导出文件与稿件插图。`;
+  return inProgress ? `${base}\n\n该任务仍在进行中，删除后后台可能短暂报错，可忽略。` : base;
+}
+
+async function confirmDelete(keyword: string, inProgress: boolean): Promise<boolean> {
+  try {
+    await ElMessageBox.confirm(buildDeleteConfirmMessage(keyword, inProgress), "删除任务", {
+      type: "warning",
+      confirmButtonText: "删除",
+      cancelButtonText: "取消",
+      confirmButtonClass: "el-button--danger"
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isJobInProgress(status: string): boolean {
+  return !JOB_TERMINAL_STATUSES.includes(status as (typeof JOB_TERMINAL_STATUSES)[number]);
+}
+
+async function handleDelete(jobId: string, targetKeyword: string) {
+  const row = jobs.value.find((item) => item.id === jobId);
+  const confirmed = await confirmDelete(targetKeyword, row ? isJobInProgress(row.status) : false);
+  if (!confirmed) return;
+
+  deletingId.value = jobId;
+  try {
+    await deleteArticleJob(projectId, jobId);
+    message("任务已删除", { type: "success" });
+    await fetchJobs(false);
+  } finally {
+    deletingId.value = null;
+  }
+}
+
+async function handleBatchDelete() {
+  if (selectedJobs.value.length === 0) return;
+
+  const inProgressCount = selectedJobs.value.filter((job) => isJobInProgress(job.status)).length;
+  const keywordPreview = selectedJobs.value
+    .slice(0, 3)
+    .map((job) => job.targetKeyword)
+    .join("、");
+  const suffix =
+    selectedJobs.value.length > 3 ? ` 等 ${selectedJobs.value.length} 项` : "";
+  let messageText = `确定删除 ${selectedJobs.value.length} 个任务（${keywordPreview}${suffix}）？删除后不可恢复。`;
+  if (inProgressCount > 0) {
+    messageText += `\n\n其中 ${inProgressCount} 个仍在进行中。`;
+  }
+
+  try {
+    await ElMessageBox.confirm(messageText, "批量删除任务", {
+      type: "warning",
+      confirmButtonText: "删除",
+      cancelButtonText: "取消",
+      confirmButtonClass: "el-button--danger"
+    });
+  } catch {
+    return;
+  }
+
+  batchDeleting.value = true;
+  try {
+    const result = await batchDeleteArticleJobs(
+      projectId,
+      selectedJobs.value.map((job) => job.id)
+    );
+    message(`已删除 ${result.deleted} 个任务${result.failed ? `，${result.failed} 个失败` : ""}`, {
+      type: result.deleted > 0 ? "success" : "warning"
+    });
+    tableRef.value?.clearSelection();
+    await fetchJobs(false);
+  } finally {
+    batchDeleting.value = false;
+  }
+}
+
 function clearListFilter() {
   listFilter.value = "all";
   router.replace({
@@ -745,6 +846,13 @@ function goDetail(jobId: string) {
 function goSites() {
   router.push({
     name: "SeoFactorySites",
+    params: { projectId }
+  });
+}
+
+function goContentScore() {
+  router.push({
+    name: "SeoFactoryContentScore",
     params: { projectId }
   });
 }

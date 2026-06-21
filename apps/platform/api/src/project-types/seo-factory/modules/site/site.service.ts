@@ -27,6 +27,7 @@ import {
 } from './site-cms.util';
 import { normalizeSiteDomain } from './site-domain.util';
 import { parseSiteWorkflowSettings } from '../../constants/brief-approval';
+import { resolveSiteSeoScoreConfig } from '../../constants/site-seo-score-settings';
 import {
   mergeSiteContentProfile,
   parseSiteSettings,
@@ -392,6 +393,43 @@ export class SiteService {
       requireBriefApproval:
         workflow?.requireBriefApproval ?? existing.requireBriefApproval ?? false,
       enableParaphrase: workflow?.enableParaphrase ?? existing.enableParaphrase ?? true,
+      enableIllustration: workflow?.enableIllustration ?? existing.enableIllustration ?? true,
+      scoreCalibrationShadow:
+        workflow?.scoreCalibrationShadow ?? existing.scoreCalibrationShadow ?? true,
+      scoreCalibrationReduceRpa:
+        workflow?.scoreCalibrationReduceRpa ?? existing.scoreCalibrationReduceRpa ?? false,
+      scoreCalibrationLocalAlign:
+        workflow?.scoreCalibrationLocalAlign ?? existing.scoreCalibrationLocalAlign ?? false,
+      ...(workflow?.localPassThreshold !== undefined
+        ? { localPassThreshold: workflow.localPassThreshold }
+        : existing.localPassThreshold !== undefined
+          ? { localPassThreshold: existing.localPassThreshold }
+          : {}),
+      ...(workflow?.semrushPassThreshold !== undefined
+        ? { semrushPassThreshold: workflow.semrushPassThreshold }
+        : existing.semrushPassThreshold !== undefined
+          ? { semrushPassThreshold: existing.semrushPassThreshold }
+          : {}),
+      ...(workflow?.localMaxOptimizeRounds !== undefined
+        ? { localMaxOptimizeRounds: workflow.localMaxOptimizeRounds }
+        : existing.localMaxOptimizeRounds !== undefined
+          ? { localMaxOptimizeRounds: existing.localMaxOptimizeRounds }
+          : {}),
+      ...(workflow?.localRetryExtraRounds !== undefined
+        ? { localRetryExtraRounds: workflow.localRetryExtraRounds }
+        : existing.localRetryExtraRounds !== undefined
+          ? { localRetryExtraRounds: existing.localRetryExtraRounds }
+          : {}),
+      ...(workflow?.semrushMaxOptimizeRounds !== undefined
+        ? { semrushMaxOptimizeRounds: workflow.semrushMaxOptimizeRounds }
+        : existing.semrushMaxOptimizeRounds !== undefined
+          ? { semrushMaxOptimizeRounds: existing.semrushMaxOptimizeRounds }
+          : {}),
+      ...(workflow?.semrushRetryExtraRounds !== undefined
+        ? { semrushRetryExtraRounds: workflow.semrushRetryExtraRounds }
+        : existing.semrushRetryExtraRounds !== undefined
+          ? { semrushRetryExtraRounds: existing.semrushRetryExtraRounds }
+          : {}),
       ...(nextProfile ? { contentProfile: nextProfile } : {}),
       ...(nextSerpResearch ? { serpResearch: nextSerpResearch } : {}),
     } as unknown as Prisma.InputJsonValue;
@@ -487,7 +525,10 @@ export class SiteService {
       contentLanguage: site.contentLanguage,
       cmsType: cms.cmsType,
       cmsConfig: cms.cmsConfig,
-      workflow: parseSiteWorkflowSettings(site.settings),
+      workflow: {
+        ...parseSiteWorkflowSettings(site.settings),
+        ...resolveSiteSeoScoreConfig(site.settings),
+      },
       contentProfile: parseSiteSettings(site.settings).contentProfile,
       serpResearch: parseSiteSettings(site.settings).serpResearch,
       createdAt: site.createdAt,

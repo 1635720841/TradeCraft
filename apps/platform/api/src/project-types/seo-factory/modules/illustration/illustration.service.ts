@@ -12,6 +12,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { IMAGE_PROVIDER, type IImageProvider } from '@wm/provider-interfaces';
 import { PrismaService } from '../../../../core/database/prisma.service';
 import { LoggerService } from '../../../../core/logger/logger.service';
+import { parseSiteWorkflowSettings } from '../../constants/brief-approval';
 import { SWA_MIN_IMAGES } from '../../constants/swa-content';
 import {
   buildArticleImageAlt,
@@ -40,10 +41,25 @@ export class IllustrationService {
   async enrichImagesForJob(ctx: IllustrationJobContext): Promise<void> {
     const job = await this.prisma.articleJob.findFirst({
       where: { id: ctx.jobId, organizationId: ctx.organizationId, projectId: ctx.projectId },
-      select: { draftData: true },
+      select: { draftData: true, site: { select: { settings: true } } },
     });
 
-    const draftData = (job?.draftData ?? {}) as {
+    if (!job) {
+      this.logger.warn('Skip illustration: job not found', {
+        traceId: ctx.traceId,
+        jobId: ctx.jobId,
+        action: 'illustration.skip_job_missing',
+      });
+      return;
+    }
+
+    const siteWorkflow = parseSiteWorkflowSettings(job.site?.settings);
+    if (!siteWorkflow.enableIllustration) {
+      await this.markSkipped(ctx, job.draftData);
+      return;
+    }
+
+    const draftData = (job.draftData ?? {}) as {
       content?: string;
       articleImages?: ArticleImageRecord[];
       imagesApplied?: boolean;
@@ -150,6 +166,27 @@ export class IllustrationService {
     }
 
     return Array.from({ length: count }, (_item, index) => headings[index % headings.length] ?? headings[0] ?? '');
+  }
+
+  private async markSkipped(ctx: IllustrationJobContext, draftData: unknown): Promise<void> {
+    const existingDraft = (draftData ?? {}) as Record<string, unknown>;
+
+    await this.prisma.articleJob.update({
+      where: { id: ctx.jobId },
+      data: {
+        draftData: {
+          ...existingDraft,
+          imagesApplied: true,
+        } as object,
+      },
+    });
+
+    this.logger.info('Article illustration skipped', {
+      traceId: ctx.traceId,
+      jobId: ctx.jobId,
+      action: 'illustration.skipped',
+      reason: '站点已关闭自动配图',
+    });
   }
 
   private async markImagesApplied(

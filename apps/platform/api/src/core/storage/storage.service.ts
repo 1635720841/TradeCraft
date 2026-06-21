@@ -31,6 +31,14 @@ export class StorageService {
     return this.localStorage.getObject(key);
   }
 
+  /** 删除 key 前缀下所有对象 */
+  async deleteByPrefix(prefix: string): Promise<number> {
+    if (this.s3Storage) {
+      return this.s3Storage.deleteByPrefix(prefix);
+    }
+    return this.localStorage.deleteByPrefix(prefix);
+  }
+
   /** 当前是否使用 S3（供日志/诊断） */
   isUsingS3(): boolean {
     return Boolean(this.s3Storage);

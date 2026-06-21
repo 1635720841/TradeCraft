@@ -25,7 +25,7 @@ import {
   type WorkflowResumeStep,
 } from '../../constants/workflow-resume';
 import { enrichBrandVoiceForPrompt } from '../../constants/site-settings';
-import { isBriefApprovalPending } from '../../constants/brief-approval';
+import { isBriefApprovalPending, parseSiteWorkflowSettings } from '../../constants/brief-approval';
 import { resolveSerpResearchOptions } from '../../constants/serp-research-settings';
 import { ContentReviewService } from '../content-review/content-review.service';
 import { IllustrationService } from '../illustration/illustration.service';
@@ -100,6 +100,7 @@ export class WorkflowService {
     };
 
     const siteId = job.site.id;
+    const siteWorkflow = parseSiteWorkflowSettings(job.site.settings);
     const startIdx = WORKFLOW_STEPS.indexOf(resumeFrom);
     const steps: Record<WorkflowResumeStep, () => Promise<void>> = {
       serp: async () => {
@@ -139,6 +140,17 @@ export class WorkflowService {
         });
       },
       images: async () => {
+        if (!siteWorkflow.enableIllustration) {
+          await this.illustrationService.enrichImagesForJob({
+            jobId: ctx.jobId,
+            traceId: ctx.traceId,
+            organizationId: ctx.organizationId,
+            projectId: ctx.projectId,
+            siteId,
+            targetKeyword: ctx.targetKeyword,
+          });
+          return;
+        }
         await this.updateStatus(jobId, 'ILLUSTRATING');
         await this.illustrationService.enrichImagesForJob({
           jobId: ctx.jobId,

@@ -122,6 +122,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     if (exception instanceof Error) {
+      if (exception.name === 'PayloadTooLargeError') {
+        return {
+          status: HttpStatus.PAYLOAD_TOO_LARGE,
+          code: ErrorCodes.PAYLOAD_TOO_LARGE,
+          message: '请求体过大，请缩短正文后重试（单篇建议不超过 20 万字符）',
+        };
+      }
+
       return {
         status: HttpStatus.INTERNAL_SERVER_ERROR,
         code: ErrorCodes.UNKNOWN,
@@ -142,6 +150,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     if (status === HttpStatus.NOT_FOUND) return ErrorCodes.NOT_FOUND;
     if (status === HttpStatus.BAD_REQUEST) return ErrorCodes.VALIDATION_ERROR;
     if (status === HttpStatus.TOO_MANY_REQUESTS) return ErrorCodes.RATE_LIMIT_EXCEEDED;
+    if (status === HttpStatus.PAYLOAD_TOO_LARGE) return ErrorCodes.PAYLOAD_TOO_LARGE;
     return ErrorCodes.UNKNOWN;
   }
 
@@ -184,6 +193,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     if (exception instanceof HttpException && ctx.status < 500) {
       this.logger.warn('HTTP 异常', payload);
+      return;
+    }
+
+    if (exception instanceof Error && exception.name === 'PayloadTooLargeError') {
+      this.logger.warn('请求体过大', { ...payload, action: 'exception.payload_too_large' });
       return;
     }
 

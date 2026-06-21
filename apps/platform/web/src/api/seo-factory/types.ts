@@ -115,6 +115,10 @@ export interface ArticleJobOptimizeRound {
   optimizedAt: string;
   scoreBefore?: number;
   scoreAfter?: number;
+  /** 本地对齐轮：校准预测 Semrush（0–10） */
+  predictedSemrushBefore?: number;
+  predictedSemrushAfter?: number;
+  candidatePredictedSemrush?: number;
   localScoreAfter?: number;
   breakdownAfter?: ArticleJobOptimizeRoundBreakdown;
   /** 改分下降，已回滚到历史最优稿 */
@@ -124,7 +128,7 @@ export interface ArticleJobOptimizeRound {
   /** Semrush 轮回滚时候选稿本地分 */
   candidateLocalScoreAfter?: number;
   /** 回滚原因 */
-  rollbackReason?: "score_regressed" | "local_below_threshold" | "both";
+  rollbackReason?: "score_regressed" | "predicted_semrush_regressed" | "keyword_coverage_regressed" | "local_below_threshold" | "both";
 }
 
 export type ArticleJobRewriteMode = "suggestions" | "instruction";
@@ -322,9 +326,86 @@ export interface ArticleJobWorkflowMeta {
   failedStep?: ArticleJobWorkflowStep;
 }
 
+export interface ArticleJobSeoAnalysisSnapshot {
+  id: string;
+  kind: "local_checkpoint" | "semrush_check" | "semrush_manual_check";
+  checkedAt: string;
+  round?: number;
+  title: string;
+  targetKeyword: string;
+  submittedKeywords?: string[];
+  contentHash: string;
+  contentWordCount: number;
+  contentPreview: string;
+  content?: string;
+  localScore?: number;
+  localBreakdown?: {
+    keywordCoverage: number;
+    serpTermAlignment: number;
+    structure: number;
+    readability?: number;
+    contentDepth: number;
+  };
+  localMetrics?: {
+    wordCount: number;
+    keywordDensity: number;
+    matchedSerpTerms: number;
+    totalSerpTerms: number;
+    h2Count: number;
+    longSentencesOver22?: number;
+    longParagraphsOver65?: number;
+    passiveVoiceHits?: number;
+    fleschReadingEase?: number;
+    fleschTarget?: number;
+    casualSentenceHits?: number;
+    semrushComplexWordHits?: number;
+    hardToReadSentenceHits?: number;
+  };
+  localSuggestions?: string[];
+  semrushOverall?: number;
+  semrushNode?: string;
+  semrushNodeLabel?: string;
+  semrushSuggestions?: string[];
+  suggestionDetails?: {
+    readability?: string[];
+    seo?: string[];
+    tone?: string[];
+    originality?: string[];
+  };
+  actionableIssues?: Array<{
+    category: "readability" | "seo" | "tone" | "originality";
+    rule: string;
+    label: string;
+    quotes?: string[];
+    terms?: string[];
+  }>;
+  semrushReadabilityScore?: number;
+  semrushCurrentWordCount?: number;
+  semrushCompetitorWordCount?: number;
+  domScore?: number;
+  apiScore?: number;
+  analysisSource?: "api" | "dom" | "mixed";
+  semrushEvaluationRoute?: string;
+  /** Semrush RPA 实际完成时间 */
+  rpaCheckedAt?: string;
+  /** 优化候选稿未采纳（已回滚） */
+  rolledBack?: boolean;
+}
+
+export interface ArticleJobScoreThresholds {
+  localPassThreshold: number;
+  semrushPassThreshold: number;
+  localMaxOptimizeRounds?: number;
+  localRetryExtraRounds?: number;
+  semrushMaxOptimizeRounds?: number;
+  semrushRetryExtraRounds?: number;
+}
+
 export interface ArticleJobSeoCheckData {
   workflowProgress?: ArticleJobWorkflowProgress | null;
   workflow?: ArticleJobWorkflowMeta;
+  /** 任务跑分时的站点门槛快照（与 siteWorkflow 一致时优先读 siteWorkflow） */
+  scoreThresholds?: ArticleJobScoreThresholds;
   optimizeHistory?: ArticleJobOptimizeRound[];
   optimizationRerun?: {
     reason: "gsc_underperform" | "manual";
@@ -356,12 +437,21 @@ export interface ArticleJobSeoCheckData {
       /** 语气随意句命中数（对齐 Semrush Tone 侧栏） */
       casualSentenceHits?: number;
       casualSentenceSamples?: Array<{ text: string; reason: string }>;
+      /** Semrush 复杂词命中数（本地镜像） */
+      semrushComplexWordHits?: number;
+      semrushComplexWordSamples?: Array<{ term: string; suggestion: string }>;
+      /** Semrush 难读句命中数（本地镜像） */
+      hardToReadSentenceHits?: number;
+      hardToReadSentenceSamples?: Array<{ text: string; wordCount: number; reasons: string[] }>;
       longSentenceSamples?: Array<{ text: string; wordCount: number }>;
       longParagraphSamples?: Array<{ text: string; wordCount: number }>;
     };
     optimizeRounds?: number;
-    /** 是否已达本地预检门槛（≥95），通过后才可 Semrush 终检 */
+    /** 是否已达本地预检门槛，通过后才可 Semrush 终检 */
     passed?: boolean;
+    /** 校准预测 Semrush（gateMode=calibrated 时进门闸依据） */
+    predictedSemrush?: number;
+    gateMode?: "legacy" | "calibrated";
     passedAt?: string;
     refreshedAt?: string;
   };
@@ -407,10 +497,55 @@ export interface ArticleJobSeoCheckData {
     semrushEvaluationRoute?: string;
     /** Semrush 实际评测的文章指纹（标题/首行+词数） */
     semrushEvaluationContentFingerprint?: string;
+    /** 可复现检测包（正文 hash、节点、DOM/API 分） */
+    semrushCheckRecord?: {
+      contentHash: string;
+      submittedKeywords?: string[];
+      nodeKey?: string;
+      checkedAt: string;
+      domScore?: number;
+      apiScore?: number;
+      currentWordCount?: number;
+      competitorWordCount?: number;
+    };
   };
   quillbot?: ArticleJobQuillbotResult;
   cmsPublish?: CmsPublishResult;
   ymylReview?: ArticleJobYmylReview;
+  /** append-only 检测快照，供分析与训练 */
+  analysisSnapshots?: ArticleJobSeoAnalysisSnapshot[];
+  /** 最近一次内容评分（改稿侧栏 / M6 流水线） */
+  contentScore?: ArticleJobContentScoreSnapshot;
+  /** M6 校准运行时摘要 */
+  calibration?: {
+    shadowEnabled?: boolean;
+    reduceRpaEnabled?: boolean;
+    modelSampleCount?: number;
+    modelMae?: number | null;
+    modelTrainMae?: number | null;
+    proxyUsed?: boolean;
+    rpaSkippedCount?: number;
+  };
+}
+
+export interface ArticleJobContentScoreSnapshot {
+  overall: number;
+  passed: boolean;
+  passThreshold: number;
+  pointsToGo: number;
+  confidence: "high" | "medium" | "low";
+  modelReady: boolean;
+  usedFallback: boolean;
+  localScore: number;
+  primaryNode: {
+    key: string;
+    label: string;
+    hint: string;
+  };
+  missingKeywordCount: number;
+  contentHash: string;
+  scoredAt: string;
+  source: "draft_editor" | "m6_pipeline" | "m6_proxy";
 }
 
 export interface ArticleJobQuillbotResult {
@@ -448,6 +583,7 @@ export interface ArticleJobItem {
   siteCmsType?: string | null;
   siteShopifyPublishTarget?: "blog" | "product" | null;
   siteContentProfile?: SiteContentProfile | null;
+  siteWorkflow?: SiteWorkflowSettings | null;
   seoCheckData?: ArticleJobSeoCheckData | null;
   outputUrl?: string | null;
   errorMessage?: string | null;
@@ -525,6 +661,26 @@ export function isShopifyCmsConfig(
 export interface SiteWorkflowSettings {
   requireBriefApproval?: boolean;
   enableParaphrase?: boolean;
+  /** 默认开启；仅显式 false 时跳过 BFL 自动配图 */
+  enableIllustration?: boolean;
+  /** M6 校准影子日志（默认开启） */
+  scoreCalibrationShadow?: boolean;
+  /** 高置信度降频 Semrush RPA（默认关闭） */
+  scoreCalibrationReduceRpa?: boolean;
+  /** 本地进门闸对齐 Semrush（默认关闭，需实验室 production_ready） */
+  scoreCalibrationLocalAlign?: boolean;
+  /** 本地预检通过线，默认 95 */
+  localPassThreshold?: number;
+  /** Semrush 终检通过线，默认 9.0 */
+  semrushPassThreshold?: number;
+  /** 本地优化最大轮次，默认 5 */
+  localMaxOptimizeRounds?: number;
+  /** 本地失败重试追加轮次，默认 3 */
+  localRetryExtraRounds?: number;
+  /** Semrush 优化最大轮次，默认 4 */
+  semrushMaxOptimizeRounds?: number;
+  /** Semrush 失败重试追加轮次，默认 4 */
+  semrushRetryExtraRounds?: number;
 }
 
 /** 管理员配置的搜索结果 / 竞品分析策略（按站点） */

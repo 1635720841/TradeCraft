@@ -415,6 +415,36 @@ export async function batchRetryArticleJobs(
   return res.data;
 }
 
+export interface BatchDeleteResult {
+  deleted: number;
+  failed: number;
+  results: BatchActionResultItem[];
+}
+
+/** 删除单个文章任务（含队列与稿件插图） */
+export async function deleteArticleJob(
+  projectId: string,
+  jobId: string
+): Promise<{ id: string; targetKeyword: string; deleted: true }> {
+  const res = await http.request<
+    WmApiResponse<{ id: string; targetKeyword: string; deleted: true }>
+  >("delete", `${projectBase(projectId)}/${jobId}`);
+  return res.data;
+}
+
+/** 批量删除文章任务 */
+export async function batchDeleteArticleJobs(
+  projectId: string,
+  jobIds: string[]
+): Promise<BatchDeleteResult> {
+  const res = await http.request<WmApiResponse<BatchDeleteResult>>(
+    "post",
+    `${projectBase(projectId)}/batch/delete`,
+    { data: { jobIds } }
+  );
+  return res.data;
+}
+
 export interface BatchBriefApproveResult {
   approved: number;
   failed: number;

@@ -11,6 +11,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Header,
   HttpCode,
@@ -50,6 +51,7 @@ import { ArticleJobService } from './article-job.service';
 import { CmsPublishService } from '../export/cms-publish.service';
 import { PublishArticleJobDto } from '../export/dto/publish-article-job.dto';
 import {
+  BatchDeleteArticleJobsDto,
   BatchPublishArticleJobsDto,
   BatchRetryArticleJobsDto,
 } from './dto/batch-article-jobs-actions.dto';
@@ -126,6 +128,23 @@ export class ArticleJobController {
       ctx.organizationId,
       projectId,
       dto.jobIds,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Post('batch/delete')
+  @HttpCode(HttpStatus.OK)
+  async batchDelete(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Body() dto: BatchDeleteArticleJobsDto,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const data = await this.articleJobService.batchRemove(
+      ctx.organizationId,
+      projectId,
+      dto.jobIds,
+      ctx.traceId,
     );
     return { data, meta: { traceId: ctx.traceId } };
   }
@@ -247,6 +266,23 @@ export class ArticleJobController {
     await this.projectService.assertAccessible(ctx.organizationId, projectId);
     const job = await this.articleJobService.findOne(ctx.organizationId, projectId, id);
     return { data: job, meta: { traceId: job.traceId } };
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.OK)
+  async remove(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const data = await this.articleJobService.remove(
+      ctx.organizationId,
+      projectId,
+      id,
+      ctx.traceId,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
   }
 
   @Post(':id/retry')

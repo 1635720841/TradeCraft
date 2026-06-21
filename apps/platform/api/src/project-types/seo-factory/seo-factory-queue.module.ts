@@ -10,10 +10,13 @@
 
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
-import { ARTICLE_JOB_QUEUE } from '../../core/queue/queue.constants';
+import { ARTICLE_JOB_QUEUE, PLAYWRIGHT_QUEUE } from '../../core/queue/queue.constants';
 
 @Module({
-  imports: [BullModule.registerQueue({ name: ARTICLE_JOB_QUEUE })],
+  imports: [
+    BullModule.registerQueue({ name: ARTICLE_JOB_QUEUE }),
+    BullModule.registerQueue({ name: PLAYWRIGHT_QUEUE }),
+  ],
   exports: [BullModule],
 })
 export class SeoFactoryQueueModule {}
