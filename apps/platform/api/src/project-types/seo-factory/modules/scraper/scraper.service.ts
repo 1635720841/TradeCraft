@@ -10,6 +10,7 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  filterUsableCompetitorSamples,
   filterSerpOrganicForSeoArticles,
   resolveSerpLocale,
   type SerpOrganicItem,
@@ -69,10 +70,13 @@ export class ScraperService {
     );
     const articlesOnly = ctx.serpArticlesOnly !== false;
     const minArticleCandidates = Math.max(ctx.minArticleCandidates ?? MIN_SERP_ARTICLE_CANDIDATES, 1);
-    const { filtered, meta } = filterSerpOrganicForSeoArticles(
+    // Fetch a wider candidate pool so failed pages can be discarded without
+    // unnecessarily shrinking the requested number of valid samples.
+    const candidateLimit = Math.min(limit * 2, MAX_SERP_ARTICLE_LIMIT);
+    const { filtered, meta: preScrapeMeta } = filterSerpOrganicForSeoArticles(
       (serpResult.organic ?? []) as SerpOrganicItem[],
       {
-        limit,
+        limit: candidateLimit,
         articlesOnly,
         minArticleCandidates,
       },
@@ -82,12 +86,27 @@ export class ScraperService {
       filtered,
       { traceId: ctx.traceId, jobId: ctx.jobId },
     );
+    const usableOrganic = scrapeMeta.skipped
+      ? enrichedOrganic
+      : filterUsableCompetitorSamples(enrichedOrganic);
+    const organic = usableOrganic.slice(0, limit);
+    const scrapeFailedExcluded = scrapeMeta.skipped
+      ? 0
+      : enrichedOrganic.length - usableOrganic.length;
+    const meta = {
+      ...preScrapeMeta,
+      kept: organic.length,
+      excluded: preScrapeMeta.total - organic.length,
+      limit,
+      articleKept: articlesOnly ? organic.length : preScrapeMeta.articleKept,
+      scrapeFailedExcluded,
+    };
 
     await this.prisma.articleJob.update({
       where: { id: ctx.jobId },
       data: {
         serpData: {
-          organic: enrichedOrganic,
+          organic,
           organicRaw: serpResult.organic,
           filterMeta: meta,
           competitorScrapeMeta: scrapeMeta,
@@ -110,6 +129,7 @@ export class ScraperService {
       serpLimit: limit,
       competitorScraped: scrapeMeta.succeeded,
       competitorScrapeFailed: scrapeMeta.failed,
+      competitorScrapeFailedExcluded: scrapeFailedExcluded,
     });
   }
 }

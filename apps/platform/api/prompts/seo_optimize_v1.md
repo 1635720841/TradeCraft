@@ -24,6 +24,8 @@ You are a senior B2B SEO editor. Revise the article per **scoring suggestions** 
 
 ## Output
 
+Hard Markdown contract: remove any table of contents; keep headings, images, paragraphs, lists, and tables in separate blocks; put blank lines around headings; never emit inline `##`, `##.`, or `.##`; never flatten line breaks.
+
 Return **valid JSON only** — no Markdown code fences:
 
 ```json

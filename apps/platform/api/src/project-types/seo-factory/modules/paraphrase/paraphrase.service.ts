@@ -15,6 +15,14 @@ import {
   type ParaphraseInput,
   type ParaphraseOutput,
 } from '@wm/provider-interfaces';
+import {
+  applyReadabilityParagraphFix,
+  enforceArticleH1Boundary,
+  SEMRUSH_PARAGRAPH_MAX_SENTENCES,
+  SEMRUSH_PARAGRAPH_MAX_WORDS,
+  validateAndFixSemrushStructure,
+  resolveSemrushWordCountHardCap,
+} from '@wm/shared-core';
 import { PrismaService } from '../../../../core/database/prisma.service';
 import { LoggerService } from '../../../../core/logger/logger.service';
 import { parseSiteWorkflowSettings } from '../../constants/brief-approval';
@@ -135,9 +143,21 @@ export class ParaphraseService {
 
     await this.setWorkflowProgress(ctx.jobId, job.seoCheckData, '正在执行原创表达优化…');
 
-    const paraphraseResult = shouldUseChunkedParaphrase(originalContent)
+    const rawParaphraseResult = shouldUseChunkedParaphrase(originalContent)
       ? await this.paraphraseByChunks(ctx, job.seoCheckData, originalContent, runContext)
       : await this.paraphraseWholeDocument(originalContent, runContext);
+    const originalTitle = originalContent.match(/^#\s+(.+)$/m)?.[1]?.trim();
+    const formatRepair = validateAndFixSemrushStructure(
+      enforceArticleH1Boundary(rawParaphraseResult.content, originalTitle),
+    );
+    const paraphraseResult = {
+      ...rawParaphraseResult,
+      content: formatRepair.content,
+      warnings: [
+        ...(rawParaphraseResult.warnings ?? []),
+        ...formatRepair.errors.map((error) => `format_repaired:${error}`),
+      ],
+    };
 
     await this.setWorkflowProgress(ctx.jobId, job.seoCheckData, '原创表达优化复检中…');
 
@@ -291,11 +311,17 @@ export class ParaphraseService {
 
   private async finalizeParaphrase(input: ParaphraseFinalizeInput): Promise<void> {
     const useOriginal = input.paraphrasedContent === input.originalContent;
+    const finalContent = applyReadabilityParagraphFix(input.paraphrasedContent, {
+      maxWords: SEMRUSH_PARAGRAPH_MAX_WORDS,
+      maxSentences: SEMRUSH_PARAGRAPH_MAX_SENTENCES,
+    });
+    const readabilityRepaired = finalContent !== input.paraphrasedContent;
     const allWarnings = [
       ...input.safetyIssues,
       ...input.validationWarnings,
       ...(input.paraphraseMeta.warnings ?? []),
       ...(input.regressionReason ? [input.regressionReason] : []),
+      ...(readabilityRepaired ? ['readability_repaired_before_save'] : []),
     ];
 
     const seoCheckData = {
@@ -324,7 +350,7 @@ export class ParaphraseService {
       data: {
         draftData: {
           ...input.draftData,
-          content: input.paraphrasedContent,
+          content: finalContent,
           paraphraseApplied: true,
           paraphraseOriginalContent: useOriginal ? undefined : input.originalContent,
         } as object,
@@ -342,6 +368,7 @@ export class ParaphraseService {
       chunksPolished: input.chunkStats?.polished,
       localScoreBefore: input.localScoreBefore,
       localScoreAfter: input.localScoreAfter,
+      readabilityRepaired,
     });
   }
 
@@ -361,7 +388,7 @@ export class ParaphraseService {
         : undefined;
     const cap =
       typeof competitor === 'number'
-        ? competitor + 50
+        ? resolveSemrushWordCountHardCap(competitor)
         : typeof current === 'number'
           ? current
           : undefined;

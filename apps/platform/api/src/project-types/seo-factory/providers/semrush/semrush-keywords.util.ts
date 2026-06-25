@@ -129,6 +129,27 @@ export function sanitizeSemrushKeywordGoal(
   return { keywords: keywords.slice(0, 30), dropped };
 }
 
+/** 正文 n-gram 提取噪声，不应进入 LLM 推荐词列表 */
+const WEAK_EXTRACTED_PREFIX_RE =
+  /^(so it|pack so|it can|not only by|as can|it turns|how the bms|at the same|more for evaluation|view of pack|guide to you|you can also|life for b2b|bms can slow|no two cells|gap is why|common buyer questions|quick selection checklist|related references|varies depending|final takeaways|toggle the table|wikipedia the free|browning hi power|fn high power)\b/i;
+
+export function isWeakExtractedPhrase(phrase: string): boolean {
+  const normalized = phrase.trim().toLowerCase();
+  if (!normalized) return true;
+  if (WEAK_EXTRACTED_PREFIX_RE.test(normalized)) return true;
+  const words = normalized.split(/\s+/).filter(Boolean);
+  if (words.length <= 3) {
+    if (words.includes('also') && words.includes('you')) return true;
+    if (words[0] === 'no' && words.length === 3) return true;
+    if (words.length === 3 && words[1] === 'can') return true;
+    if (normalized.includes(' for b2b')) return true;
+    if (words[0] === 'gap' && words[1] === 'is') return true;
+  }
+  if (normalized.includes('wikipedia')) return true;
+  if (normalized.includes('table of contents')) return true;
+  return false;
+}
+
 /** 供 seo-checker 合并推荐词时过滤（不含主关键词） */
 export function filterSemrushRecommendedKeywords(
   terms: string[],
@@ -144,6 +165,7 @@ export function filterSemrushRecommendedKeywords(
       if (!trimmed) continue;
       const key = trimmed.toLowerCase();
       if (key === main || seen.has(key)) continue;
+      if (WEAK_EXTRACTED_PREFIX_RE.test(trimmed)) continue;
       if (!isSemrushSpecificKeyword(trimmed, false)) continue;
       seen.add(key);
       result.push(trimmed);

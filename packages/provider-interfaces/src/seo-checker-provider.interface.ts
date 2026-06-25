@@ -26,6 +26,26 @@ export interface SemrushActionableIssue {
   terms?: string[];
 }
 
+/** 评分源无关的关键词覆盖快照（Semrush 关闭时 source=local） */
+export type SeoKeywordCoverageSource = 'semrush' | 'local' | 'brief';
+
+export interface SeoKeywordCoverageItem {
+  phrase: string;
+  covered: boolean;
+  frequency?: string;
+  difficulty?: number;
+  role: 'recommended' | 'extracted' | 'target';
+}
+
+export interface SeoKeywordCoverageSnapshot {
+  source: SeoKeywordCoverageSource;
+  recommended: SeoKeywordCoverageItem[];
+  missing: string[];
+  coveredCount: number;
+  totalCount: number;
+  coverageRate: number;
+}
+
 export interface SeoScore {
   overall: number;
   suggestions: string[];
@@ -41,6 +61,8 @@ export interface SeoScore {
   semrushMissingTargetKeywords?: string[];
   /** 正文中未出现的 SWA 推荐关键词（侧栏灰色 Tag） */
   semrushMissingRecommendedKeywords?: string[];
+  /** 统一关键词覆盖快照（API recommended_keywords + DOM 灰 Tag；Semrush 关闭时不写） */
+  keywordCoverage?: SeoKeywordCoverageSnapshot;
   /** Semrush 竞品标杆词数（recommendations.length） */
   semrushCompetitorWordCount?: number;
   /** Semrush 检测到的当前正文词数（original_length） */

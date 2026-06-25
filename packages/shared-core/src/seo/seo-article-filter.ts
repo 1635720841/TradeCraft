@@ -27,6 +27,29 @@ export interface SerpOrganicFilterMeta {
   articleKept?: number;
   /** 为凑够样本从其余搜索结果回补的条数 */
   backfillKept?: number;
+  /** Excluded because the result is a forum, Q&A, community, or other non-article page. */
+  nonArticleExcluded?: number;
+  /** Excluded after the competitor body could not be fetched or parsed. */
+  scrapeFailedExcluded?: number;
+}
+
+/** A competitor sample is analyzable only when body scraping produced usable content. */
+export function isUsableCompetitorSample<T extends { scraped?: { wordCount?: number; error?: string } }>(
+  item: T,
+): boolean {
+  const scraped = item.scraped;
+  return Boolean(
+    scraped &&
+      !scraped.error &&
+      typeof scraped.wordCount === 'number' &&
+      scraped.wordCount > 0,
+  );
+}
+
+export function filterUsableCompetitorSamples<
+  T extends { scraped?: { wordCount?: number; error?: string } },
+>(items: T[]): T[] {
+  return items.filter(isUsableCompetitorSample);
 }
 
 const EXCLUDE_HOST_FRAGMENTS = [
@@ -42,6 +65,12 @@ const EXCLUDE_HOST_FRAGMENTS = [
   'walmart.',
   'aliexpress.',
   'reddit.com',
+  'quora.com',
+  'stackoverflow.com',
+  'stackexchange.com',
+  'answers.',
+  'forum.',
+  'forums.',
 ];
 
 const EXCLUDE_PATH_FRAGMENTS = [
@@ -58,8 +87,21 @@ const EXCLUDE_PATH_FRAGMENTS = [
   '/category/',
   '/categories/',
   '/collection/',
+  '/service/',
+  '/services/',
+  '/solution/',
+  '/solutions/',
   '/search',
   '/wp-json',
+  '/forum/',
+  '/forums/',
+  '/thread/',
+  '/threads/',
+  '/topic/',
+  '/topics/',
+  '/community/',
+  '/questions/',
+  '/answers/',
   '.pdf',
   '.jpg',
   '.png',
@@ -83,6 +125,9 @@ const INCLUDE_PATH_FRAGMENTS = [
   '/how-to',
   '/howto/',
 ];
+
+const NON_ARTICLE_TITLE_PATTERN =
+  /(?:\||-|\u2013|\u2014)\s*[^|\u2013\u2014]*\b(?:forums?|community|discussion board|q\s*&\s*a)\s*$/i;
 
 function parseHttpUrl(url: string): { host: string; path: string } | null {
   const match = url.trim().match(/^https?:\/\/([^/?#]+)([^?#]*)/i);
@@ -141,7 +186,17 @@ export function isSeoArticleUrl(url: string): boolean {
   return false;
 }
 
-/** 博客类不足时，可回补的其它搜索结果（公司页、方案页等，仍排除电商/产品页） */
+/** SERP-level article check, including title signals that are not available from the URL alone. */
+export function isStandardSeoArticleCandidate(item: SerpOrganicItem): boolean {
+  if (!item.link || !isSeoArticleUrl(item.link)) {
+    return false;
+  }
+
+  const title = item.title?.trim() ?? '';
+  return !NON_ARTICLE_TITLE_PATTERN.test(title);
+}
+
+/** 博客类不足时，可回补的其它搜索结果（仅供显式放宽筛选的旧调用兼容）。 */
 export function isUsefulSerpFallbackUrl(url: string): boolean {
   if (!url.trim() || isHardExcludedUrl(url) || isSeoArticleUrl(url)) {
     return false;
@@ -187,8 +242,6 @@ export function filterSerpOrganicForSeoArticles(
 ): { filtered: SerpOrganicItem[]; meta: SerpOrganicFilterMeta } {
   const total = organic.length;
   const safeLimit = Math.max(1, options.limit);
-  const minArticleCandidates = Math.max(1, options.minArticleCandidates ?? 3);
-
   if (!options.articlesOnly) {
     const filtered = organic.slice(0, safeLimit);
     return {
@@ -201,32 +254,14 @@ export function filterSerpOrganicForSeoArticles(
         limit: safeLimit,
         articleKept: filtered.length,
         backfillKept: 0,
+        nonArticleExcluded: 0,
+        scrapeFailedExcluded: 0,
       },
     };
   }
 
-  const articleCandidates = organic.filter((item) => item.link && isSeoArticleUrl(item.link));
+  const articleCandidates = organic.filter(isStandardSeoArticleCandidate);
   const kept: SerpOrganicItem[] = articleCandidates.slice(0, safeLimit);
-  const keptLinks = new Set(kept.map((item) => item.link));
-
-  if (kept.length < minArticleCandidates && kept.length < safeLimit) {
-    for (const item of organic) {
-      if (!item.link || keptLinks.has(item.link)) {
-        continue;
-      }
-      if (!isUsefulSerpFallbackUrl(item.link)) {
-        continue;
-      }
-      kept.push(item);
-      keptLinks.add(item.link);
-      if (kept.length >= safeLimit) {
-        break;
-      }
-    }
-  }
-
-  const articleKept = kept.filter((item) => item.link && isSeoArticleUrl(item.link)).length;
-  const backfillKept = kept.length - articleKept;
 
   return {
     filtered: kept,
@@ -236,8 +271,10 @@ export function filterSerpOrganicForSeoArticles(
       excluded: total - kept.length,
       articlesOnly: true,
       limit: safeLimit,
-      articleKept,
-      backfillKept,
+      articleKept: kept.length,
+      backfillKept: 0,
+      nonArticleExcluded: total - articleCandidates.length,
+      scrapeFailedExcluded: 0,
     },
   };
 }

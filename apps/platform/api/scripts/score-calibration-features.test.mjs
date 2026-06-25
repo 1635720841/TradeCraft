@@ -1,5 +1,5 @@
 /**
- * 校准特征 v2 单元测试：词数缺口、缺词数、Semrush 节点。
+ * 校准特征 v3 单元测试：词数缺口、缺词数、Flesch 对齐、Semrush 节点。
  *
  * 运行：node apps/platform/api/scripts/score-calibration-features.test.mjs
  */
@@ -48,6 +48,7 @@ const features = buildCalibrationFeatures({
 assert.ok(features.wordGapNorm > 0, 'wordGapNorm should reflect competitor gap');
 assert.ok(features.missingKeywordsNorm > 0, 'missingKeywordsNorm should reflect missing keywords');
 assert.equal(features.semrushNodeNorm, 0.65);
+assert.ok(features.fleschNorm > 0.9, 'Flesch 48 should be close to target 50');
 
 const shortFeatures = buildCalibrationFeatures({
   localScore: 68,
@@ -108,8 +109,8 @@ const rows = Array.from({ length: 12 }, (_, index) => ({
 }));
 
 const model = trainScoreCalibrationModel(rows);
-assert.ok(model, 'model should train with v2 features');
-assert.equal(model.version, 2);
+assert.ok(model, 'model should train with v3 features');
+assert.equal(model.version, 3);
 assert.ok(typeof model.weights.wordGapNorm === 'number');
 
 const means = computeScoreCalibrationFeatureMeans(rows.map((row) => row.features));

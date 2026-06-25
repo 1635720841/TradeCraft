@@ -13,7 +13,7 @@ import {
   SEMRUSH_SUBMITTED_KEYWORD_MAX,
   SEMRUSH_SUBMITTED_KEYWORD_MIN,
 } from '../../constants/seo-score';
-import { isSemrushSpecificKeyword } from './semrush-keywords.util';
+import { isSemrushSpecificKeyword, isWeakExtractedPhrase } from './semrush-keywords.util';
 import {
   isSemrushKeywordPresentInContent,
   stripMarkdownForKeywordMatch,
@@ -76,6 +76,20 @@ const WEAK_EDGE_WORDS = new Set([
   'from',
   'that',
   'this',
+  'so',
+  'it',
+  'if',
+  'not',
+  'only',
+  'by',
+  'can',
+  'do',
+  'does',
+  'sees',
+  'see',
+  'work',
+  'age',
+  'stop',
 ]);
 
 function isWeakBodyPhrase(phrase: string): boolean {
@@ -105,6 +119,7 @@ function isUsablePhrase(phrase: string, source: CandidateSource = 'body'): boole
     return false;
   }
   if (source === 'body' && isWeakBodyPhrase(normalized)) return false;
+  if (isWeakExtractedPhrase(normalized)) return false;
   return isSemrushSpecificKeyword(normalized, false);
 }
 
@@ -301,15 +316,44 @@ export function buildSemrushSubmittedKeywords(
   }
 
   const targetKeyword = options.targetKeyword?.trim();
-  if (
-    targetKeyword &&
-    selected.length < maxCount &&
-    isSemrushKeywordPresentInContent(content, targetKeyword)
-  ) {
-    pushUnique(targetKeyword);
+  let result = pruneSubstringPhrases(selected)
+    .filter((phrase) => !isWeakExtractedPhrase(phrase))
+    .slice(0, maxCount);
+
+  if (targetKeyword && isSemrushKeywordPresentInContent(content, targetKeyword)) {
+    const normalizedTarget = normalizePhrase(targetKeyword);
+    result = [
+      normalizedTarget,
+      ...result.filter((phrase) => phrase.toLowerCase() !== normalizedTarget),
+    ].slice(0, maxCount);
   }
 
-  return pruneSubstringPhrases(selected).slice(0, maxCount);
+  return result;
+}
+
+/** 过滤正文 n-gram 噪声，续跑/checkpoint 词表复用时调用 */
+export function sanitizeSemrushSubmittedKeywords(keywords: string[]): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of keywords) {
+    const phrase = raw.trim();
+    if (!phrase || isWeakExtractedPhrase(phrase)) continue;
+    const key = phrase.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(phrase);
+  }
+  return result;
+}
+
+/** 只保留正文已出现的提交词（SWA 目标关键词须能在稿内匹配） */
+export function filterSemrushSubmittedKeywordsInContent(
+  content: string,
+  keywords: string[],
+): string[] {
+  return sanitizeSemrushSubmittedKeywords(
+    keywords.filter((phrase) => isSemrushKeywordPresentInContent(content, phrase)),
+  );
 }
 
 /** 构造 Semrush RPA 入参：优先使用提取词表 */
@@ -323,16 +367,30 @@ export function buildSemrushCheckInputFromContent(
   recommendedKeywords: string[];
   submittedKeywords: string[];
 } {
-  const submittedKeywords = buildSemrushSubmittedKeywords(content, {
-    targetKeyword,
-    poolKeywords,
-  });
-  const primary = submittedKeywords[0] ?? targetKeyword;
+  const submittedKeywords = filterSemrushSubmittedKeywordsInContent(
+    content,
+    sanitizeSemrushSubmittedKeywords(
+      buildSemrushSubmittedKeywords(content, {
+        targetKeyword,
+        poolKeywords,
+      }),
+    ),
+  );
+  const primary = targetKeyword.trim() || submittedKeywords[0] || '';
+  const orderedSubmitted =
+    primary.length > 0
+      ? [
+          primary,
+          ...submittedKeywords.filter(
+            (phrase) => phrase.toLowerCase() !== primary.toLowerCase(),
+          ),
+        ].slice(0, SEMRUSH_SUBMITTED_KEYWORD_MAX)
+      : submittedKeywords;
 
   return {
     content,
     keyword: primary,
-    recommendedKeywords: submittedKeywords.slice(1),
-    submittedKeywords,
+    recommendedKeywords: orderedSubmitted.slice(1),
+    submittedKeywords: orderedSubmitted,
   };
 }

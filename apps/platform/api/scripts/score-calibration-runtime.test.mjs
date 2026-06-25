@@ -14,7 +14,7 @@ const runtime = await import(pathToFileURL(resolve(distDir, 'score-calibration-r
 const articleScore = await import(pathToFileURL(resolve(distDir, 'article-content-score.util.js')).href);
 
 const model = {
-  version: 2,
+  version: 3,
   intercept: 0.2,
   weights: {
     localScoreNorm: 8,
@@ -36,6 +36,9 @@ const model = {
   rmse: 0.3,
   holdoutSampleCount: 8,
   holdoutMae: 0.28,
+  holdoutPassSampleCount: 4,
+  holdoutPassRecall: 0.75,
+  holdoutPassPrecision: 0.75,
   trainedAt: new Date().toISOString(),
 };
 

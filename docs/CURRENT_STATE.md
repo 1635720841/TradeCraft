@@ -28,6 +28,17 @@
 - [x] 稿件手动编辑：TipTap 编辑器 + stale / history / rollback
 - [x] **内链人工编辑**：`PATCH .../internal-links` + 重跑植入；支持增删链并同步 Markdown 正文
 
+### SEO 评分校准 v3（2026-06-22）
+
+- [x] 本地评分/校准快照带 `localScoreVersion=2`；旧规则快照不再与新规则混训
+- [x] 回滚的 Semrush 候选快照从训练集排除
+- [x] 校准模型升级 v3：Flesch 特征改为“距 Semrush 目标的对齐度”
+- [x] 生产门控除 Holdout MAE 外，增加 Semrush ≥9 样本数与召回率门槛
+- [x] 模型未就绪时，即使站点曾把本地阈值降到 75，也安全回退到本地 95 + Semrush 真检
+- [x] Semrush 8.7+ 启用手术式改写，减少 8.7→7.x 的整篇重写回退
+- [x] AI 正文全出口结构硬闸：初稿、整篇优化、near-miss 改写、人工 AI 改写、QuillBot 落库前统一修复；移除泄漏目录、恢复被压平 H2、修复 `##.`/行内标题、限制 H1/H2/H3、补齐块间空行、拆分 >65 词段落；RPA 粘贴前再次兜底
+- [x] 评分实验室新增 Semrush 黑盒反推实验：8 类单变量对照、每稿 3 次中位数/标准差、节点漂移告警、交错执行顺序、富文本复制与侧栏原始证据留存
+
 ### CMS 发布
 
 - [x] **WordPress**：`CmsPublishService` + 站点配置 + 单条/批量推送 + 列表发布状态

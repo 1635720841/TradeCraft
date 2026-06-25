@@ -15,7 +15,7 @@ const align = await import(
 );
 
 const model = {
-  version: 2,
+  version: 3,
   intercept: 0.2,
   weights: {
     localScoreNorm: 8,
@@ -37,6 +37,9 @@ const model = {
   rmse: 0.3,
   holdoutSampleCount: 16,
   holdoutMae: 0.27,
+  holdoutPassSampleCount: 4,
+  holdoutPassRecall: 0.75,
+  holdoutPassPrecision: 0.75,
   trainedAt: new Date().toISOString(),
 };
 
@@ -47,6 +50,59 @@ assert.equal(
 assert.equal(
   align.resolveLocalAlignEffective({ localAlignEnabled: false, model }),
   false,
+);
+assert.equal(
+  align.resolveLocalAlignEffective({
+    localAlignEnabled: true,
+    model: { ...model, holdoutPassRecall: 0.25 },
+  }),
+  false,
+);
+
+const safeLegacyGate = align.resolveLocalGateContext({
+  localAlignEnabled: true,
+  localAlignEffective: false,
+  scoreConfig: {
+    localPassThreshold: 75,
+    semrushPassThreshold: 9,
+    localMaxOptimizeRounds: 5,
+    localRetryExtraRounds: 3,
+    semrushMaxOptimizeRounds: 4,
+    semrushRetryExtraRounds: 4,
+  },
+});
+assert.equal(safeLegacyGate.threshold, 95);
+
+const explicitLegacyGate = align.resolveLocalGateContext({
+  localAlignEnabled: true,
+  localAlignEffective: false,
+  explicitLocalPassThreshold: true,
+  scoreConfig: {
+    localPassThreshold: 75,
+    semrushPassThreshold: 9,
+    localMaxOptimizeRounds: 5,
+    localRetryExtraRounds: 3,
+    semrushMaxOptimizeRounds: 4,
+    semrushRetryExtraRounds: 4,
+  },
+});
+assert.equal(explicitLegacyGate.threshold, 75);
+
+assert.equal(
+  align.shouldAcceptLocalGateCandidate({
+    gate: { mode: 'calibrated', effective: true, threshold: 9 },
+    candidateLocalScore: 99,
+    bestLocalScore: 95,
+    candidatePredicted: 8.18,
+    bestPredicted: 8.29,
+    candidateKeywordCoverage: 25,
+    bestKeywordCoverage: 25,
+    nearMiss: false,
+    readabilityImproved: false,
+    candidateSerpAlignment: 24,
+    bestSerpAlignment: 21,
+  }),
+  true,
 );
 
 const calibratedGate = align.resolveLocalGateContext({
@@ -238,6 +294,28 @@ assert.equal(titleFocus.titlePriority, true);
 assert.equal(titleFocus.hardSentencePriority, false);
 assert.equal(titleFocus.fleschPriority, false);
 
+const trimFocus = align.resolveCalibratedOptimizeFocus({
+  gate: calibratedGate,
+  localResult: {
+    breakdown: { serpTermAlignment: 25, keywordCoverage: 25, readability: 18, structure: 16, contentDepth: 10 },
+    metrics: {
+      wordCount: 1850,
+      longSentencesOver22: 1,
+      longParagraphsOver65: 0,
+      passiveVoiceHits: 2,
+      semrushComplexWordHits: 0,
+      hardToReadSentenceHits: 0,
+      fleschReadingEase: 50,
+    },
+    recommendedKeywords: [],
+  },
+  pointsToGo: 0.8,
+  competitorWordCount: 1500,
+});
+assert.equal(trimFocus.wordCountTrimPriority, true);
+assert.equal(trimFocus.serpPriority, false);
+assert.equal(trimFocus.readabilityPriority, false);
+
 assert.equal(
   align.isLocalGateSoftPass({
     gate: { ...calibratedGate, threshold: 9 },
@@ -246,6 +324,31 @@ assert.equal(
     localPassThreshold: 95,
   }),
   true,
+);
+
+assert.equal(
+  align.shouldDeferCalibratedGateToSemrushRpa({
+    gate: calibratedGate,
+    localResult: { score: 95 },
+    prediction: { ...prediction, predictedSemrush: 7.29 },
+  }),
+  true,
+);
+assert.equal(
+  align.shouldDeferCalibratedGateToSemrushRpa({
+    gate: calibratedGate,
+    localResult: { score: 94 },
+    prediction: { ...prediction, predictedSemrush: 7.29 },
+  }),
+  false,
+);
+assert.equal(
+  align.shouldDeferCalibratedGateToSemrushRpa({
+    gate: calibratedGate,
+    localResult: { score: 96 },
+    prediction: { ...prediction, predictedSemrush: 7.6 },
+  }),
+  false,
 );
 
 console.log('score-calibration-local-align.test.mjs: all passed');

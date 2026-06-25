@@ -69,7 +69,8 @@ const filterMetaTitle = computed(() => {
     return `已分析 ${meta.kept} 条结果（博客 ${meta.articleKept ?? 0} 篇，另补充 ${meta.backfillKept} 条；来自 Google 前 ${meta.total} 条）`;
   }
   if (meta.articlesOnly) {
-    return `已分析 ${meta.kept} 篇博客/资讯类结果（来自 Google 前 ${meta.total} 条，目标最多 ${meta.limit} 篇）`;
+    const failed = meta.scrapeFailedExcluded ? `，已排除抓取失败 ${meta.scrapeFailedExcluded} 条` : "";
+    return `已分析 ${meta.kept} 篇标准文章（来自 Google 前 ${meta.total} 条，目标最多 ${meta.limit} 篇${failed}）`;
   }
   return `已分析 ${meta.kept} 条搜索结果（来自 Google 前 ${meta.total} 条）`;
 });

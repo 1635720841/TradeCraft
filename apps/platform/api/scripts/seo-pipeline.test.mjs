@@ -125,7 +125,20 @@ describe('shouldAcceptSemrushCandidate', () => {
     readabilityImproved: false,
   };
 
-  it('accepts when Semrush passing', () => {
+  it('accepts when Semrush passing and recommended keywords are covered', () => {
+    assert.equal(
+      shouldAcceptSemrushCandidate({
+        ...base,
+        candidateOverall: 9.0,
+        bestOverall: 8.8,
+        candidateMissingKeywordCount: 0,
+        bestMissingKeywordCount: 0,
+      }),
+      true,
+    );
+  });
+
+  it('accepts passing score even when recommended keywords remain missing', () => {
     assert.equal(
       shouldAcceptSemrushCandidate({ ...base, candidateOverall: 9.0, bestOverall: 8.8 }),
       true,
@@ -211,9 +224,9 @@ describe('shouldAcceptSemrushCandidate', () => {
 });
 
 describe('isSemrushSurgicalTier', () => {
-  it('activates at 8.8+', () => {
-    assert.equal(isSemrushSurgicalTier(8.8), true);
-    assert.equal(isSemrushSurgicalTier(8.79), false);
+  it('activates at 8.7+', () => {
+    assert.equal(isSemrushSurgicalTier(8.7), true);
+    assert.equal(isSemrushSurgicalTier(8.69), false);
   });
 });
 

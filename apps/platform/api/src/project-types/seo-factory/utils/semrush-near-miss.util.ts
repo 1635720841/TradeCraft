@@ -6,7 +6,11 @@ import type { SeoScore, SemrushSuggestionDetails } from '@wm/provider-interfaces
 import {
   applySemrushDefaultComplexWordFixes,
   detectHardToReadSentences,
+  detectSemrushCasualSentences,
   SEMRUSH_DEFAULT_COMPLEX_WORD_REPLACEMENTS,
+  applySemrushCasualToneFixes,
+  applySemrushPassiveVoiceLightFixes,
+  type SemrushWordCountPlan,
 } from '@wm/shared-core';
 import {
   SEMRUSH_PASS_THRESHOLD,
@@ -83,6 +87,12 @@ export function extractSemrushCasualSentenceQuotes(
     for (const frag of englishFragments) {
       const matched = findSentenceContaining(content, frag);
       if (matched) quotes.push(matched);
+    }
+  }
+
+  if (quotes.length === 0) {
+    for (const hit of detectSemrushCasualSentences(content).slice(0, 6)) {
+      quotes.push(hit.text);
     }
   }
 
@@ -167,34 +177,33 @@ export function applySemrushSidebarComplexWordFixes(content: string, result: Seo
     result.actionableIssues,
   );
   if (targets.length === 0) {
-    return applySemrushDefaultComplexWordFixes(content);
+    return content;
   }
 
   return applySemrushDefaultComplexWordFixes(content, targets);
 }
 
-/** 确定性替换：复杂词、填充词（不改结构） — 手术式 near-miss 专用 */
+/** 确定性替换：复杂词、填充词、语气、被动（不改结构） — 手术式 near-miss 专用 */
 export function applySemrushNearMissDeterministicFixes(content: string): string {
   let result = applySemrushDefaultComplexWordFixes(content);
-  result = result.replace(/\bBasically,\s*/gi, '');
-  result = result.replace(/\bJust\s+(?=[A-Za-z])/gi, '');
-  result = result.replace(/\bvery\s+(?=[A-Za-z])/gi, '');
+  result = applySemrushCasualToneFixes(result);
+  result = applySemrushPassiveVoiceLightFixes(result);
   return result;
 }
 
 /** 词数缺口时的轻量 LLM 指令：只增补 FAQ，禁止改已有段落 */
 export function buildSemrushWordGapSurgicalInstruction(
   result: SeoScore,
-  gap: number,
+  plan: SemrushWordCountPlan,
   keyword: string,
 ): string | null {
-  if (gap < 80) return null;
-  const blockCount = Math.min(4, Math.max(2, Math.ceil(gap / 55)));
-  const targetWords = result.semrushCompetitorWordCount ?? 0;
-  const currentWords = result.semrushCurrentWordCount ?? 0;
+  if (plan.localExpandGap < 55) return null;
+  const blockCount = Math.min(4, Math.max(2, Math.ceil(plan.localExpandGap / 55)));
+  const localTarget = plan.localExpandTarget ?? plan.competitorWordCount ?? 0;
 
   return [
-    `Semrush Overall is ${result.overall}/10. Word count gap: need ~${gap} more words (current ${currentWords}, target ~${targetWords}).`,
+    `Semrush Overall is ${result.overall}/10. SWA counts ~${plan.effectiveCurrentWords} words (benchmark ~${plan.competitorWordCount ?? '—'}, gap ~${plan.swaGap ?? '—'}).`,
+    `Expand local Markdown by ~${plan.localExpandGap} words toward **${localTarget}** (slightly above SWA benchmark).`,
     '',
     '**WORD-GAP MODE — add content ONLY. Do NOT rewrite, delete, or reorder existing paragraphs/H2s/links/images.**',
     '',
@@ -237,12 +246,20 @@ export function buildSemrushNearMissSurgicalInstruction(
       ? result.semrushCompetitorWordCount - result.semrushCurrentWordCount
       : 0;
 
+  const fallbackHardQuotes = detectHardToReadSentences(content).slice(0, 4).map((s) => s.text);
+  const effectiveHardQuotes =
+    hardToReadQuotes.length > 0 ? hardToReadQuotes : fallbackHardQuotes;
+  const effectiveCasualQuotes =
+    casualQuotes.length > 0
+      ? casualQuotes
+      : detectSemrushCasualSentences(content).slice(0, 6).map((h) => h.text);
+
   if (
-    casualQuotes.length === 0 &&
+    effectiveCasualQuotes.length === 0 &&
     complexWords.length === 0 &&
-    hardToReadQuotes.length === 0 &&
+    effectiveHardQuotes.length === 0 &&
     wordGap < 80 &&
-    pointsToGo > 0.1
+    pointsToGo > 0.15
   ) {
     return null;
   }
@@ -260,17 +277,17 @@ export function buildSemrushNearMissSurgicalInstruction(
     '',
   ];
 
-  if (casualQuotes.length > 0) {
+  if (effectiveCasualQuotes.length > 0) {
     lines.push('Rewrite ONLY these exact sentences in place (same section, same order):');
-    for (const [i, quote] of casualQuotes.entries()) {
+    for (const [i, quote] of effectiveCasualQuotes.entries()) {
       lines.push(`${i + 1}. "${quote}"`);
     }
     lines.push('');
   }
 
-  if (hardToReadQuotes.length > 0) {
+  if (effectiveHardQuotes.length > 0) {
     lines.push('Rewrite ONLY these hard-to-read sentences (split into 2 shorter sentences each):');
-    for (const [i, quote] of hardToReadQuotes.entries()) {
+    for (const [i, quote] of effectiveHardQuotes.entries()) {
       lines.push(`${i + 1}. "${quote}"`);
     }
     lines.push('');

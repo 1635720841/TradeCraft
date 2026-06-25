@@ -37,6 +37,15 @@ describe('resolveSiteSeoScoreConfig', () => {
   });
 });
 
+describe('hasExplicitLocalPassThreshold', () => {
+  it('detects explicit local pass threshold only', async () => {
+    const { hasExplicitLocalPassThreshold } = await import(utilPath);
+    assert.equal(hasExplicitLocalPassThreshold({}), false);
+    assert.equal(hasExplicitLocalPassThreshold({ semrushMaxOptimizeRounds: 1 }), false);
+    assert.equal(hasExplicitLocalPassThreshold({ localPassThreshold: 85 }), true);
+  });
+});
+
 describe('hasExplicitSiteSeoScoreSettings', () => {
   it('returns true when any score field is set', async () => {
     const { hasExplicitSiteSeoScoreSettings } = await import(utilPath);

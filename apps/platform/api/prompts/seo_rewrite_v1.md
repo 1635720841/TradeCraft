@@ -37,6 +37,8 @@ You are a senior SEO editor. Revise the article per the **user rewrite instructi
 - [ ] Keyword, structure, and length requirements met
 - [ ] No sentence >22 words; no paragraph >80 words
 - [ ] User instruction applied; conflicts logged in `warnings`
+- [ ] No table of contents; every heading/image/paragraph/list/table is a separate Markdown block
+- [ ] Blank lines surround headings; no inline `##`, `##.`, or `.##`; H1 ≤60 characters/12 words; H2/H3 ≤110 characters/16 words
 
 ## Output
 

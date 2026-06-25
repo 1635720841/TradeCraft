@@ -12,11 +12,22 @@ config({ path: resolve(apiRoot, '.env') });
 
 // 出站代理与连接超时由 src/core/http/http-fetch.ts（main.ts 启动时 initHttpDispatcher）统一处理
 
+/** Nest watch + tsc 在大项目上易触达默认 ~2GB 堆上限 */
+function withDevNodeOptions(env) {
+  const heapFlag = '--max-old-space-size=4096';
+  const existing = env.NODE_OPTIONS?.trim();
+  if (existing?.includes('max-old-space-size')) return env;
+  return {
+    ...env,
+    NODE_OPTIONS: existing ? `${existing} ${heapFlag}` : heapFlag,
+  };
+}
+
 const child = spawn('nest', ['start', '--watch'], {
   cwd: apiRoot,
   stdio: 'inherit',
   shell: true,
-  env: process.env,
+  env: withDevNodeOptions(process.env),
 });
 
 child.on('exit', (code) => process.exit(code ?? 0));

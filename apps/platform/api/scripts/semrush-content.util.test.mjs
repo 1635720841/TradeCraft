@@ -10,7 +10,7 @@ const apiRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const utilPath = pathToFileURL(
   resolve(apiRoot, 'dist/project-types/seo-factory/providers/semrush/semrush-content.js'),
 ).href;
-const { markdownToHtml } = await import(utilPath);
+const { markdownToHtml, markdownToSemrushHtml } = await import(utilPath);
 
 describe('markdownToHtml', () => {
   it('converts markdown images to img tags', () => {
@@ -40,5 +40,16 @@ describe('markdownToHtml', () => {
     assert.match(html, /<th>Use case<\/th>/);
     assert.match(html, /<td>EV fleet<\/td>/);
     assert.doesNotMatch(html, /\| --- \|/);
+  });
+
+  it('flattens tables into paragraphs for semrush quill', () => {
+    const html = markdownToSemrushHtml(
+      '| Method | Strength | Main risk | Best fit |\n| --- | --- | --- | --- |\n| Fuzzy | Smooth blending | Harder validation trace | Comfort-focused programs |',
+    );
+    assert.doesNotMatch(html, /<table>/);
+    assert.match(html, /<strong>Fuzzy<\/strong>/);
+    assert.match(html, /<strong>Strength:<\/strong> Smooth blending/);
+    assert.match(html, /Comfort-focused programs/);
+    assert.doesNotMatch(html, /FuzzySmooth/);
   });
 });

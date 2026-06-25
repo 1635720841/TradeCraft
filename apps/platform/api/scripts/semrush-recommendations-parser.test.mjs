@@ -95,6 +95,16 @@ describe('parseSemrushRecommendationsPayload', () => {
     assert.ok(parsed.details.seo.some((tip) => tip.includes('industrial valve')));
   });
 
+  it('does not pretend competitor length is current length when original length is absent', () => {
+    const parsed = parseSemrushRecommendationsPayload({
+      data_ready: true,
+      score: 0.86,
+      length: 1500,
+    });
+    assert.equal(parsed.competitorWordCount, 1500);
+    assert.equal(parsed.currentWordCount, undefined);
+  });
+
   it('returns partial data when data_ready is false but keywords exist', () => {
     const parsed = parseSemrushRecommendationsPayload({
       data_ready: false,
@@ -104,6 +114,27 @@ describe('parseSemrushRecommendationsPayload', () => {
     assert.equal(parsed.overall, undefined);
     assert.deepEqual(parsed.recommendedKeywords, ['seo tool']);
     assert.ok(parsed.details.seo?.some((tip) => tip.includes('seo tool')));
+  });
+
+  it('includes target keyword frequency tips from API keywords[].frequency', () => {
+    const parsed = parseSemrushRecommendationsPayload({
+      data_ready: true,
+      score: 0.82,
+      keywords: [
+        { keyword: 'peak shaving', frequency: '1' },
+        { keyword: 'energy storage', frequency: '2-3' },
+      ],
+      recommended_keywords: [{ keyword: 'battery storage', frequency: '1' }],
+    });
+
+    assert.ok(
+      parsed.details.seo?.some((tip) => tip.includes('目标关键词「peak shaving」Semrush 建议频次：1')),
+    );
+    assert.ok(
+      parsed.details.seo?.some((tip) =>
+        tip.includes('推荐关键词「battery storage」Semrush 建议频次：1'),
+      ),
+    );
   });
 
   it('synthesizes tone and split-paragraph tips for near-miss 8.9 score', () => {
@@ -170,5 +201,39 @@ describe('isSemrushRecommendationsPayload', () => {
     assert.equal(isSemrushRecommendationsPayload({ score: 8 }), true);
     assert.equal(isSemrushRecommendationsPayload(null), false);
     assert.equal(isSemrushRecommendationsPayload({ foo: 'bar' }), false);
+  });
+});
+
+describe('recommended keyword list', () => {
+  it('summarizes total count while previewing first 8 only', () => {
+    const keywords = Array.from({ length: 20 }, (_, i) => ({ keyword: `term ${i + 1}` }));
+    const parsed = parseSemrushRecommendationsPayload({
+      data_ready: true,
+      score: 0.81,
+      recommended_keywords: keywords,
+    });
+
+    assert.equal(parsed.recommendedKeywords?.length, 20);
+    const summary = parsed.details.seo?.[0] ?? '';
+    assert.match(summary, /共 20 个/);
+    assert.match(summary, /term 1/);
+    assert.match(summary, /term 8/);
+    assert.doesNotMatch(summary, /term 9/);
+    assert.ok(parsed.recommendedKeywords?.includes('term 20'));
+  });
+
+  it('filters SWA API extraction noise from recommended_keywords', () => {
+    const parsed = parseSemrushRecommendationsPayload({
+      data_ready: true,
+      score: 0.81,
+      recommended_keywords: [
+        { keyword: 'lithium ion' },
+        { keyword: 'toggle the table of contents' },
+        { keyword: 'wikipedia the free encyclopedia' },
+        { keyword: 'battery chemistries' },
+      ],
+    });
+
+    assert.deepEqual(parsed.recommendedKeywords, ['lithium ion', 'battery chemistries']);
   });
 });

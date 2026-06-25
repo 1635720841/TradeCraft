@@ -61,3 +61,40 @@ export function detectSemrushCasualSentences(content: string): CasualSentenceHit
 /** Semrush B2B 语气：随意句 ≤3 为优，>5 须改写 */
 export const SEMRUSH_CASUAL_SENTENCE_SOFT_MAX = 3;
 export const SEMRUSH_CASUAL_SENTENCE_HARD_MAX = 5;
+
+const COLLOQUIAL_REPLACEMENTS: Array<{ pattern: RegExp; replacement: string }> = [
+  { pattern: /\bshow up\b/gi, replacement: 'appear' },
+  { pattern: /\bkind of\b/gi, replacement: '' },
+  { pattern: /\ba lot of\b/gi, replacement: 'many' },
+  { pattern: /\blots of\b/gi, replacement: 'many' },
+  { pattern: /\bBasically,\s*/gi, replacement: '' },
+  { pattern: /\bJust\s+(?=[A-Za-z])/gi, replacement: '' },
+  { pattern: /\bvery\s+(?=[A-Za-z])/gi, replacement: '' },
+];
+
+/** 常见被动 → 主动（轻量、仅高置信模式） */
+const PASSIVE_LIGHT_REPLACEMENTS: Array<{ pattern: RegExp; replacement: string }> = [
+  { pattern: /\b(is|are|was|were) enforced by the\b/gi, replacement: ' enforces' },
+  { pattern: /\b(is|are|was|were) provided by the\b/gi, replacement: ' provides' },
+  { pattern: /\b(is|are|was|were) supported by the\b/gi, replacement: ' supports' },
+  { pattern: /\b(is|are|was|were) managed by the\b/gi, replacement: ' manages' },
+  { pattern: /\bcan be achieved by\b/gi, replacement: 'achieves' },
+];
+
+/** 确定性语气/填充词修复（Semrush 手术式轮前置） */
+export function applySemrushCasualToneFixes(content: string): string {
+  let result = content;
+  for (const { pattern, replacement } of COLLOQUIAL_REPLACEMENTS) {
+    result = result.replace(pattern, replacement);
+  }
+  return result.replace(/\s{2,}/g, ' ').replace(/ \./g, '.');
+}
+
+/** 确定性被动语态轻量修复（侧栏 quote 提取失败时的 fallback） */
+export function applySemrushPassiveVoiceLightFixes(content: string): string {
+  let result = content;
+  for (const { pattern, replacement } of PASSIVE_LIGHT_REPLACEMENTS) {
+    result = result.replace(pattern, replacement);
+  }
+  return result;
+}

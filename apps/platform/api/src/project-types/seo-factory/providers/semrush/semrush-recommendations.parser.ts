@@ -1,4 +1,10 @@
 import type { SemrushSuggestionDetails } from '@wm/provider-interfaces';
+import {
+  resolveSemrushReadabilityTarget,
+  SEMRUSH_FLESCH_TOLERANCE,
+  SEMRUSH_TITLE_TARGET_KEYWORD_RULE_ZH,
+} from '@wm/shared-core';
+import { isWeakExtractedPhrase } from './semrush-keywords.util';
 
 export interface SemrushRecommendationsPayload {
   data_ready?: boolean;
@@ -24,15 +30,19 @@ function isWeakScore(body: SemrushRecommendationsPayload): boolean {
 function synthesizeReadabilityTips(body: SemrushRecommendationsPayload): string[] {
   const tips: string[] = [];
   const readability = body.readability ?? body.original_readability;
+  const fleschTarget = resolveSemrushReadabilityTarget(
+    typeof readability === 'number' ? readability : undefined,
+  );
+  const fleschLow = fleschTarget - SEMRUSH_FLESCH_TOLERANCE;
 
-  if (typeof readability === 'number' && readability < 70) {
-    if (readability < 65) {
+  if (typeof readability === 'number' && readability < fleschLow) {
+    if (readability < fleschTarget - 12) {
       tips.push('您的文本似乎过于复杂。请考虑简化文本。');
     }
     tips.push('拆分长段。');
     tips.push('重写难以阅读的句子。');
     tips.push('考虑使用主动语态。');
-    if (readability < 65) {
+    if (readability < fleschTarget - 5) {
       tips.push('替换太过复杂的词语。');
     }
   }
@@ -69,6 +79,37 @@ function synthesizeReadabilityTips(body: SemrushRecommendationsPayload): string[
   return tips;
 }
 
+function synthesizeTargetKeywordFrequencyTips(
+  body: SemrushRecommendationsPayload,
+): string[] {
+  const tips: string[] = [];
+  const seen = new Set<string>();
+
+  for (const item of body.keywords ?? []) {
+    const keyword = item.keyword?.trim();
+    const frequency = item.frequency?.trim();
+    if (!keyword || !frequency) continue;
+    const tip = `目标关键词「${keyword}」Semrush 建议频次：${frequency}`;
+    const key = tip.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tips.push(tip);
+  }
+
+  for (const item of body.recommended_keywords ?? []) {
+    const keyword = item.keyword?.trim();
+    const frequency = item.frequency?.trim();
+    if (!keyword || !frequency) continue;
+    const tip = `推荐关键词「${keyword}」Semrush 建议频次：${frequency}`;
+    const key = tip.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tips.push(tip);
+  }
+
+  return tips;
+}
+
 function synthesizeSeoTips(
   body: SemrushRecommendationsPayload,
   recommended: string[],
@@ -78,12 +119,14 @@ function synthesizeSeoTips(
 
   if (recommended.length > 0) {
     const preview = recommended.slice(0, 8).join(', ');
-    const suffix = recommended.length > 8 ? ` 等 ${recommended.length} 个` : '';
-    tips.push(`添加推荐关键词: ${preview}${suffix}`);
+    const ellipsis = recommended.length > 8 ? '…' : '';
+    tips.push(`添加推荐关键词（共 ${recommended.length} 个）: ${preview}${ellipsis}`);
   }
 
   if (targetKeywords.length > 0) {
     tips.push(`目标关键词: ${targetKeywords.join(', ')}`);
+    tips.push(SEMRUSH_TITLE_TARGET_KEYWORD_RULE_ZH);
+    tips.push(...synthesizeTargetKeywordFrequencyTips(body));
   }
 
   if (recommended.length > 0 || isWeakScore(body)) {
@@ -123,6 +166,40 @@ export interface ParsedSemrushRecommendations {
   readabilityScore?: number;
 }
 
+export interface SemrushKeywordEntry {
+  keyword: string;
+  frequency?: string;
+  difficulty?: number;
+}
+
+/** 解析 API 两类词表：keywords=正文提取，recommended_keywords=待覆盖推荐 */
+export function parseSemrushKeywordEntries(body: SemrushRecommendationsPayload): {
+  extracted: SemrushKeywordEntry[];
+  recommended: SemrushKeywordEntry[];
+} {
+  const mapRow = (
+    item: { keyword?: string; frequency?: string; difficulty?: number },
+  ): SemrushKeywordEntry | null => {
+    const keyword = item.keyword?.trim();
+    if (!keyword) return null;
+    return {
+      keyword,
+      frequency: item.frequency?.trim() || undefined,
+      difficulty: typeof item.difficulty === 'number' ? item.difficulty : undefined,
+    };
+  };
+
+  const extracted = (body.keywords ?? [])
+    .map(mapRow)
+    .filter((item): item is SemrushKeywordEntry => item != null);
+  const recommended = (body.recommended_keywords ?? [])
+    .map(mapRow)
+    .filter((item): item is SemrushKeywordEntry => item != null)
+    .filter((item) => !isWeakExtractedPhrase(item.keyword));
+
+  return { extracted, recommended };
+}
+
 export function isSemrushRecommendationsPayload(body: unknown): body is SemrushRecommendationsPayload {
   if (!body || typeof body !== 'object') return false;
   const record = body as Record<string, unknown>;
@@ -141,7 +218,8 @@ export function parseSemrushRecommendationsPayload(
 
   const recommended = (body.recommended_keywords ?? [])
     .map((item) => item.keyword?.trim())
-    .filter((keyword): keyword is string => Boolean(keyword));
+    .filter((keyword): keyword is string => Boolean(keyword))
+    .filter((keyword) => !isWeakExtractedPhrase(keyword));
 
   const targetKeywords = (body.keywords ?? [])
     .map((item) => item.keyword?.trim())
@@ -158,13 +236,15 @@ export function parseSemrushRecommendationsPayload(
   } else {
     if (recommended.length > 0) {
       const preview = recommended.slice(0, 8).join(', ');
-      const suffix = recommended.length > 8 ? ` 等 ${recommended.length} 个` : '';
-      details.seo = [`添加推荐关键词: ${preview}${suffix}`];
+      const ellipsis = recommended.length > 8 ? '…' : '';
+      details.seo = [`添加推荐关键词（共 ${recommended.length} 个）: ${preview}${ellipsis}`];
     }
     if (targetKeywords.length > 0) {
       details.seo = [
         ...(details.seo ?? []),
         `目标关键词: ${targetKeywords.join(', ')}`,
+        SEMRUSH_TITLE_TARGET_KEYWORD_RULE_ZH,
+        ...synthesizeTargetKeywordFrequencyTips(body),
       ];
     }
   }
@@ -175,7 +255,7 @@ export function parseSemrushRecommendationsPayload(
   const currentWordCount =
     typeof body.original_length === 'number' && body.original_length > 0
       ? body.original_length
-      : competitorWordCount;
+      : undefined;
   const readabilityScore =
     typeof body.readability === 'number'
       ? body.readability

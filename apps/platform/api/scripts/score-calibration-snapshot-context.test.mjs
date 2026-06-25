@@ -65,4 +65,23 @@ const persisted = resolveSnapshotSemrushContext(
 assert.equal(persisted.missingKeywordsBackfilled, false);
 assert.equal(persisted.context.missingKeywordCount, 2);
 
+const sidebarRecovered = resolveSnapshotSemrushContext(
+  {
+    id: 's3',
+    kind: 'semrush_check',
+    checkedAt: new Date().toISOString(),
+    title: 'Test',
+    targetKeyword: keyword,
+    contentHash: 'def',
+    contentWordCount: 120,
+    contentPreview: content.slice(0, 200),
+    semrushMissingKeywordCount: 0,
+    semrushMissingTargetKeywords: ['sleep quality aid', 'night routine'],
+  },
+  keyword,
+);
+
+assert.equal(sidebarRecovered.missingKeywordsBackfilled, true);
+assert.equal(sidebarRecovered.context.missingKeywordCount, 2);
+
 console.log('score-calibration-snapshot-context.test.mjs: ok');

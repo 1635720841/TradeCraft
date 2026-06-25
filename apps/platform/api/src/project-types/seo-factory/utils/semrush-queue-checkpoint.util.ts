@@ -12,7 +12,7 @@ import type { SeoScore } from '@wm/provider-interfaces';
 import { PrismaService } from '../../../core/database/prisma.service';
 import { LoggerService } from '../../../core/logger/logger.service';
 import { SEMRUSH_PASS_THRESHOLD } from '../constants/seo-score';
-import { buildSemrushSubmittedKeywords } from '../providers/semrush/semrush-submitted-keywords.util';
+import { buildSemrushSubmittedKeywords, filterSemrushSubmittedKeywordsInContent } from '../providers/semrush/semrush-submitted-keywords.util';
 
 const LATE_RECOVERY_ERROR_PATTERN = /timed out before finishing|Job wait|超时/i;
 
@@ -47,13 +47,14 @@ function resolveSubmittedKeywords(
   targetKeyword: string,
   semrushResult: SeoScore,
 ): string[] {
-  if (semrushResult.semrushTargetKeywords && semrushResult.semrushTargetKeywords.length > 0) {
-    return semrushResult.semrushTargetKeywords;
-  }
-  return buildSemrushSubmittedKeywords(content, {
-    targetKeyword,
-    poolKeywords: semrushResult.semrushRecommendedKeywords ?? [],
-  });
+  const raw =
+    semrushResult.semrushTargetKeywords && semrushResult.semrushTargetKeywords.length > 0
+      ? semrushResult.semrushTargetKeywords
+      : buildSemrushSubmittedKeywords(content, {
+          targetKeyword,
+          poolKeywords: semrushResult.semrushRecommendedKeywords ?? [],
+        });
+  return filterSemrushSubmittedKeywordsInContent(content, raw);
 }
 
 /** RPA 查分成功后写入 DB；返回是否实际更新 */
@@ -132,6 +133,7 @@ export async function persistSemrushQueueCheckpoint(
           semrushRecommendedKeywords: semrushResult.semrushRecommendedKeywords,
           semrushMissingTargetKeywords: semrushResult.semrushMissingTargetKeywords,
           semrushMissingRecommendedKeywords: semrushResult.semrushMissingRecommendedKeywords,
+          keywordCoverage: semrushResult.keywordCoverage,
           semrushCheckRecord: semrushResult.semrushCheckRecord,
           lastRpaCheckpointAt: now,
           ...(wasLateRecovery

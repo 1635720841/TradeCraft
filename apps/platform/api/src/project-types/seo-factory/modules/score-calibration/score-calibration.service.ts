@@ -28,6 +28,10 @@ import {
   SCORE_CALIBRATION_TRIAL_HOLDOUT_MIN,
   SCORE_CALIBRATION_PRODUCTION_HOLDOUT_MIN,
   SCORE_CALIBRATION_TRIAL_HOLDOUT_MAE,
+  SCORE_CALIBRATION_TRIAL_PASS_MIN,
+  SCORE_CALIBRATION_PRODUCTION_PASS_MIN,
+  SCORE_CALIBRATION_TRIAL_PASS_RECALL,
+  SCORE_CALIBRATION_PRODUCTION_PASS_RECALL,
   type ScoreCalibrationFeatures,
   type ScoreCalibrationReadiness,
   type ScoreCalibrationModel,
@@ -204,11 +208,11 @@ export class ScoreCalibrationService {
     projectId: string,
     query: QueryScoreCalibrationPairsDto,
   ) {
-    const { pairs, model, holdoutJobIds, featureMeans, jobs } = await this.loadCalibrationData(
+    const { pairs, displayPairs, model, holdoutJobIds, featureMeans, jobs } = await this.loadCalibrationData(
       organizationId,
       projectId,
     );
-    const outlierReasonMap = this.buildPairOutlierReasonMap(pairs);
+    const outlierReasonMap = this.buildPairOutlierReasonMap(displayPairs);
     const dataset = query.dataset ?? 'all';
 
     if (dataset === 'excluded') {
@@ -228,7 +232,10 @@ export class ScoreCalibrationService {
       return this.paginatePairItems(enriched, query.page ?? 1, query.limit ?? 20);
     }
 
-    const scoped = this.filterPairsByDataset(pairs, holdoutJobIds, dataset);
+    const scoped =
+      dataset === 'all'
+        ? displayPairs
+        : this.filterPairsByDataset(pairs, holdoutJobIds, dataset);
 
     const enriched = scoped.map((pair) =>
       this.toPairDto(
@@ -849,11 +856,18 @@ export class ScoreCalibrationService {
       orderBy: { updatedAt: 'desc' },
     });
     const { pairs, meta } = extractScoreCalibrationPairs(jobs);
+    const { pairs: displayPairs } = extractScoreCalibrationPairs(jobs, {
+      includeLegacyScoreVersions: true,
+    });
     const manualImportCount = jobs.filter((job) =>
       isCalibrationLabImportSeoCheckData(job.seoCheckData),
     ).length;
-    const workflowPairCount = pairs.filter((pair) => pair.snapshotKind === 'semrush_check').length;
-    const manualPairCount = pairs.filter((pair) => pair.snapshotKind === 'semrush_manual_check').length;
+    const workflowPairCount = displayPairs.filter(
+      (pair) => pair.snapshotKind === 'semrush_check',
+    ).length;
+    const manualPairCount = displayPairs.filter(
+      (pair) => pair.snapshotKind === 'semrush_manual_check',
+    ).length;
     const operationalJobs = jobs.filter(
       (job) => !isCalibrationLabImportSeoCheckData(job.seoCheckData),
     );
@@ -863,6 +877,7 @@ export class ScoreCalibrationService {
     const featureMeans = computeScoreCalibrationFeatureMeans(pairs.map((pair) => pair.features));
     return {
       pairs,
+      displayPairs,
       model,
       meta: {
         ...meta,
@@ -1218,11 +1233,27 @@ export class ScoreCalibrationService {
           max: SCORE_CALIBRATION_TRIAL_HOLDOUT_MAE,
           met: holdoutMae !== null && holdoutMae <= SCORE_CALIBRATION_TRIAL_HOLDOUT_MAE,
         },
+        passSamples: {
+          current: model?.holdoutPassSampleCount ?? 0,
+          required: SCORE_CALIBRATION_TRIAL_PASS_MIN,
+        },
+        passRecall: {
+          current: model?.holdoutPassRecall ?? 0,
+          min: SCORE_CALIBRATION_TRIAL_PASS_RECALL,
+        },
       },
       production: {
         holdoutSamples: { current: holdoutCount, required: SCORE_CALIBRATION_PRODUCTION_HOLDOUT_MIN },
         trainSamples: { current: trainCount, required: 30 },
         holdoutMae: { current: holdoutMae, max: 0.35 },
+        passSamples: {
+          current: model?.holdoutPassSampleCount ?? 0,
+          required: SCORE_CALIBRATION_PRODUCTION_PASS_MIN,
+        },
+        passRecall: {
+          current: model?.holdoutPassRecall ?? 0,
+          min: SCORE_CALIBRATION_PRODUCTION_PASS_RECALL,
+        },
       },
       confidenceNote:
         '列表「置信度」为整模型门控：验证样本不足时全部为低，不代表单条校准误差大。',
@@ -1276,6 +1307,8 @@ export class ScoreCalibrationService {
       signedModelError,
       isHoldout: holdoutJobIds ? holdoutJobIds.has(pair.jobId) : false,
       missingKeywordsBackfilled: pair.missingKeywordsBackfilled === true,
+      localScoreVersion: pair.localScoreVersion ?? null,
+      trainingEligible: pair.trainingEligible,
       topFeatureDrivers,
       featureAttribution,
       confidence: prediction.confidence,

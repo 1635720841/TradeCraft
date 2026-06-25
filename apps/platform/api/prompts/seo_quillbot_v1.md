@@ -38,7 +38,7 @@ Replace or remove template phrases when safe, e.g.:
 
 ## Requirements
 
-1. **Preserve exactly**: all Markdown links `[text](url)`, image `![alt](url)`, headings, lists, tables
+1. **Preserve exactly**: all Markdown links `[text](url)`, image `![alt](url)`, headings, lists, tables, and blank-line block boundaries. Never flatten blocks or emit inline `##` / `##.` / `.##`
 2. **Preserve**: target keyword in first 200 characters **when polishing the full article or lead section**; keyword density roughly unchanged
 3. **Preserve**: all protected terms in original spelling
 4. **Preserve**: facts, numbers, specs, units — do not invent or alter data

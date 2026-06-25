@@ -10,6 +10,7 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import { LLM_PROVIDER, type ILLMProvider } from '@wm/provider-interfaces';
+import { enforceArticleH1Boundary, validateAndFixSemrushStructure, countWords } from '@wm/shared-core';
 import { BusinessException } from '../../../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { PrismaService } from '../../../../core/database/prisma.service';
@@ -26,7 +27,11 @@ import {
   normalizeArticleContentForm,
 } from '../../constants/content-form';
 import { resolveClusterPromptContext } from '../keyword-pool/cluster-prompt-context.util';
-import { buildOptimizeBriefContext } from './optimize-context.util';
+import { buildOptimizeBriefContext, resolveOptimizeWordCountTarget } from './optimize-context.util';
+import {
+  logSeoPipelineFlow,
+  summarizeFlowKeywords,
+} from '../../utils/seo-pipeline-flow-log.util';
 import {
   formatOptimizeHistoryContext,
 } from './optimize-history-context.util';
@@ -48,6 +53,8 @@ export interface GenerateOptimizeMeta {
   semrushEvaluationRoute?: string;
   semrushCompetitorWordCount?: number;
   semrushCurrentWordCount?: number;
+  semrushLocalExpandWordTarget?: number;
+  localWordCount?: number;
   semrushReadabilityScore?: number;
   localScore?: number;
   localScoreTarget?: number;
@@ -61,6 +68,8 @@ export interface GenerateOptimizeMeta {
   fleschPriority?: boolean;
   hardSentencePriority?: boolean;
   titlePriority?: boolean;
+  wordCountTrimPriority?: boolean;
+  wordCountExpandPriority?: boolean;
   articleTitle?: string;
   readabilityAudit?: string;
   pointsToGo?: number;
@@ -74,6 +83,10 @@ export interface GenerateOptimizeMeta {
   calibratedLocalAlign?: boolean;
   predictedSemrush?: number;
   predictedSemrushTarget?: number;
+  /** 调试字段：Semrush 本轮路由动作 */
+  roundAction?: 'semrush_keyword_first' | 'semrush_surgical' | 'semrush_optimize';
+  /** 调试字段：Semrush 本轮关键词批次 */
+  keywordBatch?: string[];
 }
 
 export interface OptimizeRoundBreakdown {
@@ -225,11 +238,22 @@ export class LlmService {
       contentFormGuidelines: getContentFormGuidelines(contentForm),
       clusterContext,
     });
+    const sourceContent = enforceArticleH1Boundary(
+      draft.content,
+      draft.title?.trim() || ctx.targetKeyword,
+    );
+    const formatRepair = validateAndFixSemrushStructure(sourceContent);
+    const normalizedTitle = formatRepair.content.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? draft.title;
+    const normalizedDraft = {
+      ...draft,
+      title: normalizedTitle,
+      content: formatRepair.content,
+    };
 
     await this.prisma.articleJob.update({
       where: { id: ctx.jobId },
       data: {
-        draftData: draft as object,
+        draftData: normalizedDraft as object,
       },
     });
 
@@ -239,7 +263,8 @@ export class LlmService {
       projectId: ctx.projectId,
       jobId: ctx.jobId,
       action: 'llm.generate_draft',
-      promptVersion: draft.promptVersion,
+      promptVersion: normalizedDraft.promptVersion,
+      formatRepairs: formatRepair.errors,
     });
   }
 
@@ -257,6 +282,10 @@ export class LlmService {
     });
 
     const briefContext = buildOptimizeBriefContext(job?.briefData);
+    const effectiveTargetWordCount = resolveOptimizeWordCountTarget(
+      briefContext.targetWordCount,
+      meta?.semrushCompetitorWordCount,
+    );
     const existingDraft = job?.draftData as {
       title?: string;
       metaDescription?: string;
@@ -272,10 +301,12 @@ export class LlmService {
       contentLanguage: ctx.contentLanguage,
       optimizePhase: meta?.phase,
       briefSummary: briefContext.briefSummary,
-      targetWordCount: briefContext.targetWordCount,
+      targetWordCount: effectiveTargetWordCount,
       searchIntent: briefContext.searchIntent,
       semrushCompetitorWordCount: meta?.semrushCompetitorWordCount,
       semrushCurrentWordCount: meta?.semrushCurrentWordCount,
+      semrushLocalExpandWordTarget: meta?.semrushLocalExpandWordTarget,
+      localWordCount: meta?.localWordCount,
       semrushReadabilityScore: meta?.semrushReadabilityScore,
       localScore: meta?.localScore,
       localScoreTarget: meta?.localScoreTarget,
@@ -292,6 +323,8 @@ export class LlmService {
       fleschPriority: meta?.fleschPriority,
       hardSentencePriority: meta?.hardSentencePriority,
       titlePriority: meta?.titlePriority,
+      wordCountTrimPriority: meta?.wordCountTrimPriority,
+      wordCountExpandPriority: meta?.wordCountExpandPriority,
       articleTitle: meta?.articleTitle,
       readabilityAudit: meta?.readabilityAudit,
       pointsToGo: meta?.pointsToGo,
@@ -303,8 +336,14 @@ export class LlmService {
       calibratedLocalAlign: meta?.calibratedLocalAlign,
       predictedSemrush: meta?.predictedSemrush,
       predictedSemrushTarget: meta?.predictedSemrushTarget,
+      roundAction: meta?.roundAction,
+      keywordBatch: meta?.keywordBatch,
     });
 
+    const formatRepair = validateAndFixSemrushStructure(
+      enforceArticleH1Boundary(optimized.content, existingDraft?.title),
+    );
+    const normalizedContent = formatRepair.content;
     const optimizeHistory = [...(existingDraft?.optimizeHistory ?? [])];
     if (meta) {
       optimizeHistory.push({
@@ -324,13 +363,13 @@ export class LlmService {
       });
     }
 
-    const h1Title = optimized.content.match(/^#\s+(.+)$/m)?.[1]?.trim();
+    const h1Title = normalizedContent.match(/^#\s+(.+)$/m)?.[1]?.trim();
     await this.prisma.articleJob.update({
       where: { id: ctx.jobId },
       data: {
         draftData: {
           ...existingDraft,
-          content: optimized.content,
+          content: normalizedContent,
           ...(meta?.titlePriority === true && h1Title ? { title: h1Title } : {}),
           promptVersion: optimized.promptVersion,
           optimizeHistory,
@@ -347,10 +386,40 @@ export class LlmService {
       promptVersion: optimized.promptVersion,
       changesSummary: optimized.changesSummary,
       warnings: optimized.warnings,
+      formatRepairs: formatRepair.errors,
       scoreBefore: meta?.scoreBefore ?? meta?.localScore,
+      phase: meta?.phase,
+      round: meta?.round,
     });
+    logSeoPipelineFlow(
+      this.logger,
+      {
+        traceId: ctx.traceId,
+        jobId: ctx.jobId,
+        organizationId: ctx.organizationId,
+        projectId: ctx.projectId,
+      },
+      'pipeline.llm_optimize_done',
+      {
+        phase: meta?.phase ?? 'local',
+        round: meta?.round,
+        roundAction: meta?.roundAction,
+        promptVersion: optimized.promptVersion,
+        recommendedKeywordCount: recommendedKeywords?.length ?? 0,
+        recommendedKeywords: summarizeFlowKeywords(recommendedKeywords),
+        keywordBatch: summarizeFlowKeywords(meta?.keywordBatch),
+        readabilityPriority: meta?.readabilityPriority,
+        wordCountExpandPriority: meta?.wordCountExpandPriority,
+        wordCountTrimPriority: meta?.wordCountTrimPriority,
+        serpPriority: meta?.serpPriority,
+        wordCountBefore: countWords(content),
+        wordCountAfter: countWords(normalizedContent),
+        changesSummary: optimized.changesSummary,
+        warnings: optimized.warnings,
+      },
+    );
 
-    return optimized.content;
+    return normalizedContent;
   }
 
   /** Semrush 8.8–8.9 手术式改写：只改侧栏点名的句子和词，避免整篇 optimize 降分 */
@@ -370,6 +439,7 @@ export class LlmService {
 
     const briefContext = buildOptimizeBriefContext(job?.briefData);
     const existingDraft = job?.draftData as {
+      title?: string;
       optimizeHistory?: DraftOptimizeRound[];
     } | null;
 
@@ -384,6 +454,10 @@ export class LlmService {
       searchIntent: briefContext.searchIntent,
     });
 
+    const formatRepair = validateAndFixSemrushStructure(
+      enforceArticleH1Boundary(rewritten.content, existingDraft?.title),
+    );
+    const normalizedContent = formatRepair.content;
     const optimizeHistory = [...(existingDraft?.optimizeHistory ?? [])];
     optimizeHistory.push({
       phase: meta.phase,
@@ -402,7 +476,7 @@ export class LlmService {
       data: {
         draftData: {
           ...existingDraft,
-          content: rewritten.content,
+          content: normalizedContent,
           promptVersion: rewritten.promptVersion,
           optimizeHistory,
         } as object,
@@ -415,9 +489,10 @@ export class LlmService {
       action: 'llm.semrush_near_miss_rewrite',
       round: meta.round,
       changesSummary: rewritten.changesSummary,
+      formatRepairs: formatRepair.errors,
     });
 
-    return rewritten.content;
+    return normalizedContent;
   }
 
   /** 记录初稿/初检等基线分数 */
@@ -537,7 +612,18 @@ export class LlmService {
         searchIntent: briefContext.searchIntent,
       });
 
-      return rewritten;
+      const originalTitle = input.content.match(/^#\s+(.+)$/m)?.[1]?.trim();
+      const formatRepair = validateAndFixSemrushStructure(
+        enforceArticleH1Boundary(rewritten.content, originalTitle),
+      );
+      return {
+        ...rewritten,
+        content: formatRepair.content,
+        warnings: [
+          ...(rewritten.warnings ?? []),
+          ...formatRepair.errors.map((error) => `format_repaired:${error}`),
+        ],
+      };
     }
 
     const suggestions = input.suggestions?.filter((line) => line.trim().length > 0) ?? [];
@@ -557,6 +643,17 @@ export class LlmService {
       searchIntent: briefContext.searchIntent,
     });
 
-    return optimized;
+    const originalTitle = input.content.match(/^#\s+(.+)$/m)?.[1]?.trim();
+    const formatRepair = validateAndFixSemrushStructure(
+      enforceArticleH1Boundary(optimized.content, originalTitle),
+    );
+    return {
+      ...optimized,
+      content: formatRepair.content,
+      warnings: [
+        ...(optimized.warnings ?? []),
+        ...formatRepair.errors.map((error) => `format_repaired:${error}`),
+      ],
+    };
   }
 }

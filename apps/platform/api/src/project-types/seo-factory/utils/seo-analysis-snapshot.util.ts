@@ -7,7 +7,11 @@
 
 import { createHash } from 'node:crypto';
 import type { SeoScore } from '@wm/provider-interfaces';
-import { computeSemrushWordGap, type LocalSeoScoreResult } from '@wm/shared-core';
+import {
+  computeSemrushWordGap,
+  LOCAL_SEO_SCORE_VERSION,
+  type LocalSeoScoreResult,
+} from '@wm/shared-core';
 
 export type SeoAnalysisSnapshotKind =
   | 'local_checkpoint'
@@ -27,6 +31,7 @@ export interface SeoAnalysisSnapshot {
   contentPreview: string;
   content?: string;
   localScore?: number;
+  localScoreVersion?: number;
   localBreakdown?: LocalSeoScoreResult['breakdown'];
   localMetrics?: LocalSeoScoreResult['metrics'];
   localSuggestions?: string[];
@@ -45,6 +50,11 @@ export interface SeoAnalysisSnapshot {
   semrushEvaluationRoute?: string;
   semrushWordGap?: number;
   semrushMissingKeywordCount?: number;
+  semrushTargetKeywords?: string[];
+  semrushRecommendedKeywords?: string[];
+  semrushMissingTargetKeywords?: string[];
+  semrushMissingRecommendedKeywords?: string[];
+  keywordCoverage?: SeoScore['keywordCoverage'];
   /** true = semrushOverall 来自校准代理，不可用于训练 */
   calibrationProxy?: boolean;
   /** 旧代理分痕迹（无 calibrationProxy 时兜底排除） */
@@ -95,6 +105,7 @@ export function buildLocalAnalysisSnapshot(input: {
     contentPreview: input.content.trim().slice(0, 480),
     content: input.includeFullContent ? input.content : undefined,
     localScore: input.localResult.score,
+    localScoreVersion: LOCAL_SEO_SCORE_VERSION,
     localBreakdown: input.localResult.breakdown,
     localMetrics: input.localResult.metrics,
     localSuggestions: input.localResult.suggestions,
@@ -130,10 +141,11 @@ export function buildSemrushAnalysisSnapshot(input: {
       record?.submittedKeywords ??
       input.semrushResult.semrushTargetKeywords,
     contentHash: record?.contentHash ?? hashContent(input.content),
-    contentWordCount: record?.currentWordCount ?? countWords(input.content),
+    contentWordCount: countWords(input.content),
     contentPreview: input.content.trim().slice(0, 480),
     content: input.includeFullContent ? input.content : undefined,
     localScore: input.localResult?.score,
+    localScoreVersion: input.localResult ? LOCAL_SEO_SCORE_VERSION : undefined,
     localBreakdown: input.localResult?.breakdown,
     localMetrics: input.localResult?.metrics,
     semrushOverall: input.semrushResult.skipped ? undefined : input.semrushResult.overall,
@@ -155,6 +167,12 @@ export function buildSemrushAnalysisSnapshot(input: {
         input.semrushResult.semrushCompetitorWordCount,
       ) ?? undefined,
     semrushMissingKeywordCount: input.semrushMissingKeywordCount,
+    semrushTargetKeywords: input.semrushResult.semrushTargetKeywords,
+    semrushRecommendedKeywords: input.semrushResult.semrushRecommendedKeywords,
+    semrushMissingTargetKeywords: input.semrushResult.semrushMissingTargetKeywords,
+    semrushMissingRecommendedKeywords:
+      input.semrushResult.semrushMissingRecommendedKeywords,
+    keywordCoverage: input.semrushResult.keywordCoverage,
     calibrationProxy: input.semrushResult.calibrationProxy === true,
     calibrationPredicted: input.semrushResult.calibrationPredicted,
     rolledBack: input.rolledBack === true ? true : undefined,

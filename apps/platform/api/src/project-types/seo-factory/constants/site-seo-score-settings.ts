@@ -80,6 +80,12 @@ export function resolveSiteSeoScoreConfig(settings: unknown): ResolvedSiteSeoSco
 
 export const DEFAULT_SITE_SEO_SCORE_CONFIG = resolveSiteSeoScoreConfig(undefined);
 
+/** 站点是否在 settings 里显式配置过本地通过分 */
+export function hasExplicitLocalPassThreshold(settings: unknown): boolean {
+  if (!settings || typeof settings !== 'object') return false;
+  return (settings as SiteSeoScoreSettings).localPassThreshold !== undefined;
+}
+
 /** 站点是否在 settings 里显式配置过评分项（显式配置时优化轮次为硬上限，不再叠加 near-miss 加成） */
 export function hasExplicitSiteSeoScoreSettings(settings: unknown): boolean {
   if (!settings || typeof settings !== 'object') return false;

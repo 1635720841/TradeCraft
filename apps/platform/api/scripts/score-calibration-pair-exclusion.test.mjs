@@ -39,6 +39,7 @@ const snapshot = {
   contentWordCount: 500,
   contentPreview: 'preview',
   localScore: 82,
+  localScoreVersion: 2,
   semrushOverall: 7.8,
 };
 
@@ -54,6 +55,54 @@ const job = {
 const active = extractScoreCalibrationPairs([job]);
 assert.equal(active.pairs.length, 1);
 assert.equal(active.meta.excludedPairCount, 0);
+assert.equal(active.meta.excludedRolledBackCount, 0);
+assert.equal(active.meta.excludedScoreVersionCount, 0);
+
+const legacy = extractScoreCalibrationPairs([
+  {
+    ...job,
+    seoCheckData: {
+      analysisSnapshots: [{ ...snapshot, localScoreVersion: undefined }],
+    },
+  },
+]);
+assert.equal(legacy.pairs.length, 0);
+assert.equal(legacy.meta.excludedScoreVersionCount, 1);
+
+const legacyDisplay = extractScoreCalibrationPairs(
+  [
+    {
+      ...job,
+      seoCheckData: {
+        analysisSnapshots: [{ ...snapshot, localScoreVersion: undefined }],
+      },
+    },
+  ],
+  { includeLegacyScoreVersions: true },
+);
+assert.equal(legacyDisplay.pairs.length, 1);
+assert.equal(legacyDisplay.pairs[0].trainingEligible, false);
+
+const rolledBack = extractScoreCalibrationPairs([
+  {
+    ...job,
+    seoCheckData: {
+      analysisSnapshots: [
+        snapshot,
+        {
+          ...snapshot,
+          id: 'snap-rolled-back',
+          checkedAt: '2026-06-20T11:00:00.000Z',
+          semrushOverall: 6.9,
+          rolledBack: true,
+        },
+      ],
+    },
+  },
+]);
+assert.equal(rolledBack.pairs.length, 1);
+assert.equal(rolledBack.pairs[0].snapshotId, 'snap-1');
+assert.equal(rolledBack.meta.excludedRolledBackCount, 1);
 
 const patched = setWorkflowPairCalibrationExcluded({
   seoCheckData: job.seoCheckData,

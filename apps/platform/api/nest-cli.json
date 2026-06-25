@@ -6,7 +6,7 @@
     "deleteOutDir": true,
     "assets": [
       {
-        "include": "../prompts/**/*.md",
+        "include": "prompts/**/*.md",
         "outDir": "./dist",
         "watchAssets": true
       }

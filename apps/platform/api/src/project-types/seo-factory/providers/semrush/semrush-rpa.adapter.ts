@@ -12,10 +12,11 @@ import type {
   SemrushSuggestionDetails,
 } from '@wm/provider-interfaces';
 import type { Frame, Page, Response } from 'playwright';
+import { validateAndFixSemrushStructure, buildSemrushWordCountPlan } from '@wm/shared-core';
 import { BusinessException } from '../../../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { LoggerService } from '../../../../core/logger/logger.service';
-import { markdownToHtml } from './semrush-content';
+import { markdownToSemrushHtml } from './semrush-content';
 import {
   SEMRUSH_EXPAND_POLL_MS,
   SEMRUSH_RPA_TIMEOUT_MS,
@@ -34,6 +35,7 @@ import {
 } from './semrush-actionable.util';
 import {
   enrichSemrushKeywordCoverage,
+  pickSemrushRecommendationsApiPayload,
 } from './semrush-keyword-coverage.util';
 import {
   isSemrushRecommendationsPayload,
@@ -50,6 +52,7 @@ import {
   sanitizeSemrushKeywordGoal,
 } from './semrush-keywords.util';
 import { parseOverallScoreFromText } from './semrush-score.util';
+import { filterSemrushSubmittedKeywordsInContent } from './semrush-submitted-keywords.util';
 
 interface CapturedApiPayload {
   url: string;
@@ -123,13 +126,31 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
           const { domUncoveredSeoKeywords, ...scoreBase } = extracted;
 
           phase = 'enrich_keyword_coverage';
+          const apiPayload = pickSemrushRecommendationsApiPayload(captured);
           const result = enrichSemrushKeywordCoverage(scoreBase, input.content, {
             submittedKeywords:
               input.submittedKeywords ??
               [input.keyword, ...(input.recommendedKeywords ?? [])],
             domUncoveredKeywords: domUncoveredSeoKeywords,
+            apiPayload,
           });
-          const contentWords = input.content.split(/\s+/).filter(Boolean).length;
+          const wordPlan = buildSemrushWordCountPlan({
+            content: input.content,
+            competitorWordCount: result.semrushCompetitorWordCount,
+            apiReportedWords: result.semrushCurrentWordCount,
+          });
+          if (wordPlan.reconciled) {
+            this.logger.info('Semrush word count reconciled against local body', {
+              action: 'semrush.word_count_reconciled',
+              apiReported: wordPlan.apiReportedWords,
+              local: wordPlan.localWordCount,
+              effective: wordPlan.effectiveCurrentWords,
+              swaGap: wordPlan.swaGap,
+              localExpandTarget: wordPlan.localExpandTarget,
+            });
+          }
+          result.semrushCurrentWordCount = wordPlan.effectiveCurrentWords;
+          const contentWords = wordPlan.localWordCount;
           const contentTitle =
             input.content.match(/^#\s+(.+)$/m)?.[1]?.trim() ??
             input.content.split('\n').map((line) => line.trim()).find(Boolean) ??
@@ -234,68 +255,68 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
     await this.sessionManager.navigateToSwaChecker(page);
   }
 
-  /** checker 壳层：编辑器 + 右侧推荐区异步加载，需轮询 */
+  /** 侧栏「设置新目标 / 关键词输入」是否已渲染（空文档无 listitem，不能等建议列表） */
+  private async isSidebarGoalUiReady(page: Page): Promise<boolean> {
+    if (await this.isKeywordInputVisible(page)) return true;
+    return page
+      .locator(SEMRUSH_SWA_SELECTORS.setNewGoals)
+      .first()
+      .isVisible()
+      .catch(() => false);
+  }
+
+  /** checker 壳层：编辑器 + 右侧「设置新目标」异步加载，需轮询 */
   private async waitForCheckerShell(page: Page): Promise<void> {
     await waitForAnyLocator(
       page,
       (p) => p.locator(SEMRUSH_SWA_SELECTORS.editor),
       {
         timeoutMs: SEMRUSH_SWA_EDITOR_TIMEOUT_MS,
+        intervalMs: SEMRUSH_EXPAND_POLL_MS,
         label: 'SWA 编辑器',
       },
     );
 
-    const widgetVisible = await page
-      .locator(SEMRUSH_SWA_SELECTORS.checkerWidget)
+    if (await this.isSidebarGoalUiReady(page)) {
+      await this.tryExpandNewGoals(page);
+      await sleep(400);
+      return;
+    }
+
+    const hasSuggestions = await page
+      .locator(SEMRUSH_SWA_SELECTORS.suggestionListItem)
       .first()
       .isVisible()
       .catch(() => false);
-    const sidebarReady = widgetVisible
-      ? await page
-          .locator(SEMRUSH_SWA_SELECTORS.suggestionListItem)
-          .first()
-          .isVisible()
-          .catch(() => false)
-      : false;
-
-    await sleep(sidebarReady ? 400 : SEMRUSH_UI_SETTLE_MS);
-
-    if (sidebarReady) {
+    if (hasSuggestions) {
+      await sleep(400);
       return;
     }
 
     await pollUntil(
       async () => {
-        const panelVisible = await page
-          .locator(SEMRUSH_SWA_SELECTORS.contentPanel)
-          .first()
-          .isVisible()
-          .catch(() => false);
-        const goalsVisible = await page
-          .locator(SEMRUSH_SWA_SELECTORS.setNewGoals)
-          .first()
-          .isVisible()
-          .catch(() => false);
-        const keywordVisible = await page
-          .locator(SEMRUSH_SWA_SELECTORS.keywordInput)
-          .first()
-          .isVisible()
-          .catch(() => false);
+        if (await this.isSidebarGoalUiReady(page)) return true;
         const analyzeVisible = await page
           .locator(SEMRUSH_SWA_SELECTORS.analyzeAction)
           .first()
           .isVisible()
           .catch(() => false);
-
-        return panelVisible || goalsVisible || keywordVisible || analyzeVisible;
+        const widgetVisible = await page
+          .locator(SEMRUSH_SWA_SELECTORS.checkerWidget)
+          .first()
+          .isVisible()
+          .catch(() => false);
+        return analyzeVisible || widgetVisible;
       },
       {
         timeoutMs: SEMRUSH_SWA_SIDEBAR_TIMEOUT_MS,
+        intervalMs: SEMRUSH_EXPAND_POLL_MS,
         label: 'SWA 右侧内容推荐区',
       },
     ).catch(() => undefined);
 
-    await sleep(widgetVisible ? 400 : SEMRUSH_UI_SETTLE_MS);
+    await this.tryExpandNewGoals(page);
+    await sleep(400);
   }
 
   /** 拆成独立关键词，供 SWA 标签输入（禁止整串逗号一次填入）；过滤过泛单词 */
@@ -320,7 +341,8 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
     recommendedKeywords?: string[],
     submittedKeywords?: string[],
   ): Promise<number> {
-    const htmlContent = markdownToHtml(content);
+    const normalizedContent = validateAndFixSemrushStructure(content).content;
+    const htmlContent = markdownToSemrushHtml(normalizedContent);
 
     const editor = await waitForAnyLocator(
       page,
@@ -328,8 +350,14 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
       { timeoutMs: SEMRUSH_SWA_EDITOR_TIMEOUT_MS, label: 'SWA 编辑器' },
     );
 
-    await this.setupKeywordGoal(page, keyword, recommendedKeywords, submittedKeywords);
-    await sleep(SEMRUSH_UI_SETTLE_MS);
+    await this.setupKeywordGoal(
+      page,
+      keyword,
+      normalizedContent,
+      recommendedKeywords,
+      submittedKeywords,
+    );
+    await sleep(400);
 
     await editor.click();
     await page.keyboard.press('Control+A');
@@ -357,13 +385,23 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
   private async setupKeywordGoal(
     page: Page,
     keyword: string,
+    content: string,
     recommendedKeywords?: string[],
     submittedKeywords?: string[],
   ): Promise<void> {
-    const plannedKeywords =
+    const plannedRaw =
       submittedKeywords && submittedKeywords.length > 0
         ? submittedKeywords
         : this.collectKeywordList(keyword, recommendedKeywords);
+    const plannedKeywords = filterSemrushSubmittedKeywordsInContent(content, plannedRaw);
+
+    if (plannedKeywords.length === 0) {
+      this.logger.warn('Semrush keyword goal skipped: no content-aligned keywords', {
+        action: 'semrush.keyword_goal_empty',
+        primaryKeyword: keyword,
+      });
+      return;
+    }
 
     if (await this.isKeywordGoalAlreadySatisfied(page, plannedKeywords[0] ?? keyword)) {
       this.logger.info('Semrush keyword goal already active, skipping setup', {
@@ -378,11 +416,11 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
 
     await this.clearExistingKeywordTags(page, keywordInput);
     await this.typeKeywordTags(page, keywordInput, keywords);
-    await sleep(SEMRUSH_UI_SETTLE_MS);
+    await sleep(400);
 
     await this.waitForKeywordValidation(page, keyword);
     await this.applyKeywordGoal(page, keywordInput);
-    await sleep(SEMRUSH_UI_SETTLE_MS);
+    await sleep(400);
 
     this.logger.info('Semrush keyword goal set', {
       action: 'semrush.keyword_goal',
@@ -462,25 +500,38 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
     await sleep(400);
   }
 
-  /** 逐个输入关键词并以逗号/回车生成标签（与 SWA UI 一致） */
+  /** 逐个或批量输入关键词并以逗号/回车生成标签（与 SWA UI 一致） */
   private async typeKeywordTags(
-    _page: Page,
+    page: Page,
     keywordInput: ReturnType<Page['locator']>,
     keywords: string[],
   ): Promise<void> {
     await keywordInput.click();
     await keywordInput.fill('');
 
+    if (keywords.length === 0) return;
+
+    await keywordInput.fill(keywords.join(', '));
+    await sleep(200);
+    await keywordInput.press('Enter').catch(() => undefined);
+    await sleep(250);
+
+    const tagTexts = await this.getKeywordTagTexts(page);
+    if (tagTexts.length >= Math.min(2, keywords.length)) {
+      return;
+    }
+
+    await keywordInput.fill('');
     for (const kw of keywords) {
-      await keywordInput.pressSequentially(kw, { delay: 20 });
-      await sleep(200);
+      await keywordInput.pressSequentially(kw, { delay: 12 });
+      await sleep(80);
       await keywordInput.press(',');
-      await sleep(350);
+      await sleep(120);
     }
 
     if (keywords.length > 0) {
       await keywordInput.press('Enter').catch(() => undefined);
-      await sleep(300);
+      await sleep(150);
     }
   }
 
@@ -499,13 +550,18 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
       .scrollIntoViewIfNeeded()
       .catch(() => undefined);
 
-    let lastExpandAt = 0;
+    await this.tryExpandNewGoals(page);
+    if (await this.isKeywordInputVisible(page)) {
+      return this.keywordInputLocator(page);
+    }
+
+    let lastExpandAt = Date.now();
     await pollUntil(
       async () => {
         if (await this.isKeywordInputVisible(page)) return true;
         // 节流展开点击，避免某些节点下重复点击把折叠区反复开/关。
         const now = Date.now();
-        if (now - lastExpandAt >= 1_200) {
+        if (now - lastExpandAt >= 600) {
           lastExpandAt = now;
           await this.tryExpandNewGoals(page);
         }
@@ -684,14 +740,16 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
   }
 
   private async waitForKeywordValidation(page: Page, primary: string): Promise<void> {
+    if (await this.isKeywordGoalValid(page, primary)) return;
+
     await pollUntil(
       async () => {
         await this.pruneInvalidKeywordTags(page, primary);
-        await sleep(500);
         return this.isKeywordGoalValid(page, primary);
       },
       {
-        timeoutMs: 30_000,
+        timeoutMs: 15_000,
+        intervalMs: SEMRUSH_EXPAND_POLL_MS,
         label: 'SWA 关键词具体性校验',
       },
     ).catch(() => undefined);
@@ -701,14 +759,14 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
     page: Page,
     keywordInput: ReturnType<Page['locator']>,
   ): Promise<void> {
-    const deadline = Date.now() + 30_000;
+    const deadline = Date.now() + 15_000;
 
     while (Date.now() < deadline) {
       const applyBtn = page.locator(SEMRUSH_SWA_SELECTORS.applyKeywordGoal).first();
       if (await applyBtn.isVisible().catch(() => false)) {
         await applyBtn.scrollIntoViewIfNeeded().catch(() => undefined);
         await applyBtn.click().catch(() => undefined);
-        await sleep(SEMRUSH_UI_SETTLE_MS);
+        await sleep(400);
         return;
       }
 
@@ -717,18 +775,18 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
       });
       if (await roleBtn.first().isVisible().catch(() => false)) {
         await roleBtn.first().click().catch(() => undefined);
-        await sleep(SEMRUSH_UI_SETTLE_MS);
+        await sleep(400);
         return;
       }
 
-      await sleep(1_500);
+      await sleep(SEMRUSH_EXPAND_POLL_MS);
     }
 
     await keywordInput.press('Enter').catch(() => undefined);
-    await sleep(500);
+    await sleep(200);
     await page.keyboard.press('Tab').catch(() => undefined);
     await page.keyboard.press('Enter').catch(() => undefined);
-    await sleep(SEMRUSH_UI_SETTLE_MS);
+    await sleep(400);
   }
 
   private async dismissOverlays(page: Page): Promise<void> {
@@ -1440,7 +1498,7 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
       for (const kw of source.recommendedKeywords ?? []) push(kw);
     }
 
-    return merged.length > 0 ? merged.slice(0, 20) : undefined;
+    return merged.length > 0 ? merged : undefined;
   }
 
   private normalizeSuggestionDetails(

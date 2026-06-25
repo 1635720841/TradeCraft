@@ -17,6 +17,31 @@ export interface OptimizeBriefContext {
 const DEFAULT_TARGET_WORD_COUNT = 1500;
 const DEFAULT_SEARCH_INTENT = 'informational';
 
+/** Semrush 侧栏竞品词数已知时优先于 Brief；否则用 Brief 目标 */
+export function resolveOptimizeWordCountTarget(
+  briefTargetWordCount: number,
+  semrushCompetitorWordCount?: number,
+): number {
+  if (typeof semrushCompetitorWordCount === 'number' && semrushCompetitorWordCount > 0) {
+    return semrushCompetitorWordCount;
+  }
+  return briefTargetWordCount > 0 ? briefTargetWordCount : DEFAULT_TARGET_WORD_COUNT;
+}
+
+/** 距 Semrush/Brief 词数目标缺口超过该值时，本地/Semrush 优化轮提升为首要任务 */
+export const OPTIMIZE_WORD_COUNT_EXPAND_GAP_THRESHOLD = 55;
+
+export function computeOptimizeWordCountGap(
+  currentWordCount: number,
+  targetWordCount: number,
+): number {
+  return targetWordCount - currentWordCount;
+}
+
+export function shouldPrioritizeWordCountExpand(gap: number): boolean {
+  return gap > OPTIMIZE_WORD_COUNT_EXPAND_GAP_THRESHOLD;
+}
+
 /** 从 job.briefData 提取 optimize Prompt 所需的 Brief 摘要与约束字段 */
 export function buildOptimizeBriefContext(briefData: unknown): OptimizeBriefContext {
   const root = (briefData as { outline?: Record<string, unknown> } | null)?.outline ?? {};

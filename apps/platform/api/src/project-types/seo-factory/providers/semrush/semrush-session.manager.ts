@@ -25,13 +25,14 @@ import {
   SEMRUSH_CACHE_CLEAN_PATTERN,
   SEMRUSH_NODE_ATTEMPT_TIMEOUT_MS,
   SEMRUSH_NODE_MAX_ATTEMPTS,
+  SEMRUSH_EXPAND_POLL_MS,
   SEMRUSH_SWA_EDITOR_TIMEOUT_MS,
   SEMRUSH_SWA_PATH,
   SEMRUSH_UI_SETTLE_MS,
   TOOLS_SHARE_HOME_URL,
   TOOLS_SHARE_LOGIN_URL,
 } from './semrush.constants';
-import { waitForAnyLocator, sleep } from './semrush-page-wait';
+import { pollUntil, waitForAnyLocator, sleep } from './semrush-page-wait';
 import { SEMRUSH_SWA_SELECTORS, TOOLS_SHARE_SELECTORS } from './semrush.selectors';
 
 const SESSION_DIR = join(process.cwd(), '.semrush-session');
@@ -178,9 +179,38 @@ export class SemrushSessionManager {
     await waitForAnyLocator(
       page,
       (p) => p.locator(SEMRUSH_SWA_SELECTORS.editor),
-      { timeoutMs: SEMRUSH_SWA_EDITOR_TIMEOUT_MS, label: 'SWA 编辑器' },
+      {
+        timeoutMs: SEMRUSH_SWA_EDITOR_TIMEOUT_MS,
+        intervalMs: SEMRUSH_EXPAND_POLL_MS,
+        label: 'SWA 编辑器',
+      },
     );
-    await sleep(SEMRUSH_UI_SETTLE_MS);
+    await pollUntil(
+      async () => {
+        const goalsVisible = await page
+          .locator(SEMRUSH_SWA_SELECTORS.setNewGoals)
+          .first()
+          .isVisible()
+          .catch(() => false);
+        const keywordVisible = await page
+          .locator(SEMRUSH_SWA_SELECTORS.keywordInput)
+          .first()
+          .isVisible()
+          .catch(() => false);
+        const widgetVisible = await page
+          .locator(SEMRUSH_SWA_SELECTORS.checkerWidget)
+          .first()
+          .isVisible()
+          .catch(() => false);
+        return goalsVisible || keywordVisible || widgetVisible;
+      },
+      {
+        timeoutMs: 30_000,
+        intervalMs: SEMRUSH_EXPAND_POLL_MS,
+        label: 'SWA 侧栏「设置新目标」',
+      },
+    ).catch(() => undefined);
+    await sleep(400);
 
     this.logger.info('SEO Writing Assistant checker ready', {
       action: 'semrush.swa_open',
@@ -198,16 +228,15 @@ export class SemrushSessionManager {
     checkerUrl.pathname = '/swa/checker/';
     await page.goto(checkerUrl.toString(), { waitUntil: 'commit', timeout: 60_000 });
     await page.waitForLoadState('domcontentloaded', { timeout: 60_000 }).catch(() => undefined);
-    await sleep(SEMRUSH_UI_SETTLE_MS);
 
     const deadline = Date.now() + 45_000;
     while (Date.now() < deadline) {
       if (await this.isSwaCheckerReady(page)) return true;
       if (page.url().includes('/swa/checker/')) {
-        await sleep(1_500);
+        await sleep(SEMRUSH_EXPAND_POLL_MS);
         if (await this.isSwaCheckerReady(page)) return true;
       }
-      await page.waitForTimeout(1_500);
+      await sleep(SEMRUSH_EXPAND_POLL_MS);
     }
 
     return false;

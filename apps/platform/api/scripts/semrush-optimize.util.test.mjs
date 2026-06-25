@@ -49,6 +49,25 @@ describe('buildSemrushRewriteSuggestions', () => {
     assert.ok(lines.some((l) => l.includes('语气·必做') && l.includes('Test alarms')));
   });
 
+  it('omits generic SWA keyword reminder when all recommended terms are already present', () => {
+    const content =
+      'BMS battery management system explained covers state of charge, state of health, battery pack, battery cells, cell balancing, lithium battery, and power management.';
+    const lines = buildSemrushRewriteSuggestions(
+      {
+        overall: 8.8,
+        suggestions: [],
+        semrushRecommendedKeywords: [
+          'state of charge',
+          'battery pack',
+          'cell balancing',
+          'view of pack',
+        ],
+      },
+      content,
+    );
+    assert.ok(!lines.some((l) => l.includes('SWA 推荐词须各至少出现')));
+  });
+
   it('requires contextual weaving when SWA keywords are missing', () => {
     const lines = buildSemrushRewriteSuggestions(
       {
@@ -69,6 +88,7 @@ describe('buildSemrushRewriteSuggestions', () => {
     );
   });
   it('suggests precise FAQ word gap when below competitor benchmark', () => {
+    const body = '# Title\n\n' + 'word '.repeat(1000);
     const lines = buildSemrushRewriteSuggestions(
       {
         overall: 8.5,
@@ -76,9 +96,11 @@ describe('buildSemrushRewriteSuggestions', () => {
         semrushCompetitorWordCount: 1115,
         semrushCurrentWordCount: 1007,
       },
-      'Short body.',
+      body,
     );
-    assert.ok(lines.some((l) => l.includes('缺 108 词')));
+    const expandLine = lines.find((l) => l.includes('SWA 统计约') && l.includes('本地扩写至'));
+    assert.ok(expandLine, `expected expand line, got: ${lines.join(' | ')}`);
+    assert.match(expandLine, /缺 \d+ 词/);
     assert.ok(lines.some((l) => l.includes('FAQ')));
   });
 });
@@ -107,8 +129,9 @@ describe('buildSemrushOptimizeContext', () => {
 });
 
 describe('resolveSemrushBoostWordTarget', () => {
-  it('prefers competitor benchmark over brief target', () => {
-    assert.equal(resolveSemrushBoostWordTarget(1600, 2000), 1600);
+  it('prefers local expand target over brief when content is short', () => {
+    const shortBody = '# Title\n\n' + 'word '.repeat(900);
+    assert.equal(resolveSemrushBoostWordTarget(1700, 1500, shortBody, 1700), 1785);
     assert.equal(resolveSemrushBoostWordTarget(undefined, 2000), 2000);
   });
 });

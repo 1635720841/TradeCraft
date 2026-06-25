@@ -23,6 +23,10 @@ const {
   analyzeSemrushTitleIssues,
   computeSemrushTitleOverallPenalty,
   applySemrushTitlePenaltyToPrediction,
+  fixSemrushArticleTitleInContent,
+  resolveSemrushEffectiveCurrentWordCount,
+  resolveSemrushExpandWordTarget,
+  buildSemrushWordCountPlan,
 } = await import(alignPath);
 
 describe('countSemrushComplexWordHits', () => {
@@ -81,6 +85,34 @@ describe('computeSemrushWordGap and injectSemrushWordCountExpansion', () => {
   });
 });
 
+describe('resolveSemrushEffectiveCurrentWordCount and buildSemrushWordCountPlan', () => {
+  it('uses min of api and local when api over-reports', () => {
+    const reconcile = resolveSemrushEffectiveCurrentWordCount({
+      localWordCount: 953,
+      apiCurrentWords: 1700,
+    });
+    assert.equal(reconcile.effectiveCurrentWords, 953);
+    assert.equal(reconcile.reconciled, true);
+  });
+
+  it('builds expand target above competitor benchmark', () => {
+    const content = '# Test\n\n' + 'word '.repeat(950);
+    const plan = buildSemrushWordCountPlan({
+      content,
+      competitorWordCount: 1700,
+      apiReportedWords: 1700,
+    });
+    assert.equal(plan.effectiveCurrentWords, 952);
+    assert.equal(plan.swaGap, 748);
+    assert.ok(plan.localExpandTarget > 1700);
+    assert.ok(plan.localExpandGap > plan.swaGap);
+  });
+
+  it('resolveSemrushExpandWordTarget adds +5% buffer above benchmark', () => {
+    assert.equal(resolveSemrushExpandWordTarget(1700), 1785);
+  });
+});
+
 describe('detectSemrushComplexWordSamples', () => {
   it('returns term and suggestion pairs', () => {
     const samples = detectSemrushComplexWordSamples('We leverage optimization for compatibility.');
@@ -108,5 +140,27 @@ describe('Semrush title penalty', () => {
     assert.ok(penalty >= 0.35);
     const adjusted = applySemrushTitlePenaltyToPrediction(8.55, longTitle);
     assert.ok(Math.abs(adjusted - (8.55 - penalty)) < 0.01);
+  });
+
+  it('fixSemrushArticleTitleInContent shortens overlong H1', () => {
+    const content =
+      '# This Is A Very Long BMS Insulation Monitoring Device Title That Exceeds Limits\n\nBody.';
+    const fixed = fixSemrushArticleTitleInContent(content, 'bms insulation');
+    const h1 = fixed.match(/^#\s+(.+)$/m)?.[1] ?? '';
+    assert.ok(h1.length <= 60);
+    assert.ok(analyzeSemrushTitleIssues(h1).every((i) => i.code !== 'too_long'));
+  });
+});
+
+describe('buildSemrushWordCountPlan', () => {
+  it('trims when local markdown exceeds competitor even if SWA API counts fewer words', () => {
+    const plan = buildSemrushWordCountPlan({
+      content: `${'word '.repeat(1368)}tail`,
+      competitorWordCount: 1082,
+      apiReportedWords: 1167,
+    });
+    assert.equal(plan.localWordCount, 1369);
+    assert.equal(plan.effectiveCurrentWords, 1167);
+    assert.equal(plan.wordCountTrimPriority, true);
   });
 });

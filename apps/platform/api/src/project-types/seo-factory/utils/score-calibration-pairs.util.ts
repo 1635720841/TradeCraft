@@ -8,6 +8,7 @@
 
 import {
   buildCalibrationFeatures,
+  LOCAL_SEO_SCORE_VERSION,
   type ScoreCalibrationFeatures,
   type ScoreCalibrationTrainingRow,
 } from '@wm/shared-core';
@@ -37,6 +38,8 @@ export interface ScoreCalibrationPairRecord {
   localBreakdown?: SeoAnalysisSnapshot['localBreakdown'];
   semrushNodeLabel?: string;
   missingKeywordsBackfilled?: boolean;
+  localScoreVersion?: number;
+  trainingEligible: boolean;
 }
 
 export interface ScoreCalibrationBucketStat {
@@ -51,6 +54,10 @@ export interface ScoreCalibrationPairExtractionMeta {
   excludedProxyCount: number;
   excludedLegacyProxyCount: number;
   excludedKindCount: number;
+  /** 已回滚候选不得成为训练标签，否则模型会学习未采纳稿件 */
+  excludedRolledBackCount: number;
+  /** 旧评分规则快照不得与当前规则混训 */
+  excludedScoreVersionCount: number;
   dedupedJobCount: number;
   /** 缺词数由正文回填的配对数（去重后） */
   backfilledMissingKeywordCount: number;
@@ -114,6 +121,8 @@ function toPairRecord(job: JobSnapshotSource, snapshot: SeoAnalysisSnapshot): Sc
     localBreakdown: snapshot.localBreakdown,
     semrushNodeLabel: snapshot.semrushNodeLabel,
     missingKeywordsBackfilled,
+    localScoreVersion: snapshot.localScoreVersion,
+    trainingEligible: snapshot.localScoreVersion === LOCAL_SEO_SCORE_VERSION,
   };
 }
 
@@ -130,7 +139,10 @@ function dedupeLatestRealPairPerJob(pairs: ScoreCalibrationPairRecord[]): ScoreC
 }
 
 /** 从项目内任务快照提取可训练配对（过滤代理分 + 按任务去重） */
-export function extractScoreCalibrationPairs(jobs: JobSnapshotSource[]): {
+export function extractScoreCalibrationPairs(
+  jobs: JobSnapshotSource[],
+  options?: { includeLegacyScoreVersions?: boolean },
+): {
   pairs: ScoreCalibrationPairRecord[];
   meta: ScoreCalibrationPairExtractionMeta;
 } {
@@ -139,6 +151,8 @@ export function extractScoreCalibrationPairs(jobs: JobSnapshotSource[]): {
   let excludedProxyCount = 0;
   let excludedLegacyProxyCount = 0;
   let excludedKindCount = 0;
+  let excludedRolledBackCount = 0;
+  let excludedScoreVersionCount = 0;
   const rawPairs: ScoreCalibrationPairRecord[] = [];
 
   for (const job of jobs) {
@@ -158,6 +172,14 @@ export function extractScoreCalibrationPairs(jobs: JobSnapshotSource[]): {
       if (!TRAINABLE_SNAPSHOT_KINDS.has(snapshot.kind)) {
         excludedKindCount += 1;
         continue;
+      }
+      if (snapshot.rolledBack === true) {
+        excludedRolledBackCount += 1;
+        continue;
+      }
+      if (snapshot.localScoreVersion !== LOCAL_SEO_SCORE_VERSION) {
+        excludedScoreVersionCount += 1;
+        if (!options?.includeLegacyScoreVersions) continue;
       }
       if (snapshot.excludedFromCalibration === true) {
         excludedPairCount += 1;
@@ -180,6 +202,8 @@ export function extractScoreCalibrationPairs(jobs: JobSnapshotSource[]): {
       excludedProxyCount,
       excludedLegacyProxyCount,
       excludedKindCount,
+      excludedRolledBackCount,
+      excludedScoreVersionCount,
       dedupedJobCount: pairs.length,
       backfilledMissingKeywordCount,
     },

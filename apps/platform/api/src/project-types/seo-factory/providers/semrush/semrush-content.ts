@@ -1,5 +1,7 @@
 /** Markdown → Semrush Quill 编辑器可用 HTML */
 
+import { buildSemrushTableHtml, repairMarkdownTables } from '@wm/shared-core';
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -75,9 +77,9 @@ export function markdownToPlainText(markdown: string): string {
     .trim();
 }
 
-/** Markdown 转 HTML，保留标题、段落、列表、表格等结构 */
-export function markdownToHtml(markdown: string): string {
-  const lines = markdown.replace(/\r\n/g, '\n').split('\n');
+/** Markdown 转 HTML；`semrushTables` 时将表格展平为 Quill 可识别的段落（Semrush 不支持 table） */
+export function markdownToHtml(markdown: string, options?: { semrushTables?: boolean }): string {
+  const lines = repairMarkdownTables(markdown).replace(/\r\n/g, '\n').split('\n');
   const html: string[] = [];
   let inUl = false;
   let inOl = false;
@@ -123,6 +125,10 @@ export function markdownToHtml(markdown: string): string {
   const renderTable = (headerLine: string, bodyLines: string[]) => {
     const header = splitTableRow(headerLine);
     const rows = bodyLines.map(splitTableRow);
+    if (options?.semrushTables) {
+      html.push(buildSemrushTableHtml(header, rows, inlineMarkdownToHtml));
+      return;
+    }
     const parts = [
       '<table><thead><tr>',
       ...header.map((cell) => `<th>${inlineMarkdownToHtml(cell)}</th>`),
@@ -210,4 +216,9 @@ export function markdownToHtml(markdown: string): string {
 
   closeLists();
   return html.join('') || '<p><br></p>';
+}
+
+/** Semrush Quill 编辑器专用：表格展平为带标签的段落，避免单元格文字粘连 */
+export function markdownToSemrushHtml(markdown: string): string {
+  return markdownToHtml(markdown, { semrushTables: true });
 }

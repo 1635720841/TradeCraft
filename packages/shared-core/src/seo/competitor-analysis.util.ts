@@ -132,7 +132,9 @@ export function summarizeCompetitorSerp(
 
   return {
     total: items.length,
-    scrapedCount: scrapeMeta?.succeeded ?? scrapedCount,
+    // `organic` contains accepted analysis samples. Batch `succeeded` may be
+    // higher because the scraper fetches replacement candidates as well.
+    scrapedCount,
     scrapeFailedCount: scrapeMeta?.failed ?? scrapeFailedCount,
     scrapeSkipped: scrapeMeta?.skipped === true,
     scrapeErrorSamples,

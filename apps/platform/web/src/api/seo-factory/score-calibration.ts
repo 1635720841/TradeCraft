@@ -226,6 +226,8 @@ export interface ScoreCalibrationPairItem {
   signedModelError: number | null;
   isHoldout: boolean;
   missingKeywordsBackfilled: boolean;
+  localScoreVersion: number | null;
+  trainingEligible: boolean;
   topFeatureDrivers: ScoreCalibrationFeatureDriver[];
   /** 全部 12 维特征归因（展开详情用） */
   featureAttribution: ScoreCalibrationFeatureDriver[];
@@ -261,6 +263,117 @@ export interface ScoreCalibrationPredictResult {
   };
   featureAttribution: ScoreCalibrationFeatureDriver[];
   passThresholds: { local: number; semrush: number };
+}
+
+export type ScoreReverseFactorKey =
+  | "title_compact"
+  | "title_near_limit"
+  | "title_too_long"
+  | "title_missing"
+  | "duplicate_heading"
+  | "long_paragraph"
+  | "long_sentence"
+  | "complex_words"
+  | "casual_tone"
+  | "long_paragraph_strong"
+  | "long_sentence_strong"
+  | "complex_words_strong"
+  | "casual_tone_strong"
+  | "tone_hype_strong"
+  | "tone_formal_strong"
+  | "primary_keyword_missing"
+  | "primary_keyword_title_only"
+  | "primary_keyword_body_only";
+
+export interface ScoreReverseTrial {
+  score: number;
+  round?: number;
+  nodeLabel?: string;
+  nodeKey?: string;
+  databaseLabel?: string;
+  contentHash?: string;
+  keywordSetHash?: string;
+  semrushReadabilityScore?: number;
+  semrushCurrentWordCount?: number;
+  semrushCompetitorWordCount?: number;
+  suggestions?: string[];
+  suggestionDetails?: Partial<Record<"readability" | "seo" | "tone" | "originality", string[]>>;
+  analysisSource?: "api" | "dom" | "mixed";
+  checkedAt: string;
+}
+
+export interface ScoreReverseVariant {
+  key: "baseline" | ScoreReverseFactorKey;
+  label: string;
+  mutationSummary: string;
+  content: string;
+  trials: ScoreReverseTrial[];
+  medianScore: number | null;
+  meanScore: number | null;
+  standardDeviation: number | null;
+  deltaFromBaseline: number | null;
+  pairedDeltaMedian: number | null;
+  pairedDeltaStandardDeviation: number | null;
+  pairedSampleCount: number;
+  confidence: "high" | "medium" | "low" | "insufficient";
+  warnings: string[];
+}
+
+export interface ScoreReverseRuleEvidence {
+  factorKey: ScoreReverseFactorKey;
+  label: string;
+  experimentCount: number;
+  eligibleExperimentCount: number;
+  excludedExperimentCount: number;
+  articleCount: number;
+  nodeCount: number;
+  medianDelta: number | null;
+  meanDelta: number | null;
+  standardDeviation: number | null;
+  directionConsistency: number | null;
+  confidence: "high" | "medium" | "low";
+  status: "candidate" | "replicated" | "validated" | "inconclusive";
+  warnings: string[];
+}
+
+export interface ScoreReverseAiAnalysis {
+  summary: string;
+  findings: Array<{
+    factorKey: string;
+    title: string;
+    evidence: string;
+    interpretation: string;
+    confidence: "high" | "medium" | "low";
+  }>;
+  limitations: string[];
+  nextActions: Array<{
+    factorKey?: string;
+    title: string;
+    rationale: string;
+    priority: "high" | "medium" | "low";
+  }>;
+  promptVersion: string;
+  generatedAt: string;
+  basedOnUpdatedAt: string;
+  stale: boolean;
+}
+
+export interface ScoreReverseExperiment {
+  id: string;
+  name: string;
+  targetKeyword: string;
+  submittedKeywords: string[];
+  baselineContent: string;
+  factors: ScoreReverseFactorKey[];
+  observations?: Partial<Record<"baseline" | ScoreReverseFactorKey, string>>;
+  aiAnalysis?: ScoreReverseAiAnalysis;
+  variants: ScoreReverseVariant[];
+  baselineSpread: number | null;
+  baselineDriftDetected: boolean;
+  completedVariants: number;
+  totalVariants: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 function labBase(projectId: string) {
@@ -480,4 +593,111 @@ export async function predictCalibratedSemrushScore(
     { data: payload }
   );
   return res.data;
+}
+
+/** Semrush 黑盒评分反推实验列表 */
+export async function listScoreReverseExperiments(
+  projectId: string
+): Promise<ScoreReverseExperiment[]> {
+  const res = await http.request<WmApiResponse<ScoreReverseExperiment[]>>(
+    "get",
+    `${labBase(projectId)}/reverse-experiments`
+  );
+  return res.data ?? [];
+}
+
+/** 跨文章聚合的反推规则证据；只有 validated 才允许进入生产候选。 */
+export async function getScoreReverseEvidence(
+  projectId: string
+): Promise<ScoreReverseRuleEvidence[]> {
+  const res = await http.request<WmApiResponse<ScoreReverseRuleEvidence[]>>(
+    "get",
+    `${labBase(projectId)}/reverse-evidence`
+  );
+  return res.data ?? [];
+}
+
+/** 创建基线 + 单变量对照稿 */
+export async function createScoreReverseExperiment(
+  projectId: string,
+  payload: {
+    name: string;
+    targetKeyword: string;
+    submittedKeywords?: string[];
+    baselineContent: string;
+    factors?: ScoreReverseFactorKey[];
+  }
+): Promise<ScoreReverseExperiment> {
+  const res = await http.request<WmApiResponse<ScoreReverseExperiment>>(
+    "post",
+    `${labBase(projectId)}/reverse-experiments`,
+    { data: payload }
+  );
+  return res.data;
+}
+
+/** 录入某个对照稿的重复 Semrush 检测结果 */
+export async function updateScoreReverseTrials(
+  projectId: string,
+  experimentId: string,
+  payload: {
+    variantKey: "baseline" | ScoreReverseFactorKey;
+    trials: Array<{
+      score: number;
+      round?: number;
+      nodeLabel?: string;
+      databaseLabel?: string;
+      checkedAt?: string;
+    }>;
+    observation?: string;
+  }
+): Promise<ScoreReverseExperiment> {
+  const res = await http.request<WmApiResponse<ScoreReverseExperiment>>(
+    "patch",
+    `${labBase(projectId)}/reverse-experiments/${experimentId}/trials`,
+    { data: payload }
+  );
+  return res.data;
+}
+
+/** 自动执行一个版本的一轮真实 Semrush RPA，并把证据写回实验。 */
+export async function runScoreReverseTrial(
+  projectId: string,
+  experimentId: string,
+  payload: {
+    variantKey: "baseline" | ScoreReverseFactorKey;
+    round: number;
+    preferredNodeKey?: string;
+  }
+): Promise<ScoreReverseExperiment> {
+  const res = await http.request<WmApiResponse<ScoreReverseExperiment>>(
+    "post",
+    `${labBase(projectId)}/reverse-experiments/${experimentId}/run-trial`,
+    { data: payload, timeout: 600_000 }
+  );
+  return res.data;
+}
+
+/** 基于实验统计生成 AI 证据解读与下一轮建议，不改写任何对照稿。 */
+export async function analyzeScoreReverseExperiment(
+  projectId: string,
+  experimentId: string
+): Promise<ScoreReverseExperiment> {
+  const res = await http.request<WmApiResponse<ScoreReverseExperiment>>(
+    "post",
+    `${labBase(projectId)}/reverse-experiments/${experimentId}/ai-analysis`,
+    { timeout: 200_000 }
+  );
+  return res.data;
+}
+
+/** 删除反推实验 */
+export async function deleteScoreReverseExperiment(
+  projectId: string,
+  experimentId: string
+): Promise<void> {
+  await http.request(
+    "delete",
+    `${labBase(projectId)}/reverse-experiments/${experimentId}`
+  );
 }

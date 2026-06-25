@@ -32,6 +32,10 @@ export const SCORE_CALIBRATION_PRODUCTION_HOLDOUT_MAE = 0.35;
 
 /** 降频 RPA 试验门槛：holdout MAE */
 export const SCORE_CALIBRATION_TRIAL_HOLDOUT_MAE = 0.45;
+export const SCORE_CALIBRATION_TRIAL_PASS_MIN = 2;
+export const SCORE_CALIBRATION_PRODUCTION_PASS_MIN = 3;
+export const SCORE_CALIBRATION_TRIAL_PASS_RECALL = 0.5;
+export const SCORE_CALIBRATION_PRODUCTION_PASS_RECALL = 0.6;
 
 export interface ScoreCalibrationReadinessGaps {
   samplesNeeded: number;
@@ -129,13 +133,17 @@ export function resolveScoreCalibrationReadiness(input: {
   const trialReady =
     holdoutSampleCount >= SCORE_CALIBRATION_TRIAL_HOLDOUT_MIN &&
     holdoutMae !== null &&
-    holdoutMae <= SCORE_CALIBRATION_TRIAL_HOLDOUT_MAE;
+    holdoutMae <= SCORE_CALIBRATION_TRIAL_HOLDOUT_MAE &&
+    (input.model?.holdoutPassSampleCount ?? 0) >= SCORE_CALIBRATION_TRIAL_PASS_MIN &&
+    (input.model?.holdoutPassRecall ?? 0) >= SCORE_CALIBRATION_TRIAL_PASS_RECALL;
 
   const productionReady =
     holdoutSampleCount >= SCORE_CALIBRATION_PRODUCTION_HOLDOUT_MIN &&
     trainSampleCount >= 30 &&
     holdoutMae !== null &&
-    holdoutMae <= SCORE_CALIBRATION_PRODUCTION_HOLDOUT_MAE;
+    holdoutMae <= SCORE_CALIBRATION_PRODUCTION_HOLDOUT_MAE &&
+    (input.model?.holdoutPassSampleCount ?? 0) >= SCORE_CALIBRATION_PRODUCTION_PASS_MIN &&
+    (input.model?.holdoutPassRecall ?? 0) >= SCORE_CALIBRATION_PRODUCTION_PASS_RECALL;
 
   if (productionReady) {
     return {

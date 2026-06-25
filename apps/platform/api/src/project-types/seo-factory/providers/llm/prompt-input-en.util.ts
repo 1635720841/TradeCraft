@@ -53,6 +53,8 @@ const SUGGESTION_EXACT: Record<string, string> = {
     '(No specific items — improve readability, reduce AI tone, and strengthen originality globally)',
   '（无额外实体词，保持现有术语覆盖）':
     '(No additional entity terms — maintain current terminology coverage)',
+  '在标题中至少使用一个目标关键词，每个目标关键词的使用次数请勿超过一次。':
+    'Use at least one target keyword in the title; each target keyword may appear at most once in the title.',
 };
 
 const SUGGESTION_PATTERNS: Array<{ pattern: RegExp; replace: (match: RegExpMatchArray) => string }> = [
@@ -87,8 +89,36 @@ const SUGGESTION_PATTERNS: Array<{ pattern: RegExp; replace: (match: RegExpMatch
     replace: (m) => `Consider writing more text. Current word count is about ${m[1]}.`,
   },
   {
+    pattern: /^目标关键词「(.+)」Semrush 建议频次：(.+)$/,
+    replace: (m) => `Target keyword "${m[1]}" — Semrush recommended frequency: ${m[2]}`,
+  },
+  {
+    pattern: /^推荐关键词「(.+)」Semrush 建议频次：(.+)$/,
+    replace: (m) => `Recommended keyword "${m[1]}" — Semrush recommended frequency: ${m[2]}`,
+  },
+  {
+    pattern: /^\[Semrush 对齐·词数·必做\] 当前 (\d+) 词，SWA 统计约 (\d+) 词 \/ 竞品标杆 (\d+) 词（SWA 缺 (\d+) 词），本地扩写至 (\d+)–(\d+) 词（缺 (\d+) 词）；可加 (\d+) 条 FAQ（每条 40–60 词），暂缓次要可读性修稿$/,
+    replace: (m) =>
+      `[Semrush·word count·MUST] Current ${m[1]} words; SWA ~${m[2]}, benchmark ${m[3]} (SWA gap ${m[4]}): expand local Markdown to ${m[5]}–${m[6]} (gap ${m[7]}); add ${m[8]} FAQ items (40–60 words each) before minor readability edits`,
+  },
+  {
+    pattern: /^\[Semrush 对齐·词数·必做\] 当前 (\d+) 词，本地扩写至 (\d+)–(\d+) 词（缺 (\d+) 词）；可加 (\d+) 条 FAQ（每条 40–60 词），暂缓次要可读性修稿$/,
+    replace: (m) =>
+      `[Semrush·word count·MUST] Current ${m[1]} words: expand local Markdown to ${m[2]}–${m[3]} (gap ${m[4]}); add ${m[5]} FAQ items (40–60 words each) before minor readability edits`,
+  },
+  {
+    pattern: /^\[可读性·必做\] SWA 统计约 (\d+) 词，竞品标杆 (\d+) 词（缺 (\d+) 词）：本地扩写至 (\d+)–(\d+) 词（\*\*宁多勿少\*\*，略高于 SWA 标杆）；优先加 (\d+) 条 FAQ（每条 40–60 词），\*\*禁止删减正文\*\*$/,
+    replace: (m) =>
+      `[Readability·MUST] SWA ~${m[1]} words, benchmark ${m[2]} (gap ${m[3]}): expand local Markdown to ${m[4]}–${m[5]} (write MORE than SWA benchmark); add ${m[6]} FAQ items (40–60 words each); do NOT delete body copy`,
+  },
+  {
     pattern: /^添加推荐关键词: (.+)$/,
     replace: (m) => `Add recommended keywords: ${m[1]!.replace(/ 等 (\d+) 个$/, ' and $1 more')}`,
+  },
+  {
+    pattern: /^添加推荐关键词（共 (\d+) 个）: (.+)$/,
+    replace: (m) =>
+      `Add recommended keywords (${m[1]} total, preview): ${m[2]!.replace(/…$/, '')} — see full list in frequency lines below`,
   },
   {
     pattern: /^目标关键词: (.+)$/,

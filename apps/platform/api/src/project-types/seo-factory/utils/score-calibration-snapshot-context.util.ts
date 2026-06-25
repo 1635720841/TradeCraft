@@ -34,7 +34,12 @@ export function resolveSnapshotKeywordList(
   return mergeSemrushKeywordLists(
     [jobTargetKeyword, snapshot.targetKeyword],
     snapshot.submittedKeywords,
+    snapshot.semrushTargetKeywords,
   );
+}
+
+function resolveSnapshotReportedMissingKeywordCount(snapshot: SeoAnalysisSnapshot): number {
+  return mergeSemrushKeywordLists(snapshot.semrushMissingTargetKeywords).length;
 }
 
 /** 解析训练用 Semrush 上下文；缺词数缺失且有正文时回填 */
@@ -44,6 +49,15 @@ export function resolveSnapshotSemrushContext(
 ): ResolvedSnapshotSemrushContext {
   let missingKeywordCount = snapshot.semrushMissingKeywordCount;
   let missingKeywordsBackfilled = false;
+  const reportedMissingKeywordCount = resolveSnapshotReportedMissingKeywordCount(snapshot);
+
+  if (
+    reportedMissingKeywordCount > 0 &&
+    (typeof missingKeywordCount !== 'number' || reportedMissingKeywordCount > missingKeywordCount)
+  ) {
+    missingKeywordCount = reportedMissingKeywordCount;
+    missingKeywordsBackfilled = true;
+  }
 
   if (typeof missingKeywordCount !== 'number') {
     const content = resolveSnapshotContent(snapshot);

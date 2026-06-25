@@ -17,6 +17,7 @@ const modPath = pathToFileURL(
 const {
   buildSemrushSubmittedKeywords,
   buildSemrushCheckInputFromContent,
+  filterSemrushSubmittedKeywordsInContent,
 } = await import(modPath);
 
 const SMART_BMS_SNIPPET = `<h1>Smart BMS Guide for Buyers</h1>
@@ -68,6 +69,21 @@ describe('buildSemrushSubmittedKeywords', () => {
     assert.equal(submitted.includes('extends battery'), false);
   });
 
+  it('drops pronoun-led body n-grams like "so it can"', () => {
+    const body = `# BMS Guide
+
+A battery pack needs control so it can work safely. The pack so it can stop faults. Not only by voltage alone.`;
+    const submitted = buildSemrushSubmittedKeywords(body, {
+      targetKeyword: 'bms battery management system explained',
+      poolKeywords: ['state of charge', 'cell balancing'],
+    });
+
+    assert.equal(submitted.includes('so it can'), false);
+    assert.equal(submitted.includes('pack so it'), false);
+    assert.equal(submitted.includes('it can work'), false);
+    assert.equal(submitted.includes('not only by'), false);
+  });
+
   it('prefers heading/link phrases that match the 9.1 manual extract set', () => {
     const submitted = buildSemrushSubmittedKeywords(SMART_BMS_SNIPPET, {
       targetKeyword: 'smart bms',
@@ -93,12 +109,29 @@ describe('buildSemrushSubmittedKeywords', () => {
 });
 
 describe('buildSemrushCheckInputFromContent', () => {
-  it('maps first phrase to keyword and rest to recommendedKeywords', () => {
+  it('keeps job targetKeyword as RPA primary and pins it first in submittedKeywords', () => {
     const input = buildSemrushCheckInputFromContent(SMART_BMS_SNIPPET, 'smart bms', LEGACY_POOL);
 
     assert.ok(input.submittedKeywords.length >= 8);
-    assert.equal(input.keyword, input.submittedKeywords[0]);
+    assert.equal(input.keyword, 'smart bms');
+    assert.equal(input.submittedKeywords[0], 'smart bms');
     assert.deepEqual(input.recommendedKeywords, input.submittedKeywords.slice(1));
     assert.equal(input.submittedKeywords.length, input.recommendedKeywords.length + 1);
+  });
+});
+
+describe('filterSemrushSubmittedKeywordsInContent', () => {
+  it('drops persisted SWA tags that are not present in the article body', () => {
+    const filtered = filterSemrushSubmittedKeywordsInContent(SMART_BMS_SNIPPET, [
+      'smart bms',
+      'battery management system',
+      'applications support and buying checklist',
+      'bms 12 200',
+    ]);
+
+    assert.ok(filtered.includes('smart bms'));
+    assert.ok(filtered.includes('battery management system'));
+    assert.equal(filtered.includes('applications support and buying checklist'), false);
+    assert.equal(filtered.includes('bms 12 200'), false);
   });
 });

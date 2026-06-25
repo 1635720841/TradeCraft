@@ -7,9 +7,10 @@
  */
 
 import type { LocalSeoScoreBreakdown, LocalSeoScoreResult } from './local-seo-score';
+import { SEMRUSH_FLESCH_TARGET_DEFAULT } from './flesch-readability.util';
 import { resolveCalibrationWordGap } from './semrush-readability-align.util';
 
-export const SCORE_CALIBRATION_MODEL_VERSION = 2 as const;
+export const SCORE_CALIBRATION_MODEL_VERSION = 3 as const;
 export const SCORE_CALIBRATION_MIN_SAMPLES = 12;
 export const SCORE_CALIBRATION_MIN_JOBS_FOR_HOLDOUT = 5;
 export const SCORE_CALIBRATION_HOLDOUT_JOB_RATIO = 0.2;
@@ -60,6 +61,12 @@ export interface ScoreCalibrationModel {
   holdoutSampleCount?: number;
   trainSampleCount?: number;
   holdoutJobCount?: number;
+  /** Holdout 中 Semrush 真分 ≥9 的样本数 */
+  holdoutPassSampleCount?: number;
+  /** 以预测分 ≥9 判定时的通过召回率 */
+  holdoutPassRecall?: number;
+  /** 以预测分 ≥9 判定时的通过精确率 */
+  holdoutPassPrecision?: number;
 }
 
 export type ScoreCalibrationConfidence = 'high' | 'medium' | 'low';
@@ -96,7 +103,7 @@ export const SCORE_CALIBRATION_FEATURE_LABELS: Record<keyof ScoreCalibrationFeat
   depthNorm: '内容深度',
   wordCountNorm: '词数',
   longSentenceNorm: '长句',
-  fleschNorm: 'Flesch',
+  fleschNorm: 'Flesch 对齐度',
   wordGapNorm: '词数缺口',
   missingKeywordsNorm: '缺词数',
   semrushNodeNorm: 'Semrush 节点',
@@ -221,6 +228,7 @@ export function buildCalibrationFeatures(input: {
   const wordCount = metrics?.wordCount ?? 0;
   const longSentences = metrics?.longSentencesOver22 ?? 0;
   const flesch = metrics?.fleschReadingEase ?? 50;
+  const fleschTarget = metrics?.fleschTarget ?? SEMRUSH_FLESCH_TARGET_DEFAULT;
   const wordGap = resolveCalibrationWordGap({
     wordCount,
     competitorWordCount: semrushContext?.competitorWordCount,
@@ -237,7 +245,7 @@ export function buildCalibrationFeatures(input: {
     depthNorm: clampScore((breakdown?.contentDepth ?? 0) / 10, 0, 1),
     wordCountNorm: clampScore(wordCount / 2000, 0, 1),
     longSentenceNorm: clampScore(longSentences / 10, 0, 1),
-    fleschNorm: clampScore(flesch / 100, 0, 1),
+    fleschNorm: clampScore(1 - Math.abs(flesch - fleschTarget) / 50, 0, 1),
     wordGapNorm: clampScore(Math.max(0, wordGap) / 400, 0, 1),
     missingKeywordsNorm: clampScore(missingKeywords / 12, 0, 1),
     semrushNodeNorm: encodeSemrushNodeNorm(semrushContext?.semrushNode),
@@ -322,6 +330,32 @@ function computeErrors(
   const mae = absSum / rows.length;
   const rmse = Math.sqrt(sqSum / rows.length);
   return { mae: round2(mae), rmse: round2(rmse) };
+}
+
+function computePassClassification(
+  intercept: number,
+  weights: ScoreCalibrationFeatures,
+  rows: ScoreCalibrationTrainingRow[],
+): { passSampleCount: number; recall: number; precision: number } {
+  let truePositive = 0;
+  let falsePositive = 0;
+  let falseNegative = 0;
+  for (const row of rows) {
+    const actualPass = row.semrushOverall >= 9;
+    const predictedPass = evaluateModel(intercept, weights, row) >= 9;
+    if (actualPass && predictedPass) truePositive += 1;
+    else if (!actualPass && predictedPass) falsePositive += 1;
+    else if (actualPass) falseNegative += 1;
+  }
+  const passSampleCount = truePositive + falseNegative;
+  return {
+    passSampleCount,
+    recall: passSampleCount > 0 ? round2(truePositive / passSampleCount) : 0,
+    precision:
+      truePositive + falsePositive > 0
+        ? round2(truePositive / (truePositive + falsePositive))
+        : 0,
+  };
 }
 
 function splitRowsByJobId(rows: ScoreCalibrationTrainingRow[]): {
@@ -417,6 +451,8 @@ export function trainScoreCalibrationModel(
   const { mae, rmse } = computeErrors(intercept, weights, train);
   const holdoutErrors =
     holdout.length > 0 ? computeErrors(intercept, weights, holdout) : undefined;
+  const holdoutPass =
+    holdout.length > 0 ? computePassClassification(intercept, weights, holdout) : undefined;
 
   return {
     version: SCORE_CALIBRATION_MODEL_VERSION,
@@ -433,6 +469,9 @@ export function trainScoreCalibrationModel(
       holdout.length > 0
         ? new Set(holdout.map((row) => row.jobId).filter(Boolean)).size
         : undefined,
+    holdoutPassSampleCount: holdoutPass?.passSampleCount,
+    holdoutPassRecall: holdoutPass?.recall,
+    holdoutPassPrecision: holdoutPass?.precision,
     trainedAt: new Date().toISOString(),
   };
 }
@@ -454,7 +493,9 @@ function resolveConfidence(model: ScoreCalibrationModel | null): ScoreCalibratio
   if (
     (model.holdoutSampleCount ?? 0) >= 15 &&
     evalMae <= 0.3 &&
-    (model.trainSampleCount ?? model.sampleCount) >= 30
+    (model.trainSampleCount ?? model.sampleCount) >= 30 &&
+    (model.holdoutPassSampleCount ?? 0) >= 3 &&
+    (model.holdoutPassRecall ?? 0) >= 0.6
   ) {
     return 'high';
   }

@@ -11,11 +11,18 @@
 import { Injectable } from '@nestjs/common';
 import {
   defaultBrandVoice,
+  filterUsableCompetitorSamples,
   getContentLanguageLabel,
   LOCAL_SEO_PASS_THRESHOLD,
   normalizeContentLanguage,
   parseLlmJson,
   LlmJsonParseError,
+  resolveSemrushReadabilityTarget,
+  SEMRUSH_FLESCH_TOLERANCE,
+  SEMRUSH_WORD_COUNT_SOFT_MAX_RATIO,
+  SEMRUSH_WORD_COUNT_TRIM_OVER_RATIO,
+  SEMRUSH_WORD_COUNT_WRITE_BUFFER_RATIO,
+  resolveSemrushWordCountHardCap,
 } from '@wm/shared-core';
 import type {
   BriefInput,
@@ -33,6 +40,8 @@ import type {
   ParaphraseValidateOutput,
   RewriteInput,
   RewriteOutput,
+  ScoreReverseAnalysisInput,
+  ScoreReverseAnalysisOutput,
 } from '@wm/provider-interfaces';
 import { BusinessException } from '../../../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
@@ -55,6 +64,78 @@ const BRIEF_SUMMARY_FALLBACK_EN =
   '(No Brief summary — preserve core structure and topic from current body)';
 const SUGGESTION_FALLBACK_ZH = '（无具体条目，请按可读性、去 AI 感与原创性整体润色）';
 const KEYWORD_FALLBACK_ZH = '（无额外实体词，保持现有术语覆盖）';
+const LLM_DEBUG_PROMPT_ENABLED = process.env.LLM_DEBUG_PROMPT === 'true';
+
+function buildWordCountExpandPriorityBlock(input: OptimizeInput): string {
+  if (!input.wordCountExpandPriority) return '';
+  const swaTarget =
+    typeof input.semrushCompetitorWordCount === 'number' && input.semrushCompetitorWordCount > 0
+      ? input.semrushCompetitorWordCount
+      : input.targetWordCount ?? 1500;
+  const localTarget = input.semrushLocalExpandWordTarget ?? swaTarget;
+  const swaCurrent =
+    typeof input.semrushCurrentWordCount === 'number'
+      ? input.semrushCurrentWordCount
+      : undefined;
+  const localCurrent =
+    typeof input.localWordCount === 'number' ? input.localWordCount : swaCurrent;
+  const localGap =
+    localCurrent !== undefined ? Math.max(0, localTarget - localCurrent) : undefined;
+  const swaGap =
+    swaCurrent !== undefined ? Math.max(0, swaTarget - swaCurrent) : undefined;
+  const faqCount =
+    localGap !== undefined ? Math.min(4, Math.max(2, Math.ceil(localGap / 50))) : 3;
+  const seoProtection = buildSeoProtectionBlock(input);
+  return [
+    '## WORD COUNT EXPAND PRIORITY (Semrush — this round ONLY)',
+    '',
+    'Copy is **shorter than the Semrush word-count target**. This outranks minor readability tweaks.',
+    '',
+    swaCurrent !== undefined
+      ? `- SWA counts ~${swaCurrent} words (benchmark ~${swaTarget}${swaGap != null ? `, gap ~${swaGap}` : ''})`
+      : `- Semrush benchmark ~${swaTarget} words`,
+    localCurrent !== undefined
+      ? `- Expand local Markdown toward **${localTarget - 5}–${localTarget}** words (current ~${localCurrent}${localGap != null ? `, gap ~${localGap}` : ''}) — **benchmark +${Math.round(SEMRUSH_WORD_COUNT_WRITE_BUFFER_RATIO * 100)}%** so SWA still registers enough words`
+      : `- Expand toward **~${localTarget} words** locally (benchmark +${Math.round(SEMRUSH_WORD_COUNT_WRITE_BUFFER_RATIO * 100)}%)`,
+    `- Add **${faqCount}** short FAQ Q&As (40–60 words each) or deepen thin H2 sections`,
+    '- Do **not** pad with filler; keep sentences ≤22 words and paragraphs ≤65 words',
+    '- **Never shorten or delete body paragraphs this round** — only add depth, FAQ, or examples',
+    '- Preserve all recommended keywords / SERP entities already in the draft',
+    seoProtection,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function buildWordCountTrimPriorityBlock(input: OptimizeInput): string {
+  if (!input.wordCountTrimPriority) return '';
+  const competitor =
+    typeof input.semrushCompetitorWordCount === 'number'
+      ? input.semrushCompetitorWordCount
+      : input.targetWordCount ?? 1500;
+  const current =
+    typeof input.semrushCurrentWordCount === 'number'
+      ? input.semrushCurrentWordCount
+      : undefined;
+  const seoProtection = buildSeoProtectionBlock(input);
+  const phaseLabel =
+    input.optimizePhase === 'semrush' ? 'Semrush SWA' : 'Semrush calibration';
+  return [
+    `## WORD COUNT TRIM PRIORITY (${phaseLabel} — this round ONLY)`,
+    '',
+    `Copy is **more than ${Math.round(SEMRUSH_WORD_COUNT_TRIM_OVER_RATIO * 100)}% over the SWA word-count benchmark**. Trimming outranks minor readability tweaks.`,
+    '',
+    current !== undefined
+      ? `- Current ~${current} words → trim toward **${Math.round(competitor * (1 + SEMRUSH_WORD_COUNT_WRITE_BUFFER_RATIO))}–${Math.round(competitor * (1 + SEMRUSH_WORD_COUNT_SOFT_MAX_RATIO))}** words (benchmark +5%–+15%)`
+      : `- Trim toward competitor benchmark **~${competitor} words**`,
+    '- Cut: repeated arguments → transitions → secondary examples → long definitions',
+    '- **Never delete** sentences containing recommended keywords / SERP entities / Tag terms',
+    '- Do **not** add FAQ blocks or new H2 sections this round',
+    seoProtection,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
 
 function buildTitlePriorityBlock(input: OptimizeInput): string {
   if (!input.titlePriority || input.optimizePhase === 'semrush') return '';
@@ -72,6 +153,7 @@ function buildTitlePriorityBlock(input: OptimizeInput): string {
     '',
     `- Shorten to **≤60 characters** (search snippet limit)`,
     `- Use **5–12 words** in the title`,
+    '- **Fixed SWA rule**: at least one target keyword in the title; each target keyword at most once in the title',
     '- Keep the target keyword near the start',
     '- Update the Markdown H1 (`# Title`) at the top of the article',
     '- Do **not** add SERP entities or rewrite body paragraphs this round',
@@ -95,6 +177,7 @@ function buildHardSentencePriorityBlock(input: OptimizeInput): string {
     '**SURGICAL MODE — change ONLY the sentences listed below. Do NOT add SERP entities, new paragraphs, or rewrite unlisted sentences.**',
     '',
     '- Split each flagged sentence into **2 shorter sentences** (≤22 words each)',
+    '- **Break `when … or/and …` patterns**: never keep conditional + coordination in one sentence — split at `when` or before `or`/`and`',
     '- Reduce and/or coordination; break multi-clause sentences at commas',
     '- Do **not** add entity terms or keyword filler — shorten surrounding text only',
     '',
@@ -208,6 +291,12 @@ function buildReadabilityPriorityBlock(input: OptimizeInput): string {
   if (input.titlePriority && input.optimizePhase !== 'semrush') {
     return buildTitlePriorityBlock(input);
   }
+  if (input.wordCountExpandPriority) {
+    return buildWordCountExpandPriorityBlock(input);
+  }
+  if (input.wordCountTrimPriority) {
+    return buildWordCountTrimPriorityBlock(input);
+  }
   if (input.hardSentencePriority && input.optimizePhase !== 'semrush') {
     return buildHardSentencePriorityBlock(input);
   }
@@ -313,6 +402,25 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
     return this.promptBinding.getActiveVersion(slotId);
   }
 
+  private logPromptDebug(input: {
+    action: string;
+    task: LlmTask;
+    promptVersion?: string;
+    userContent: string;
+    extra?: Record<string, unknown>;
+  }): void {
+    if (!LLM_DEBUG_PROMPT_ENABLED) return;
+    this.logger.info('LLM prompt debug', {
+      action: input.action,
+      task: input.task,
+      promptVersion: input.promptVersion,
+      promptChars: input.userContent.length,
+      promptPreview: input.userContent.slice(0, 1000),
+      promptFull: input.userContent,
+      ...input.extra,
+    });
+  }
+
   async generateBrief(input: BriefInput): Promise<BriefOutput> {
     const promptVersion = await this.loadPromptVersion('brief');
     const template = await this.promptLoader.load(promptVersion);
@@ -324,6 +432,12 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
       contentFormGuidelines: input.contentFormGuidelines ?? '(Use standard article structure.)',
       clusterContext: input.clusterContext ?? '(Not part of a topic cluster.)',
       serpContext: this.formatSerpContext(input.serpContext),
+    });
+    this.logPromptDebug({
+      action: 'generateBrief',
+      task: 'brief',
+      promptVersion,
+      userContent,
     });
 
     const outline = await this.chatJson(userContent, 'generateBrief', resolveLlmSampling('default'), 'brief');
@@ -341,6 +455,12 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
       contentForm: input.contentForm ?? 'standard SEO article',
       contentFormGuidelines: input.contentFormGuidelines ?? '(Use standard article structure.)',
       clusterContext: input.clusterContext ?? '(Not part of a topic cluster.)',
+    });
+    this.logPromptDebug({
+      action: 'generateDraft',
+      task: 'draft',
+      promptVersion,
+      userContent,
     });
 
     const parsed = await this.chatJson<{
@@ -381,16 +501,25 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
     const readability = input.semrushReadabilityScore;
     const semrushWordCap =
       typeof competitorWords === 'number' && competitorWords > 0
-        ? String(competitorWords + 50)
-        : '(unknown — if sidebar says "longer than competitors", trim toward competitor length)';
+        ? String(resolveSemrushWordCountHardCap(competitorWords))
+        : '(unknown — if sidebar says "longer than competitors", trim toward benchmark +5%–+15%)';
     const semrushWordTarget =
+      typeof input.semrushLocalExpandWordTarget === 'number' &&
+      input.semrushLocalExpandWordTarget > 0
+        ? String(input.semrushLocalExpandWordTarget)
+        : typeof competitorWords === 'number' && competitorWords > 0
+          ? String(competitorWords)
+          : '(unknown)';
+    const semrushSwaBenchmark =
       typeof competitorWords === 'number' && competitorWords > 0
         ? String(competitorWords)
         : '(unknown)';
     const semrushCurrentWords =
       typeof currentWords === 'number' && currentWords > 0 ? String(currentWords) : '(unknown)';
     const semrushReadability =
-      typeof readability === 'number' ? `${readability}/100` : '(unknown, target ≥70)';
+      typeof readability === 'number' ? `${readability}/100` : '(unknown)';
+    const readabilityTarget = resolveSemrushReadabilityTarget(readability);
+    const semrushReadabilityTarget = `${readabilityTarget} (±${SEMRUSH_FLESCH_TOLERANCE})`;
     const localScore =
       typeof input.localScore === 'number' ? String(input.localScore) : '(unknown)';
     const localScoreTarget = String(input.localScoreTarget ?? LOCAL_SEO_PASS_THRESHOLD);
@@ -411,10 +540,14 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
       '(Use the breakdown above — fix the smallest gap dimension first.)';
     const serpPriorityBlock = buildSerpPriorityBlock(input);
     const titlePriorityBlock = buildTitlePriorityBlock(input);
+    const wordCountTrimPriorityBlock = buildWordCountTrimPriorityBlock(input);
+    const wordCountExpandPriorityBlock = buildWordCountExpandPriorityBlock(input);
     const fleschPriorityBlock = buildFleschPriorityBlock(input);
     const scoreGapPlan = input.calibratedLocalAlign
-      ? `${serpPriorityBlock ? `${serpPriorityBlock}\n\n` : ''}${titlePriorityBlock ? `${titlePriorityBlock}\n\n` : ''}${fleschPriorityBlock ? `${fleschPriorityBlock}\n\n` : ''}${useCalibratedPrompt ? '' : `${buildCalibratedLocalAlignBlock(input)}\n\n`}${scoreGapPlanRaw}`
-      : scoreGapPlanRaw;
+      ? `${serpPriorityBlock ? `${serpPriorityBlock}\n\n` : ''}${titlePriorityBlock ? `${titlePriorityBlock}\n\n` : ''}${wordCountExpandPriorityBlock ? `${wordCountExpandPriorityBlock}\n\n` : ''}${wordCountTrimPriorityBlock ? `${wordCountTrimPriorityBlock}\n\n` : ''}${fleschPriorityBlock ? `${fleschPriorityBlock}\n\n` : ''}${useCalibratedPrompt ? '' : `${buildCalibratedLocalAlignBlock(input)}\n\n`}${scoreGapPlanRaw}`
+      : wordCountExpandPriorityBlock
+        ? `${wordCountExpandPriorityBlock}\n\n${scoreGapPlanRaw}`
+        : scoreGapPlanRaw;
     const readabilityPriorityBlock = buildReadabilityPriorityBlock({
       ...input,
       readabilityPriority:
@@ -423,6 +556,8 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
           (input.pointsToGo ?? 0) > 0 &&
           input.serpPriority !== true &&
           input.titlePriority !== true &&
+          input.wordCountExpandPriority !== true &&
+          input.wordCountTrimPriority !== true &&
           input.fleschPriority !== true &&
           input.hardSentencePriority !== true),
     });
@@ -449,9 +584,11 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
       contentCoverageMaxedBlock,
       serpCoverageMaxedBlock,
       keywordDensityFocusBlock,
-      semrushCompetitorWordCount: semrushWordTarget,
+      semrushCompetitorWordCount: semrushSwaBenchmark,
+      semrushLocalExpandWordTarget: semrushWordTarget,
       semrushCurrentWordCount: semrushCurrentWords,
       semrushReadabilityScore: semrushReadability,
+      semrushReadabilityTarget,
       semrushWordCountCap: semrushWordCap,
       briefSummary:
         input.briefSummary?.trim() === BRIEF_SUMMARY_FALLBACK_ZH || !input.briefSummary?.trim()
@@ -460,6 +597,20 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
       recommendedKeywords: keywordBlock,
       suggestions: suggestionBlock,
       content: input.content,
+    });
+    this.logPromptDebug({
+      action: 'generateOptimize',
+      task: 'optimize',
+      promptVersion,
+      userContent,
+      extra: {
+        optimizePhase: input.optimizePhase,
+        recommendedKeywordCount: input.recommendedKeywords?.length ?? 0,
+        suggestionCount: input.suggestions.length,
+        roundAction: input.roundAction,
+        keywordBatch: input.keywordBatch,
+        keywordBatchCount: input.keywordBatch?.length ?? 0,
+      },
     });
 
     const parsed = await this.chatJson<{
@@ -492,6 +643,12 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
       instruction: input.instruction,
       content: input.content,
     });
+    this.logPromptDebug({
+      action: 'generateRewrite',
+      task: 'rewrite',
+      promptVersion,
+      userContent,
+    });
 
     const parsed = await this.chatJson<{
       content?: string;
@@ -523,6 +680,12 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
       topicHint: input.topicHint?.trim() || '（无额外主题约束，按站点整体定位扩展）',
       count: String(count),
     });
+    this.logPromptDebug({
+      action: 'generateKeywordSeeds',
+      task: 'default',
+      promptVersion,
+      userContent,
+    });
 
     const parsed = await this.chatJson<{ keywords?: KeywordSeedOutput['keywords'] }>(
       userContent,
@@ -545,6 +708,87 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
     }
 
     return { keywords, promptVersion };
+  }
+
+  async analyzeScoreReverseExperiment(
+    input: ScoreReverseAnalysisInput,
+  ): Promise<ScoreReverseAnalysisOutput> {
+    const promptVersion = 'score_reverse_analysis_v1';
+    const userContent = [
+      'You are a rigorous SEO scoring reverse-engineering research assistant.',
+      'Analyze only the supplied controlled-experiment statistics. Never invent a causal rule.',
+      'This input represents one article. A finding from one article can never be high confidence; cap it at medium even when repeated readings are identical.',
+      'Prefer round-paired deltas over a difference of medians, and explicitly flag baseline drift.',
+      'Distinguish measured evidence from hypotheses. Treat low sample counts, warnings, node drift, and variance as limitations.',
+      'Recommend the smallest useful next controlled experiment. Do not suggest free-form article rewrites.',
+      'Write all human-readable fields in Simplified Chinese.',
+      '',
+      'Return one JSON object with exactly this shape:',
+      '{',
+      '  "summary": "short overall conclusion",',
+      '  "findings": [{ "factorKey": "variant key", "title": "finding", "evidence": "numeric evidence", "interpretation": "careful interpretation", "confidence": "high|medium|low" }],',
+      '  "limitations": ["limitation"],',
+      '  "nextActions": [{ "factorKey": "optional existing factor key", "title": "next experiment", "rationale": "why it is valuable", "priority": "high|medium|low" }]',
+      '}',
+      '',
+      `Experiment data:\n${JSON.stringify(input)}`,
+    ].join('\n');
+    this.logPromptDebug({
+      action: 'analyzeScoreReverseExperiment',
+      task: 'default',
+      promptVersion,
+      userContent,
+    });
+    const parsed = await this.chatJson<Partial<ScoreReverseAnalysisOutput>>(
+      userContent,
+      'analyzeScoreReverseExperiment',
+      resolveLlmSampling('optimize'),
+      'default',
+    );
+    const allowedConfidence = new Set(['high', 'medium', 'low']);
+    const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
+    const findings = Array.isArray(parsed.findings)
+      ? parsed.findings
+          .filter((item) => item && typeof item === 'object')
+          .map((item) => ({
+            factorKey: typeof item.factorKey === 'string' ? item.factorKey.trim() : '',
+            title: typeof item.title === 'string' ? item.title.trim() : '',
+            evidence: typeof item.evidence === 'string' ? item.evidence.trim() : '',
+            interpretation:
+              typeof item.interpretation === 'string' ? item.interpretation.trim() : '',
+            confidence: item.confidence === 'medium'
+              ? 'medium' as const
+              : 'low' as const,
+          }))
+          .filter((item) => item.title && item.evidence && item.interpretation)
+          .slice(0, 8)
+      : [];
+    const limitations = Array.isArray(parsed.limitations)
+      ? parsed.limitations
+          .filter((item): item is string => typeof item === 'string' && Boolean(item.trim()))
+          .map((item) => item.trim())
+          .slice(0, 8)
+      : [];
+    const nextActions = Array.isArray(parsed.nextActions)
+      ? parsed.nextActions
+          .filter((item) => item && typeof item === 'object')
+          .map((item) => ({
+            ...(typeof item.factorKey === 'string' && item.factorKey.trim()
+              ? { factorKey: item.factorKey.trim() }
+              : {}),
+            title: typeof item.title === 'string' ? item.title.trim() : '',
+            rationale: typeof item.rationale === 'string' ? item.rationale.trim() : '',
+            priority: allowedConfidence.has(item.priority ?? '')
+              ? item.priority as 'high' | 'medium' | 'low'
+              : 'medium' as const,
+          }))
+          .filter((item) => item.title && item.rationale)
+          .slice(0, 6)
+      : [];
+    if (!summary) {
+      throw new BusinessException(ErrorCodes.LLM_PARSE_ERROR, 'AI 未返回有效实验结论，请重试');
+    }
+    return { summary, findings, limitations, nextActions, promptVersion };
   }
 
   async generateParaphrase(input: ParaphraseInput): Promise<ParaphraseOutput> {
@@ -578,6 +822,12 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
         'Full article — preserve keyword in the first 200 characters of the body.',
       content: input.content,
     });
+    this.logPromptDebug({
+      action: 'generateParaphrase',
+      task: 'rewrite',
+      promptVersion,
+      userContent,
+    });
 
     const parsed = await this.chatJson<{
       content?: string;
@@ -609,6 +859,12 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
       protectedTerms,
       originalContent: input.originalContent,
       paraphrasedContent: input.paraphrasedContent,
+    });
+    this.logPromptDebug({
+      action: 'validateParaphrase',
+      task: 'default',
+      promptVersion,
+      userContent,
     });
 
     const parsed = await this.chatJson<{ passed?: boolean; warnings?: string[] }>(
@@ -660,9 +916,13 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
           error?: string;
         };
       }>;
+      competitorScrapeMeta?: { skipped?: boolean };
     };
 
-    const organic = data.organic ?? [];
+    const organic =
+      data.competitorScrapeMeta?.skipped === false
+        ? filterUsableCompetitorSamples(data.organic ?? [])
+        : data.organic ?? [];
     if (organic.length === 0) {
       return '(No SERP organic results in context.)';
     }

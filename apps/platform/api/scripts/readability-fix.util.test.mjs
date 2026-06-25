@@ -109,6 +109,46 @@ describe('applyReadabilityParagraphFix (Semrush 60-word cap)', () => {
     const blocks = fixed.split(/\n\n+/).filter(Boolean);
     assert.ok(blocks.length >= 2, 'should split into multiple paragraphs');
   });
+
+  it('detects and splits long markdown list items', () => {
+    const longItem = [
+      'Record each cutoff and alarm during the test.',
+      'Stop charging when the pack becomes unstable.',
+      'Check the charger command and cable temperature.',
+      'Document the old and new settings for maintenance.',
+      'Share the result with service and warranty teams.',
+    ].join(' ');
+    const content = `## Validation\n\n- Short checklist item.\n- ${longItem}`;
+
+    const before = extractLongParagraphs(
+      content,
+      SEMRUSH_PARAGRAPH_MAX_WORDS,
+      SEMRUSH_PARAGRAPH_MAX_SENTENCES,
+    );
+    assert.equal(before.length, 1);
+
+    const fixed = applyReadabilityParagraphFix(content, {
+      maxWords: SEMRUSH_PARAGRAPH_MAX_WORDS,
+      maxSentences: SEMRUSH_PARAGRAPH_MAX_SENTENCES,
+    });
+    const after = extractLongParagraphs(
+      fixed,
+      SEMRUSH_PARAGRAPH_MAX_WORDS,
+      SEMRUSH_PARAGRAPH_MAX_SENTENCES,
+    );
+    assert.equal(after.length, 0);
+    assert.ok(fixed.split('\n').filter((line) => line.startsWith('- ')).length >= 3);
+  });
+
+  it('includes overlong list items in local readability metrics', () => {
+    const content = `# BMS Guide\n\n## Validation\n\n- ${repeatWord(70)}.`;
+    const result = scoreLocalSeo({
+      keyword: 'bms guide',
+      content,
+      targetWordCount: 800,
+    });
+    assert.equal(result.metrics.longParagraphsOver65, 1);
+  });
 });
 
 describe('boostLocalSeoContent (Semrush mode)', () => {

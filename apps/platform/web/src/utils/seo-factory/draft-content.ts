@@ -2,6 +2,8 @@
  * 稿件正文 Markdown ↔ HTML（与 api semrush-content.ts 对齐，供 Quill 编辑）。
  */
 
+import { buildSemrushTableHtml, repairMarkdownTables } from "@wm/shared-core";
+
 import {
   isMarkdownTableRow,
   isMarkdownTableStart,
@@ -66,9 +68,18 @@ function inlineMarkdownToHtml(text: string): string {
   return html;
 }
 
-/** Markdown → HTML（Semrush / Quill 可用） */
+/** Markdown → HTML（TipTap / 导出预览；保留真实 table） */
 export function markdownToHtml(markdown: string): string {
-  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+  return markdownToHtmlInternal(markdown, false);
+}
+
+/** Semrush Quill 粘贴专用：表格展平为段落，避免 Quill 丢 table 后粘连文字 */
+export function markdownToSemrushHtml(markdown: string): string {
+  return markdownToHtmlInternal(markdown, true);
+}
+
+function markdownToHtmlInternal(markdown: string, semrushTables: boolean): string {
+  const lines = repairMarkdownTables(markdown).replace(/\r\n/g, "\n").split("\n");
   const html: string[] = [];
   let inUl = false;
   let inOl = false;
@@ -96,7 +107,11 @@ export function markdownToHtml(markdown: string): string {
     if (isMarkdownTableStart(lines, i)) {
       closeLists();
       const table = readMarkdownTable(lines, i);
-      html.push(renderMarkdownTableHtml(table.header, table.rows, inlineMarkdownToHtml));
+      html.push(
+        semrushTables
+          ? buildSemrushTableHtml(table.header, table.rows, inlineMarkdownToHtml)
+          : renderMarkdownTableHtml(table.header, table.rows, inlineMarkdownToHtml)
+      );
       i = table.nextIndex - 1;
       continue;
     }

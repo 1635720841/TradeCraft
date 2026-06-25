@@ -51,6 +51,8 @@ export interface SerpOrganicFilterMeta {
   limit: number;
   articleKept?: number;
   backfillKept?: number;
+  nonArticleExcluded?: number;
+  scrapeFailedExcluded?: number;
 }
 
 export interface SerpCompetitorScrapeMeta {

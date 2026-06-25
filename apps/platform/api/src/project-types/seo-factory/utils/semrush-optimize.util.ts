@@ -6,15 +6,26 @@ import type { SeoScore } from '@wm/provider-interfaces';
 import {
   extractLongParagraphs,
   extractLongSentences,
-  SEMRUSH_FLESCH_TARGET_DEFAULT,
+  resolveSemrushReadabilityTarget,
+  SEMRUSH_FLESCH_TOLERANCE,
   SEMRUSH_PARAGRAPH_MAX_SENTENCES,
   SEMRUSH_PARAGRAPH_MAX_WORDS,
+  buildSemrushWordCountPlan,
+  SEMRUSH_WORD_COUNT_TRIM_OVER_RATIO,
+  SEMRUSH_WORD_COUNT_WRITE_BUFFER_RATIO,
+  resolveSemrushTrimWordTargetRange,
   type BoostLocalSeoContentOptions,
 } from '@wm/shared-core';
 import { SEMRUSH_PASS_THRESHOLD } from '../constants/seo-score';
-import { buildContextualKeywordWeavingInstruction } from '../providers/semrush/semrush-keyword-coverage.util';
+import { buildContextualKeywordWeavingInstruction, isSemrushKeywordStrictlyPresent } from '../providers/semrush/semrush-keyword-coverage.util';
+import { isWeakExtractedPhrase } from '../providers/semrush/semrush-keywords.util';
+import {
+  resolveOptimizeWordCountTarget,
+  shouldPrioritizeWordCountExpand,
+  OPTIMIZE_WORD_COUNT_EXPAND_GAP_THRESHOLD,
+} from '../modules/llm/optimize-context.util';
 
-export { buildContextualKeywordWeavingInstruction };
+export { buildContextualKeywordWeavingInstruction, resolveSemrushReadabilityTarget };
 
 const SUGGESTION_CAP = 28;
 
@@ -29,7 +40,11 @@ export function buildSemrushReadabilityAudit(content: string): {
   promptText: string;
 } {
   const longSentences = extractLongSentences(content);
-  const longParagraphs = extractLongParagraphs(content, SEMRUSH_PARAGRAPH_MAX_WORDS);
+  const longParagraphs = extractLongParagraphs(
+    content,
+    SEMRUSH_PARAGRAPH_MAX_WORDS,
+    SEMRUSH_PARAGRAPH_MAX_SENTENCES,
+  );
 
   const lines = [
     `SWA structure scan: ${longSentences.length} sentences >22 words (cap ≤2), ${longParagraphs.length} paragraphs >${SEMRUSH_PARAGRAPH_MAX_WORDS} words or >${SEMRUSH_PARAGRAPH_MAX_SENTENCES} sentences (cap ≤1).`,
@@ -97,6 +112,8 @@ export function buildSemrushScoreGapPlan(result: SeoScore, pointsToGo: number): 
 
 export interface SemrushOptimizeContext {
   readabilityPriority: boolean;
+  wordCountExpandPriority: boolean;
+  wordCountTrimPriority: boolean;
   readabilityAudit: string;
   pointsToGo: number;
   scoreGapPlan: string;
@@ -120,8 +137,21 @@ export function buildSemrushOptimizeContext(
     (details?.tone?.length ?? 0) > 0 ||
     (details?.originality?.length ?? 0) > 0;
 
+  const competitorWords = semrushResult.semrushCompetitorWordCount;
+  const wordPlan = buildSemrushWordCountPlan({
+    content,
+    competitorWordCount: competitorWords,
+    apiReportedWords: semrushResult.semrushCurrentWordCount,
+  });
+  const wordCountExpandGap = wordPlan.swaGap ?? 0;
+  const wordCountExpandPriority =
+    !wordPlan.wordCountTrimPriority && shouldPrioritizeWordCountExpand(wordCountExpandGap);
+  const wordCountTrimPriority = wordPlan.wordCountTrimPriority;
+
   const readabilityPriority =
     semrushResult.overall < SEMRUSH_PASS_THRESHOLD &&
+    !wordCountExpandPriority &&
+    !wordCountTrimPriority &&
     (hasSidebarIssues ||
       audit.longParagraphCount > 0 ||
       audit.longSentenceCount > 2 ||
@@ -129,6 +159,8 @@ export function buildSemrushOptimizeContext(
 
   return {
     readabilityPriority,
+    wordCountExpandPriority,
+    wordCountTrimPriority,
     readabilityAudit: audit.promptText,
     pointsToGo,
     scoreGapPlan: buildSemrushScoreGapPlan(semrushResult, pointsToGo),
@@ -179,14 +211,18 @@ export function buildSemrushRewriteSuggestions(result: SeoScore, content: string
   const missingRecommended = result.semrushMissingRecommendedKeywords ?? [];
 
   const missingAll = [...missingTarget, ...missingRecommended];
-
+  let keywordWeaving = '';
   if (missingAll.length > 0) {
-    const weaving = buildContextualKeywordWeavingInstruction(missingAll);
-    if (weaving) lines.unshift(weaving);
+    keywordWeaving = buildContextualKeywordWeavingInstruction(missingAll);
   } else if (recommended.length > 0) {
-    lines.unshift(
-      `[SEO] SWA 推荐词须各至少出现 1 次（语境化融合，禁止列表堆砌）: ${recommended.slice(0, 10).join(', ')}`,
+    const uncovered = recommended.filter(
+      (phrase) =>
+        !isWeakExtractedPhrase(phrase) &&
+        !isSemrushKeywordStrictlyPresent(content, phrase),
     );
+    if (uncovered.length > 0) {
+      keywordWeaving = `[SEO] SWA 推荐词须各至少出现 1 次（语境化融合，禁止列表堆砌）: ${uncovered.join(', ')}`;
+    }
   }
 
   for (const issue of result.actionableIssues ?? []) {
@@ -209,6 +245,7 @@ export function buildSemrushRewriteSuggestions(result: SeoScore, content: string
     }
     for (const term of issue.terms ?? []) {
       if (issue.rule === 'keyword') {
+        if (missingAll.length > 0) continue;
         const weaving = buildContextualKeywordWeavingInstruction([term]);
         lines.unshift(weaving || `[SEO] 须自然融合: ${term}`);
       } else {
@@ -219,7 +256,11 @@ export function buildSemrushRewriteSuggestions(result: SeoScore, content: string
 
   const audit = buildSemrushReadabilityAudit(content);
   if (audit.longParagraphCount > 0) {
-    for (const sample of extractLongParagraphs(content, SEMRUSH_PARAGRAPH_MAX_WORDS).slice(0, 3)) {
+    for (const sample of extractLongParagraphs(
+      content,
+      SEMRUSH_PARAGRAPH_MAX_WORDS,
+      SEMRUSH_PARAGRAPH_MAX_SENTENCES,
+    ).slice(0, 3)) {
       const preview = sample.text.slice(0, 90);
       lines.unshift(
         `[可读性·必做] 拆分超长段（${sample.wordCount} 词）: "${preview}${sample.text.length > 90 ? '…' : ''}"`,
@@ -241,36 +282,47 @@ export function buildSemrushRewriteSuggestions(result: SeoScore, content: string
   }
 
   const competitorWords = result.semrushCompetitorWordCount;
-  const currentWords = result.semrushCurrentWordCount;
+  const wordPlan = buildSemrushWordCountPlan({
+    content,
+    competitorWordCount: competitorWords,
+    apiReportedWords: result.semrushCurrentWordCount,
+  });
   if (
-    typeof competitorWords === 'number' &&
-    typeof currentWords === 'number' &&
-    currentWords + 80 < competitorWords
+    wordPlan.swaGap != null &&
+    wordPlan.swaGap > OPTIMIZE_WORD_COUNT_EXPAND_GAP_THRESHOLD &&
+    wordPlan.localExpandTarget != null
   ) {
-    const gap = competitorWords - currentWords;
-    const faqCount = Math.min(4, Math.max(2, Math.ceil(gap / 50)));
+    const localTarget = wordPlan.localExpandTarget;
+    const faqCount = Math.min(4, Math.max(2, Math.ceil(wordPlan.localExpandGap / 50)));
     lines.unshift(
-      `[可读性·必做] 当前约 ${currentWords} 词，Semrush 竞品标杆约 ${competitorWords} 词（缺 ${gap} 词）：增补至 ${competitorWords - 10}–${competitorWords} 词；优先加 ${faqCount} 条 FAQ（每条 40–60 词），禁止废话堆砌`,
+      `[可读性·必做] SWA 统计约 ${wordPlan.effectiveCurrentWords} 词，竞品标杆 ${wordPlan.competitorWordCount} 词（缺 ${wordPlan.swaGap} 词）：本地扩写至 ${localTarget - 5}–${localTarget} 词（标杆 +${Math.round(SEMRUSH_WORD_COUNT_WRITE_BUFFER_RATIO * 100)}%）；优先加 ${faqCount} 条 FAQ（每条 40–60 词）`,
     );
   }
 
-  if (
-    typeof competitorWords === 'number' &&
-    typeof currentWords === 'number' &&
-    currentWords > competitorWords + 30
-  ) {
+  if (wordPlan.wordCountTrimPriority && wordPlan.competitorWordCount != null) {
+    const overPct = Math.round((wordPlan.swaOverRatio ?? 0) * 100);
+    const trimRange = resolveSemrushTrimWordTargetRange(wordPlan.competitorWordCount);
+    const protectedTerms = [
+      ...(result.semrushRecommendedKeywords ?? []),
+      ...(result.semrushMissingRecommendedKeywords ?? []),
+      ...(result.semrushMissingTargetKeywords ?? []),
+    ].slice(0, 10);
+    const protectedHint =
+      protectedTerms.length > 0
+        ? `；**禁止删除**含以下词的句子：${protectedTerms.join('、')}`
+        : '';
     lines.unshift(
-      `[可读性] 当前约 ${currentWords} 词，Semrush 竞品标杆约 ${competitorWords} 词：须删减至 ${competitorWords}–${competitorWords + 50} 词`,
+      `[可读性·必做] SWA 统计约 ${wordPlan.effectiveCurrentWords} 词，超标约 ${overPct}%（标杆 ${wordPlan.competitorWordCount} 词，超过 ${Math.round(SEMRUSH_WORD_COUNT_TRIM_OVER_RATIO * 100)}% 须删减）：压至 ${trimRange.min}–${trimRange.max} 词（标杆 +5%–+15%）${protectedHint}；**禁止加 FAQ/新段**`,
     );
   }
 
   const readability = result.semrushReadabilityScore;
-  const fleschTarget = SEMRUSH_FLESCH_TARGET_DEFAULT;
+  const fleschTarget = resolveSemrushReadabilityTarget(readability);
   if (typeof readability === 'number') {
     const delta = Math.abs(readability - fleschTarget);
-    if (delta > 8) {
+    if (delta > SEMRUSH_FLESCH_TOLERANCE) {
       lines.unshift(
-        `[可读性] Semrush Flesch ${readability}，目标约 ${fleschTarget}（±8）：${readability > fleschTarget ? '略增句长/正式词' : '缩短句子、简化音节复杂词'}`,
+        `[可读性] Semrush Flesch ${readability}，目标约 ${fleschTarget}（±${SEMRUSH_FLESCH_TOLERANCE}）：${readability > fleschTarget + SEMRUSH_FLESCH_TOLERANCE ? '略增句长/正式词' : '缩短句子、简化音节复杂词'}`,
       );
     }
   }
@@ -297,7 +349,10 @@ export function buildSemrushRewriteSuggestions(result: SeoScore, content: string
     );
   }
 
-  return [...new Set(lines)].slice(0, SUGGESTION_CAP);
+  const capped = [...new Set(lines)].slice(0, SUGGESTION_CAP);
+  if (!keywordWeaving) return capped;
+  const withoutWeaving = capped.filter((line) => line !== keywordWeaving);
+  return [keywordWeaving, ...withoutWeaving].slice(0, SUGGESTION_CAP);
 }
 
 /** 侧栏 suggestions 为空时的兜底指令（避免 optimize 轮提前 break） */
@@ -326,17 +381,19 @@ export function buildFallbackSemrushSuggestions(result: SeoScore, content: strin
     lines.push(`[可读性·必做] 将超长句从 ${audit.longSentenceCount} 条压到 ≤2 条（单句 ≤22 词）`);
   }
 
-  const competitorWords = result.semrushCompetitorWordCount;
-  const currentWords = result.semrushCurrentWordCount;
+  const wordPlan = buildSemrushWordCountPlan({
+    content,
+    competitorWordCount: result.semrushCompetitorWordCount,
+    apiReportedWords: result.semrushCurrentWordCount,
+  });
   if (
-    typeof competitorWords === 'number' &&
-    typeof currentWords === 'number' &&
-    currentWords + 80 < competitorWords
+    wordPlan.swaGap != null &&
+    wordPlan.swaGap > OPTIMIZE_WORD_COUNT_EXPAND_GAP_THRESHOLD &&
+    wordPlan.localExpandTarget != null
   ) {
-    const gap = competitorWords - currentWords;
-    const faqCount = Math.min(4, Math.max(2, Math.ceil(gap / 50)));
+    const faqCount = Math.min(4, Math.max(2, Math.ceil(wordPlan.localExpandGap / 50)));
     lines.push(
-      `[可读性·必做] 缺 ${gap} 词：增补至 ${competitorWords} 词左右（${faqCount} 条 FAQ，每条 40–60 词）`,
+      `[可读性·必做] SWA 缺 ${wordPlan.swaGap} 词：本地扩写至 ${wordPlan.localExpandTarget} 词左右（${faqCount} 条 FAQ，每条 40–60 词）`,
     );
   }
 
@@ -363,13 +420,24 @@ export function buildSemrushBoostOptions(
   };
 }
 
-/** Semrush 优化后 boost 用的目标词数：优先竞品标杆，否则 Brief 目标 */
+/** Semrush 优化后 boost 用的目标词数：优先本地扩写目标（略高于 SWA 标杆） */
 export function resolveSemrushBoostWordTarget(
   semrushCompetitorWordCount: number | undefined,
   briefTargetWordCount: number,
+  content?: string,
+  semrushCurrentWordCount?: number,
 ): number {
-  if (typeof semrushCompetitorWordCount === 'number' && semrushCompetitorWordCount > 0) {
-    return semrushCompetitorWordCount;
+  const briefTarget = resolveOptimizeWordCountTarget(
+    briefTargetWordCount,
+    semrushCompetitorWordCount,
+  );
+  if (!content?.trim() || semrushCompetitorWordCount == null) {
+    return briefTarget;
   }
-  return briefTargetWordCount;
+  const plan = buildSemrushWordCountPlan({
+    content,
+    competitorWordCount: semrushCompetitorWordCount,
+    apiReportedWords: semrushCurrentWordCount,
+  });
+  return plan.localExpandTarget ?? briefTarget;
 }

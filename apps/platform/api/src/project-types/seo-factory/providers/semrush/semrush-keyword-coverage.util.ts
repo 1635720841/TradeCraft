@@ -4,11 +4,21 @@
 
 import type { SeoScore, SemrushActionableIssue } from '@wm/provider-interfaces';
 import {
+  buildKeywordCoverageManifest,
   findMissingSemrushKeywords,
   isSemrushKeywordPresentInContent,
+  manifestToCoverageSnapshot,
+  prioritizeMissingKeywords,
   stripMarkdownForKeywordMatch,
+  type SeoKeywordCoverageManifest,
 } from '@wm/shared-core';
+import { isSemrushSpecificKeyword, isWeakExtractedPhrase } from './semrush-keywords.util';
 import { dedupeActionableIssues } from './semrush-actionable.util';
+import {
+  parseSemrushKeywordEntries,
+  isSemrushRecommendationsPayload,
+  type SemrushRecommendationsPayload,
+} from './semrush-recommendations.parser';
 
 export { findMissingSemrushKeywords, isSemrushKeywordPresentInContent, stripMarkdownForKeywordMatch };
 
@@ -26,12 +36,11 @@ export const HIGH_SCORE_KEYWORD_WEAVING_EXEMPLARS = [
 export function buildContextualKeywordWeavingInstruction(missingKeywords: string[]): string {
   if (missingKeywords.length === 0) return '';
 
-  const preview = missingKeywords.slice(0, 12).join(', ');
-  const suffix = missingKeywords.length > 12 ? ` 等 ${missingKeywords.length} 个` : '';
+  const preview = missingKeywords.join(', ');
   const exemplarBlock = HIGH_SCORE_KEYWORD_WEAVING_EXEMPLARS.map((line) => `- ${line}`).join('\n');
 
   return [
-    `[SEO·语境融合·必做] 文章缺失核心 SEO 短语：${preview}${suffix}。`,
+    `[SEO·语境融合·必做] 文章缺失核心 SEO 短语：${preview}。`,
     '请不要将它们罗列为枯燥的列表或生硬的句子（禁止 "For procurement teams, relevant search terms include..."）。',
     '请采用以下自然方式之一将它们融入正文（每个短语仅需融合 1 次）：',
     '1) 将长尾词作为 H2/H3 问句标题（优先用于 ≥4 词的问句型短语）；',
@@ -41,6 +50,104 @@ export function buildContextualKeywordWeavingInstruction(missingKeywords: string
     '9.5+ 高分样例（Foot Skin Blisters 9.6 / Magnesium Teeth Grinding 9.5）：',
     exemplarBlock,
   ].join('\n');
+}
+
+/** 严格子串匹配：侧栏灰 Tag「未写入」检测（比 SWA 模糊匹配更严） */
+export function isSemrushKeywordStrictlyPresent(content: string, phrase: string): boolean {
+  const normalizedContent = content
+    .toLowerCase()
+    .replace(/[`*_#>\[\](){}|]/g, ' ')
+    .replace(/[^\p{L}\p{N}\s-]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const normalizedPhrase = phrase
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalizedPhrase) return true;
+  return normalizedContent.includes(normalizedPhrase);
+}
+
+export function collectKeywordTermsFromActionableIssues(
+  issues?: SemrushActionableIssue[],
+): string[] {
+  const terms: string[] = [];
+  for (const issue of issues ?? []) {
+    if (issue.rule === 'keyword' && issue.terms?.length) {
+      terms.push(...issue.terms);
+    }
+  }
+  return terms;
+}
+
+const EXTRACTED_FRAGMENT_PREFIX_RE = /^(it|he|she|they|this|that|we|you|as|yet|so)\s+/i;
+
+/** 侧栏推荐词候选：过滤正文提取碎片，要求 ≥2 词或复合词 */
+function isEligibleRecommendedPhrase(phrase: string): boolean {
+  const trimmed = phrase.trim();
+  if (!trimmed || trimmed.length < 3) return false;
+  if (EXTRACTED_FRAGMENT_PREFIX_RE.test(trimmed)) return false;
+  return isSemrushSpecificKeyword(trimmed, false);
+}
+
+/** SWA manifest 已判定缺失项：允许单词推荐（如 known / properly / countless） */
+function isEligibleManifestMissingPhrase(phrase: string): boolean {
+  const trimmed = phrase.trim();
+  if (!trimmed || trimmed.length < 3) return false;
+  if (EXTRACTED_FRAGMENT_PREFIX_RE.test(trimmed)) return false;
+  return true;
+}
+
+/**
+ * 收集本轮须融入的全部缺失 SWA 推荐词（无批次上限）。
+ * 合并 manifest、模糊匹配缺失、严格子串缺失与 actionable issues。
+ */
+export function resolveAllSemrushMissingKeywordsForRound(input: {
+  content: string;
+  semrushResult: SeoScore;
+  manifest?: SeoKeywordCoverageManifest | null;
+  submittedKeywords?: string[];
+}): string[] {
+  const { content, semrushResult, manifest, submittedKeywords } = input;
+
+  const recommendedPhrases = mergeSemrushKeywordLists(
+    semrushResult.semrushRecommendedKeywords,
+    semrushResult.keywordCoverage?.recommended.map((item) => item.phrase),
+    semrushResult.semrushMissingRecommendedKeywords,
+    collectKeywordTermsFromActionableIssues(semrushResult.actionableIssues),
+  );
+
+  const matcherMissing = recommendedPhrases.filter(
+    (phrase) =>
+      isEligibleRecommendedPhrase(phrase) &&
+      !isSemrushKeywordPresentInContent(content, phrase),
+  );
+
+  const strictMissing = recommendedPhrases.filter(
+    (phrase) =>
+      isEligibleRecommendedPhrase(phrase) &&
+      !isSemrushKeywordStrictlyPresent(content, phrase),
+  );
+
+  const manifestMissing =
+    manifest && manifest.missing.length > 0
+      ? manifest.missing.filter(isEligibleManifestMissingPhrase)
+      : [];
+
+  const submittedStrictMissing = (submittedKeywords ?? []).filter(
+    (phrase) =>
+      !isWeakExtractedPhrase(phrase) &&
+      (isEligibleManifestMissingPhrase(phrase) || isSemrushSpecificKeyword(phrase, false)) &&
+      !isSemrushKeywordStrictlyPresent(content, phrase),
+  );
+
+  return mergeSemrushKeywordLists(
+    prioritizeMissingKeywords(manifestMissing, manifest?.recommended ?? []),
+    submittedStrictMissing,
+    matcherMissing,
+    strictMissing,
+  );
 }
 
 export function mergeSemrushKeywordLists(...lists: Array<string[] | undefined>): string[] {
@@ -91,11 +198,79 @@ export function buildSemrushKeywordActionableIssues(
 export interface SemrushKeywordCoverageOptions {
   /** 创建任务时提交给 SWA 的主词/副词 */
   submittedKeywords?: string[];
-  /** DOM SEO Tab 解析的未覆盖 Tag（可选，与正文比对结果合并） */
+  /** DOM SEO Tab 解析的未覆盖 Tag（合并进 API recommended_keywords） */
   domUncoveredKeywords?: string[];
+  /** Semrush recommendations API 原始 JSON（真源） */
+  apiPayload?: SemrushRecommendationsPayload;
 }
 
-/** 合并 API 词表 + 正文缺失检测 + actionableIssues */
+function buildRecommendedPhrasesFromApi(
+  apiPayload: SemrushRecommendationsPayload,
+  domUncoveredKeywords?: string[],
+) {
+  const { recommended } = parseSemrushKeywordEntries(apiPayload);
+  const phrases = recommended.map((entry) => ({
+    phrase: entry.keyword,
+    frequency: entry.frequency,
+    difficulty: entry.difficulty,
+  }));
+  const seen = new Set(phrases.map((item) => item.phrase.toLowerCase()));
+  for (const term of domUncoveredKeywords ?? []) {
+    const trimmed = term.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    phrases.push({ phrase: trimmed, frequency: undefined, difficulty: undefined });
+  }
+  return phrases;
+}
+
+function mergeRecommendedPhrasesForCoverage(
+  result: SeoScore,
+  options?: SemrushKeywordCoverageOptions,
+): Array<{ phrase: string; frequency?: string; difficulty?: number }> {
+  const merged = new Map<string, { phrase: string; frequency?: string; difficulty?: number }>();
+  const push = (entry: { phrase: string; frequency?: string; difficulty?: number }) => {
+    const phrase = entry.phrase.trim();
+    if (!phrase) return;
+    const key = phrase.toLowerCase();
+    if (merged.has(key)) return;
+    merged.set(key, { ...entry, phrase });
+  };
+
+  if (options?.apiPayload) {
+    for (const entry of buildRecommendedPhrasesFromApi(
+      options.apiPayload,
+      options.domUncoveredKeywords,
+    )) {
+      push(entry);
+    }
+  } else {
+    for (const phrase of mergeSemrushKeywordLists(
+      result.semrushRecommendedKeywords,
+      result.keywordCoverage?.recommended.map((item) => item.phrase),
+      result.semrushMissingRecommendedKeywords,
+      options?.domUncoveredKeywords,
+    )) {
+      push({ phrase });
+    }
+  }
+
+  // SWA 侧栏提交词表始终纳入覆盖检测（API 未返回时也能发现缺口）
+  for (const raw of options?.submittedKeywords ?? []) {
+    const phrase = raw.trim();
+    if (!phrase || isWeakExtractedPhrase(phrase)) continue;
+    if (!isEligibleManifestMissingPhrase(phrase) && !isSemrushSpecificKeyword(phrase, false)) {
+      continue;
+    }
+    push({ phrase });
+  }
+
+  return [...merged.values()];
+}
+
+/** 合并 API 词表 + 正文缺失检测 + 统一 keywordCoverage 快照 */
 export function enrichSemrushKeywordCoverage(
   result: SeoScore,
   content: string,
@@ -105,10 +280,26 @@ export function enrichSemrushKeywordCoverage(
     options?.submittedKeywords,
     result.semrushTargetKeywords,
   );
-  const recommendedKeywords = result.semrushRecommendedKeywords ?? [];
+
+  const recommendedPhrases = mergeRecommendedPhrasesForCoverage(result, options);
+  const extractedPhrases = options?.apiPayload
+    ? parseSemrushKeywordEntries(options.apiPayload).extracted.map((entry) => ({
+        phrase: entry.keyword,
+        frequency: entry.frequency,
+        difficulty: entry.difficulty,
+      }))
+    : undefined;
+
+  const manifest = buildKeywordCoverageManifest({
+    source: 'semrush',
+    recommendedPhrases,
+    extractedPhrases,
+    content,
+    isPresent: isSemrushKeywordStrictlyPresent,
+  });
 
   let missingTarget = findMissingSemrushKeywords(content, targetKeywords);
-  let missingRecommended = findMissingSemrushKeywords(content, recommendedKeywords);
+  const missingRecommended = manifest.missing;
 
   for (const term of options?.domUncoveredKeywords ?? []) {
     const trimmed = term.trim();
@@ -117,13 +308,10 @@ export function enrichSemrushKeywordCoverage(
       if (!missingTarget.some((k) => k.toLowerCase() === trimmed.toLowerCase())) {
         missingTarget.push(trimmed);
       }
-    } else if (!missingRecommended.some((k) => k.toLowerCase() === trimmed.toLowerCase())) {
-      missingRecommended.push(trimmed);
     }
   }
 
   missingTarget = [...new Set(missingTarget)];
-  missingRecommended = [...new Set(missingRecommended)];
 
   const keywordIssues = buildSemrushKeywordActionableIssues(missingTarget, missingRecommended);
   const actionableIssues =
@@ -136,8 +324,8 @@ export function enrichSemrushKeywordCoverage(
     seoLines.push(`目标关键词未覆盖: ${missingTarget.join(', ')}`);
   }
   if (missingRecommended.length > 0) {
-    const preview = missingRecommended.slice(0, 10).join(', ');
-    const suffix = missingRecommended.length > 10 ? ` 等 ${missingRecommended.length} 个` : '';
+    const preview = missingRecommended.slice(0, 12).join(', ');
+    const suffix = missingRecommended.length > 12 ? ` 等 ${missingRecommended.length} 个` : '';
     seoLines.push(`推荐关键词未覆盖: ${preview}${suffix}`);
   }
 
@@ -149,12 +337,16 @@ export function enrichSemrushKeywordCoverage(
         }
       : result.suggestionDetails;
 
+  const snapshot = manifestToCoverageSnapshot(manifest);
+
   return {
     ...result,
     semrushTargetKeywords: targetKeywords.length > 0 ? targetKeywords : result.semrushTargetKeywords,
+    semrushRecommendedKeywords: manifest.recommended.map((item) => item.phrase),
     semrushMissingTargetKeywords: missingTarget.length > 0 ? missingTarget : undefined,
     semrushMissingRecommendedKeywords:
       missingRecommended.length > 0 ? missingRecommended : undefined,
+    keywordCoverage: snapshot,
     actionableIssues,
     suggestionDetails,
   };
@@ -179,4 +371,37 @@ export function collectPresentSeoPhrases(content: string, phrases: string[]): st
   }
 
   return present;
+}
+
+export function pickSemrushRecommendationsApiPayload(
+  captured: Array<{ url: string; body: unknown }>,
+): SemrushRecommendationsPayload | undefined {
+  let bestReady: SemrushRecommendationsPayload | undefined;
+  let bestReadyCount = -1;
+  let fallback: SemrushRecommendationsPayload | undefined;
+  let fallbackCount = -1;
+
+  for (const { url, body } of captured) {
+    if (!isSemrushRecommendationsPayload(body)) continue;
+    if (!/\/recommendations\//i.test(url)) continue;
+
+    const payload = body as SemrushRecommendationsPayload;
+    const recCount = payload.recommended_keywords?.length ?? 0;
+    const ready = payload.data_ready === true;
+
+    if (ready) {
+      if (recCount > bestReadyCount) {
+        bestReadyCount = recCount;
+        bestReady = payload;
+      }
+      continue;
+    }
+
+    if (recCount > fallbackCount) {
+      fallbackCount = recCount;
+      fallback = payload;
+    }
+  }
+
+  return bestReady ?? fallback;
 }

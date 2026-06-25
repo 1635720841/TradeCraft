@@ -96,6 +96,34 @@ export function detectHardToReadSentences(content: string): HardToReadSentenceSa
   return hits;
 }
 
+/**
+ * SWA 侧栏「难以阅读」：将含 when 从句的句子拆成两句（去掉 when…or/and 同句模式）。
+ */
+export function splitSemrushWhenClauseSentences(content: string): string {
+  let result = content;
+  for (const sample of detectHardToReadSentences(content)) {
+    if (!sample.reasons.includes('nested_condition')) continue;
+    const whenMatch = sample.text.match(/^(.+?)\s+when\s+(.+)$/is);
+    if (!whenMatch) continue;
+    const prefix = whenMatch[1].trim().replace(/[,;:\s]+$/, '');
+    let tail = whenMatch[2].trim().replace(/[.!?]+$/, '');
+    if (!prefix || !tail) continue;
+    tail = tail.charAt(0).toUpperCase() + tail.slice(1);
+    const rewritten = `${prefix}. ${tail}.`;
+    if (rewritten !== sample.text.trim()) {
+      result = result.replace(sample.text, rewritten);
+    }
+  }
+  return result;
+}
+
+/** Semrush 难读句确定性修复（when 从句拆分 + 默认复杂词） */
+export function applySemrushHardToReadDeterministicFixes(content: string): string {
+  let result = splitSemrushWhenClauseSentences(content);
+  result = applySemrushDefaultComplexWordFixes(result);
+  return result;
+}
+
 /** 本地/Sem 优化 Prompt：列出须重写的难读句原句（含 multi-clause，不限于 >22 词） */
 export function formatHardToReadSentenceAuditBlock(input: {
   hits: number;
@@ -110,6 +138,11 @@ export function formatHardToReadSentenceAuditBlock(input: {
   if (input.hits <= maxAllowed) {
     return lines.join('\n');
   }
+
+  lines.push(
+    '',
+    '**Semrush SWA rule:** sentences with **`when … or/and`** in one clause count as hard-to-read — split into **two simple sentences** (remove `when`, do NOT keep `or`/`and` in the same sentence as `when`).',
+  );
 
   lines.push(
     '',
@@ -209,10 +242,10 @@ export interface WordGapInjectionResult {
 function buildFaqBlock(keyword: string, index: number): string {
   const topic = keyword.trim() || 'this system';
   const templates = [
-    `**What should buyers verify before they choose a ${topic}?**\nTeams should confirm voltage limits, current ratings, communication options, and firmware support. A short bench test with charger, load, and alarm settings reduces rollout risk.`,
-    `**How does remote monitoring help daily operations?**\nRemote monitoring gives service teams live status, fault history, and alarm context. That visibility supports faster triage and fewer repeat site visits.`,
-    `**Which integration steps matter most during rollout?**\nAlign fault signals, data IDs, and charger behavior before fleet deployment. Document firmware version, parameter files, and alarm thresholds for each site.`,
-    `**How can teams reduce warranty and support risk?**\nUse event logs, clear alarm rules, and stable app releases. Train operators on normal shutdown, sleep, and charge modes before scale deployment.`,
+    `### What should buyers verify before they choose a ${topic}?\n\nTeams should confirm voltage limits, current ratings, communication options, and firmware support. A short bench test with charger, load, and alarm settings reduces rollout risk.`,
+    `### How does remote monitoring help daily operations?\n\nRemote monitoring gives service teams live status, fault history, and alarm context. That visibility supports faster triage and fewer repeat site visits.`,
+    `### Which integration steps matter most during rollout?\n\nAlign fault signals, data IDs, and charger behavior before fleet deployment. Document firmware version, parameter files, and alarm thresholds for each site.`,
+    `### How can teams reduce warranty and support risk?\n\nUse event logs, clear alarm rules, and stable app releases. Train operators on normal shutdown, sleep, and charge modes before scale deployment.`,
   ];
   return templates[index % templates.length];
 }
@@ -225,7 +258,7 @@ export function injectSemrushWordCountExpansion(
   gap: number,
   keyword: string,
 ): WordGapInjectionResult {
-  if (gap < 80) {
+  if (gap < 55) {
     return { content, injectedWords: 0, blockCount: 0 };
   }
 
@@ -251,6 +284,165 @@ export function injectSemrushWordCountExpansion(
     content: `${trimmed}\n\n${injection}`,
     injectedWords,
     blockCount,
+  };
+}
+
+/** 写作/扩写目标：SWA 标杆 +5%（Markdown 宜略高于 SWA 统计） */
+export const SEMRUSH_WORD_COUNT_WRITE_BUFFER_RATIO = 0.05;
+/** 篇幅可接受上限：标杆 +15%（105%–115% 为理想区间） */
+export const SEMRUSH_WORD_COUNT_SOFT_MAX_RATIO = 0.15;
+/** API 与本地词数差超过该值时记为对齐修正 */
+export const SEMRUSH_WORD_COUNT_RECONCILE_LOG_THRESHOLD = 80;
+/** 超过竞品/SWA 目标该比例时须删减（例：822 标杆 → >986 词触发） */
+export const SEMRUSH_WORD_COUNT_TRIM_OVER_RATIO = 0.2;
+
+export function isSemrushWordCountOverTarget(
+  currentWords: number,
+  targetWordCount: number,
+): boolean {
+  if (targetWordCount <= 0 || currentWords <= 0) return false;
+  return currentWords > targetWordCount * (1 + SEMRUSH_WORD_COUNT_TRIM_OVER_RATIO);
+}
+
+/** 当前词数超出目标的比例（仅超标时为正数） */
+export function computeSemrushWordCountOverRatio(
+  currentWords: number,
+  targetWordCount: number,
+): number | null {
+  if (targetWordCount <= 0) return null;
+  if (currentWords <= targetWordCount) return null;
+  return (currentWords - targetWordCount) / targetWordCount;
+}
+
+export interface SemrushWordCountReconcileResult {
+  effectiveCurrentWords: number;
+  localWordCount: number;
+  apiReportedWords?: number;
+  domReportedWords?: number;
+  reconciled: boolean;
+}
+
+export interface SemrushWordCountPlan {
+  localWordCount: number;
+  apiReportedWords?: number;
+  effectiveCurrentWords: number;
+  competitorWordCount?: number;
+  /** SWA 视角缺口：竞品标杆 − 对齐后当前词数 */
+  swaGap: number | null;
+  /** 本地 Markdown 扩写目标（略高于 SWA 竞品标杆） */
+  localExpandTarget?: number;
+  /** 本地扩写缺口：localExpandTarget − localWordCount */
+  localExpandGap: number;
+  /** 超出 SWA 目标的比例（仅超标时） */
+  swaOverRatio: number | null;
+  /** 超过目标 20% 时须删减 */
+  wordCountTrimPriority: boolean;
+  reconciled: boolean;
+}
+
+/**
+ * 对齐 SWA 有效当前词数：取 API / 本地 / DOM 中最保守（最小）值。
+ * SWA 打分以编辑器统计为准，不可单独信任 API original_length。
+ */
+export function resolveSemrushEffectiveCurrentWordCount(input: {
+  localWordCount: number;
+  apiCurrentWords?: number;
+  domCurrentWords?: number;
+}): SemrushWordCountReconcileResult {
+  const candidates: number[] = [input.localWordCount];
+  if (typeof input.apiCurrentWords === 'number' && input.apiCurrentWords > 0) {
+    candidates.push(input.apiCurrentWords);
+  }
+  if (typeof input.domCurrentWords === 'number' && input.domCurrentWords > 0) {
+    candidates.push(input.domCurrentWords);
+  }
+  const effectiveCurrentWords = Math.min(...candidates);
+  const apiReported =
+    typeof input.apiCurrentWords === 'number' && input.apiCurrentWords > 0
+      ? input.apiCurrentWords
+      : undefined;
+  const reconciled =
+    apiReported != null &&
+    apiReported - effectiveCurrentWords >= SEMRUSH_WORD_COUNT_RECONCILE_LOG_THRESHOLD;
+
+  return {
+    effectiveCurrentWords,
+    localWordCount: input.localWordCount,
+    apiReportedWords: apiReported,
+    domReportedWords:
+      typeof input.domCurrentWords === 'number' && input.domCurrentWords > 0
+        ? input.domCurrentWords
+        : undefined,
+    reconciled,
+  };
+}
+
+/** 本地扩写目标：SWA 标杆 +5% */
+export function resolveSemrushExpandWordTarget(competitorWordCount: number): number {
+  return Math.round(competitorWordCount * (1 + SEMRUSH_WORD_COUNT_WRITE_BUFFER_RATIO));
+}
+
+/** 删减目标区间：标杆 +5% 至 +15% */
+export function resolveSemrushTrimWordTargetRange(competitorWordCount: number): {
+  min: number;
+  max: number;
+} {
+  return {
+    min: resolveSemrushExpandWordTarget(competitorWordCount),
+    max: Math.round(competitorWordCount * (1 + SEMRUSH_WORD_COUNT_SOFT_MAX_RATIO)),
+  };
+}
+
+/** 篇幅硬上限：标杆 +20% */
+export function resolveSemrushWordCountHardCap(competitorWordCount: number): number {
+  return Math.round(competitorWordCount * (1 + SEMRUSH_WORD_COUNT_TRIM_OVER_RATIO));
+}
+
+/** 汇总词数对齐、SWA 缺口与本地扩写目标 */
+export function buildSemrushWordCountPlan(input: {
+  content: string;
+  competitorWordCount?: number;
+  apiReportedWords?: number;
+  domCurrentWords?: number;
+}): SemrushWordCountPlan {
+  const localWordCount = countWords(input.content);
+  const reconcile = resolveSemrushEffectiveCurrentWordCount({
+    localWordCount,
+    apiCurrentWords: input.apiReportedWords,
+    domCurrentWords: input.domCurrentWords,
+  });
+  const competitor =
+    typeof input.competitorWordCount === 'number' && input.competitorWordCount > 0
+      ? input.competitorWordCount
+      : undefined;
+  const swaGap =
+    competitor != null
+      ? Math.max(0, competitor - reconcile.effectiveCurrentWords)
+      : null;
+  const localExpandTarget =
+    competitor != null ? resolveSemrushExpandWordTarget(competitor) : undefined;
+  const localExpandGap =
+    localExpandTarget != null ? Math.max(0, localExpandTarget - localWordCount) : 0;
+  const swaOverRatio =
+    competitor != null
+      ? computeSemrushWordCountOverRatio(reconcile.effectiveCurrentWords, competitor)
+      : null;
+  const wordCountTrimPriority =
+    competitor != null &&
+    (isSemrushWordCountOverTarget(reconcile.effectiveCurrentWords, competitor) ||
+      isSemrushWordCountOverTarget(localWordCount, competitor));
+
+  return {
+    localWordCount,
+    apiReportedWords: reconcile.apiReportedWords,
+    effectiveCurrentWords: reconcile.effectiveCurrentWords,
+    competitorWordCount: competitor,
+    swaGap,
+    localExpandTarget,
+    localExpandGap,
+    swaOverRatio,
+    wordCountTrimPriority,
+    reconciled: reconcile.reconciled,
   };
 }
 
@@ -298,7 +490,17 @@ export const SEMRUSH_TITLE_MAX_CHARS = 60;
 export const SEMRUSH_TITLE_WORD_MIN = 5;
 export const SEMRUSH_TITLE_WORD_MAX = 12;
 
-export type SemrushTitleIssueCode = 'missing' | 'too_long' | 'too_many_words' | 'too_few_words';
+import {
+  analyzeSemrushTitleTargetKeywordIssues,
+  type SemrushTitleKeywordIssueCode,
+} from './semrush-title-keyword-rule.util';
+
+export type SemrushTitleIssueCode =
+  | 'missing'
+  | 'too_long'
+  | 'too_many_words'
+  | 'too_few_words'
+  | SemrushTitleKeywordIssueCode;
 
 export interface SemrushTitleIssue {
   code: SemrushTitleIssueCode;
@@ -327,12 +529,20 @@ export function resolveSemrushArticleTitle(input: {
   return input.targetKeyword.trim().slice(0, 200) || '(untitled)';
 }
 
-/** 对齐 Semrush SWA 侧栏：标题缺失 / 超长 / 词数不当 */
-export function analyzeSemrushTitleIssues(title: string): SemrushTitleIssue[] {
+/** 对齐 Semrush SWA 侧栏：标题缺失 / 超长 / 词数不当 / 目标关键词固定规则 */
+export function analyzeSemrushTitleIssues(
+  title: string,
+  targetKeywords?: string[],
+): SemrushTitleIssue[] {
   const trimmed = title.trim();
   const issues: SemrushTitleIssue[] = [];
   if (!trimmed || trimmed === '(untitled)') {
     issues.push({ code: 'missing', message: '文章缺少标题（Semrush 将其作为首段/H1）' });
+    if (targetKeywords?.length) {
+      for (const issue of analyzeSemrushTitleTargetKeywordIssues(title, targetKeywords)) {
+        issues.push({ code: issue.code, message: issue.message });
+      }
+    }
     return issues;
   }
   if (trimmed.length > SEMRUSH_TITLE_MAX_CHARS) {
@@ -352,6 +562,11 @@ export function analyzeSemrushTitleIssues(title: string): SemrushTitleIssue[] {
       code: 'too_few_words',
       message: `标题 ${wordCount} 词，Semrush 建议 ${SEMRUSH_TITLE_WORD_MIN}–${SEMRUSH_TITLE_WORD_MAX} 词`,
     });
+  }
+  if (targetKeywords?.length) {
+    for (const issue of analyzeSemrushTitleTargetKeywordIssues(trimmed, targetKeywords)) {
+      issues.push({ code: issue.code, message: issue.message });
+    }
   }
   return issues;
 }
@@ -375,6 +590,12 @@ export function computeSemrushTitleOverallPenalty(title: string): number {
     if (issue.code === 'too_few_words') {
       penalty += 0.2;
     }
+    if (issue.code === 'no_target_keyword_in_title') {
+      penalty += 0.3;
+    }
+    if (issue.code === 'target_keyword_repeated_in_title') {
+      penalty += 0.25;
+    }
   }
   return roundSemrushScore(Math.min(1.2, penalty));
 }
@@ -383,4 +604,54 @@ export function applySemrushTitlePenaltyToPrediction(predicted: number, title: s
   const penalty = computeSemrushTitleOverallPenalty(title);
   if (penalty <= 0) return roundSemrushScore(predicted);
   return roundSemrushScore(Math.max(0, Math.min(10, predicted - penalty)));
+}
+
+/** 将过长 H1 截断到 Semrush 建议范围（本地轮前置，避免预测分被扣 ≥0.35） */
+export function fixSemrushArticleTitleInContent(
+  content: string,
+  targetKeyword: string,
+): string {
+  const h1Match = content.match(/^(#\s+)(.+)$/m);
+  if (!h1Match) return content;
+
+  const prefix = h1Match[1];
+  const title = h1Match[2].trim();
+  if (analyzeSemrushTitleIssues(title).length === 0) return content;
+
+  const keywordTokens = targetKeyword
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((t) => t.length >= 3);
+  let trimmed = title;
+
+  if (trimmed.length > SEMRUSH_TITLE_MAX_CHARS) {
+    const slice = trimmed.slice(0, SEMRUSH_TITLE_MAX_CHARS);
+    const lastSpace = slice.lastIndexOf(' ');
+    trimmed = lastSpace > SEMRUSH_TITLE_MAX_CHARS * 0.55 ? slice.slice(0, lastSpace) : slice;
+    trimmed = trimmed.replace(/[\s,:;-]+$/, '');
+  }
+
+  let words = trimmed.split(/\s+/).filter(Boolean);
+  if (words.length > SEMRUSH_TITLE_WORD_MAX) {
+    words = words.slice(0, SEMRUSH_TITLE_WORD_MAX);
+    trimmed = words.join(' ');
+  }
+
+  const lowerTitle = trimmed.toLowerCase();
+  const missingKeyword = keywordTokens.some((t) => !lowerTitle.includes(t));
+  if (missingKeyword && targetKeyword.trim()) {
+    const kw = targetKeyword.trim();
+    const candidate = `${kw}: ${trimmed}`;
+    if (candidate.length <= SEMRUSH_TITLE_MAX_CHARS) {
+      trimmed = candidate;
+    } else {
+      const room = SEMRUSH_TITLE_MAX_CHARS - kw.length - 2;
+      if (room > 10) {
+        trimmed = `${kw}: ${trimmed.slice(0, room).replace(/[\s,:;-]+$/, '')}`;
+      }
+    }
+  }
+
+  if (trimmed === title) return content;
+  return content.replace(/^(#\s+).+$/m, `${prefix}${trimmed}`);
 }

@@ -57,6 +57,15 @@ function countSentencesInBlock(text: string): number {
   return count;
 }
 
+const MARKDOWN_LIST_ITEM_RE = /^(\s*(?:[-*+]|\d+[.)])\s+)(.+)$/;
+
+function extractMarkdownListItems(block: string): string[] {
+  return block
+    .split('\n')
+    .map((line) => MARKDOWN_LIST_ITEM_RE.exec(line)?.[2]?.trim())
+    .filter((text): text is string => Boolean(text));
+}
+
 /**
  * 将段内「 - item - item」或「: - item」伪列表转为 Markdown `-` 列表，避免 SWA 整段标紫。
  */
@@ -123,6 +132,8 @@ function isBodyParagraphBlock(block: string): boolean {
     !t.startsWith('![') &&
     !/^-\s+/.test(t) &&
     !/^\|.+\|/m.test(t) &&
+    !/\|[\s.:]*-{3,}/.test(t) &&
+    !/\|\s*\|/.test(t) &&
     !/^```/m.test(t)
   );
 }
@@ -131,13 +142,30 @@ function isBodyParagraphBlock(block: string): boolean {
 export function extractLongParagraphs(
   content: string,
   maxWords = LONG_PARAGRAPH_MAX_WORDS,
+  maxSentences?: number,
 ): LongParagraphSample[] {
   const samples: LongParagraphSample[] = [];
   for (const block of content.split(/\n\n+/)) {
     const text = block.trim();
+    const listItems = extractMarkdownListItems(block);
+    if (listItems.length > 0) {
+      for (const item of listItems) {
+        const words = countWords(item);
+        if (
+          words > maxWords ||
+          (maxSentences != null && countSentencesInBlock(item) > maxSentences)
+        ) {
+          samples.push({ text: item, wordCount: words });
+        }
+      }
+      continue;
+    }
     if (!isBodyParagraphBlock(text)) continue;
     const words = countWords(text);
-    if (words > maxWords) {
+    if (
+      words > maxWords ||
+      (maxSentences != null && countSentencesInBlock(text) > maxSentences)
+    ) {
       samples.push({ text, wordCount: words });
     }
   }
@@ -218,6 +246,34 @@ export function applyReadabilityParagraphFix(
   for (const block of blocks) {
     const trimmed = block.trim();
     if (!trimmed) continue;
+    const listLines = block.split('\n');
+    if (listLines.some((line) => MARKDOWN_LIST_ITEM_RE.test(line))) {
+      const fixedLines: string[] = [];
+      for (const line of listLines) {
+        const match = MARKDOWN_LIST_ITEM_RE.exec(line);
+        if (!match) {
+          fixedLines.push(line.trimEnd());
+          continue;
+        }
+
+        const prefix = match[1];
+        let chunks = [match[2].trim()];
+        if (
+          maxSentences != null &&
+          maxSentences > 0 &&
+          countSentencesInBlock(match[2]) > maxSentences
+        ) {
+          chunks = splitParagraphByMaxSentences(match[2], maxSentences);
+        }
+
+        const expanded = chunks.flatMap((chunk) =>
+          countWords(chunk) > maxWords ? splitParagraphIntoChunks(chunk, maxWords) : [chunk],
+        );
+        fixedLines.push(...expanded.map((chunk) => `${prefix}${chunk}`));
+      }
+      result.push(fixedLines.join('\n'));
+      continue;
+    }
     if (!isBodyParagraphBlock(trimmed)) {
       result.push(trimmed);
       continue;

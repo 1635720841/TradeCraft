@@ -21,6 +21,26 @@ export interface SeoOptimizeHistoryEntry {
   phase: 'local' | 'semrush';
   round: number;
   kind?: 'baseline' | 'optimize';
+  rolledBack?: boolean;
+}
+
+/** 从 optimizeHistory 尾部统计连续 Semrush 回滚次数（续跑时用于跳过 surgical） */
+export function countTrailingSemrushRollbacks(
+  history: Array<Pick<SeoOptimizeHistoryEntry, 'phase' | 'kind' | 'rolledBack'>>,
+): number {
+  let count = 0;
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    const entry = history[i];
+    if (entry.phase !== 'semrush' || entry.kind === 'baseline') {
+      continue;
+    }
+    if (entry.rolledBack === true) {
+      count += 1;
+      continue;
+    }
+    break;
+  }
+  return count;
 }
 
 export interface SeoPersistedCheckData {
@@ -143,7 +163,9 @@ export function shouldAcceptSemrushCandidate(
   input: SemrushCandidateAcceptInput,
   config: ResolvedSiteSeoScoreConfig = DEFAULT_SITE_SEO_SCORE_CONFIG,
 ): boolean {
-  if (input.candidateOverall >= config.semrushPassThreshold) return true;
+  if (input.candidateOverall >= config.semrushPassThreshold) {
+    return true;
+  }
   if (input.candidateOverall >= input.bestOverall) return true;
   if (input.candidateOverall >= input.bestOverall - SEMRUSH_SCORE_ROLLBACK_TOLERANCE) {
     return true;

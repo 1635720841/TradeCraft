@@ -13,6 +13,17 @@ export const SEMRUSH_FLESCH_TARGET_DEFAULT = 50;
 /** 与目标分差在此范围内视为对齐（不扣分） */
 export const SEMRUSH_FLESCH_TOLERANCE = 8;
 
+/**
+ * Semrush SWA 可读性指数目标：优先用 API 返回值（竞品均值），否则 B2B 默认 ~50。
+ * 禁止硬编码 ≥70（与 B2B Flesch 区间冲突）。
+ */
+export function resolveSemrushReadabilityTarget(semrushReadabilityScore?: number): number {
+  if (typeof semrushReadabilityScore === 'number' && semrushReadabilityScore > 0) {
+    return Math.round(semrushReadabilityScore);
+  }
+  return SEMRUSH_FLESCH_TARGET_DEFAULT;
+}
+
 export function stripContentForFlesch(content: string): string {
   return content
     .replace(/```[\s\S]*?```/g, ' ')

@@ -10,14 +10,6 @@
       <el-button type="primary" :loading="refreshing" :disabled="refreshing" @click="emit('refresh')">
         重新分析搜索结果
       </el-button>
-      <el-button
-        v-if="showRelaxRefreshAction"
-        :loading="refreshing"
-        :disabled="refreshing"
-        @click="emit('refresh', { serpArticlesOnly: false })"
-      >
-        放宽筛选重新分析
-      </el-button>
       <span class="text-sm text-gray-500">仅更新竞品列表与正文抓取，不会重跑大纲或初稿。</span>
     </div>
 
@@ -190,10 +182,10 @@ const filterSummary = computed(() => {
   const meta = filterMeta.value;
   if (!meta) return "";
   const parts = [`Google 前 ${meta.total} 条`];
-  if (meta.articleKept != null && meta.backfillKept != null && meta.backfillKept > 0) {
-    parts.push(`博客 ${meta.articleKept} 篇 + 补充 ${meta.backfillKept} 条`);
-  } else if (meta.articlesOnly) {
-    parts.push("优先博客/资讯页");
+  if (meta.articlesOnly) {
+    parts.push(`标准文章 ${meta.articleKept ?? meta.kept} 篇`);
+    if (meta.nonArticleExcluded) parts.push(`已排除非文章 ${meta.nonArticleExcluded} 条`);
+    if (meta.scrapeFailedExcluded) parts.push(`已排除抓取失败 ${meta.scrapeFailedExcluded} 条`);
   } else {
     parts.push("含产品页等全部结果");
   }
@@ -207,18 +199,13 @@ const lowSampleWarning = computed(() => {
     return {
       title: `仅找到 ${meta.kept} 条可参考结果，样本偏少`,
       description:
-        "这类搜索词前排多是产品页或电商站。可在「设置」调高 Google 抓取条数或参考竞品篇数；仍不够时点「放宽筛选重新分析」。"
+        "这类搜索词前排的标准文章较少。可在「设置」调高 Google 抓取条数；系统不会用论坛、问答、产品页或公司页凑数。"
     };
   }
   return {
     title: `仅找到 ${meta.kept} 条可参考结果`,
     description: "该词的 Google 前排结果本身较少，大纲会主要依据现有样本与 AI 行业知识生成。"
   };
-});
-
-const showRelaxRefreshAction = computed(() => {
-  const meta = filterMeta.value;
-  return Boolean(meta?.articlesOnly && meta.kept < 3 && props.showRefreshAction);
 });
 
 const targetWordCount = computed(

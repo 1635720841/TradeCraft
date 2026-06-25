@@ -20,6 +20,7 @@ const {
   enrichSemrushKeywordCoverage,
   collectPresentSeoPhrases,
   buildContextualKeywordWeavingInstruction,
+  pickSemrushRecommendationsApiPayload,
 } = await import(modPath);
 
 describe('isSemrushKeywordPresentInContent', () => {
@@ -109,6 +110,54 @@ describe('enrichSemrushKeywordCoverage', () => {
       ),
     );
     assert.ok(enriched.suggestionDetails?.seo?.some((s) => s.includes('未覆盖')));
+    assert.equal(enriched.keywordCoverage?.source, 'semrush');
+    assert.equal(enriched.keywordCoverage?.totalCount, 3);
+  });
+
+  it('uses API recommended_keywords as manifest source', () => {
+    const enriched = enrichSemrushKeywordCoverage(
+      { overall: 8.5, suggestions: [] },
+      'Guide about energy management system.',
+      {
+        apiPayload: {
+          data_ready: true,
+          keywords: [{ keyword: 'energy storage assets' }, { keyword: 'it turns raw' }],
+          recommended_keywords: [
+            { keyword: 'reduces costs', frequency: 'Very Low' },
+            { keyword: 'peak demand', frequency: 'Low' },
+            { keyword: 'energy management system', frequency: 'Medium' },
+          ],
+        },
+      },
+    );
+
+    assert.equal(enriched.keywordCoverage?.totalCount, 3);
+    assert.equal(enriched.keywordCoverage?.coveredCount, 1);
+    assert.ok(enriched.semrushMissingRecommendedKeywords?.includes('reduces costs'));
+    assert.ok(enriched.semrushMissingRecommendedKeywords?.includes('peak demand'));
+  });
+
+  it('merges submitted SWA goal keywords into coverage when API list is empty', () => {
+    const enriched = enrichSemrushKeywordCoverage(
+      {
+        overall: 8.7,
+        suggestions: [],
+        semrushRecommendedKeywords: [],
+        semrushMissingRecommendedKeywords: [],
+      },
+      'Guide about battery pack basics only.',
+      {
+        submittedKeywords: [
+          'bms battery management system explained',
+          'cell balancing',
+          'state of charge',
+        ],
+      },
+    );
+
+    assert.ok(enriched.semrushMissingRecommendedKeywords?.includes('cell balancing'));
+    assert.ok(enriched.semrushMissingRecommendedKeywords?.includes('state of charge'));
+    assert.equal(enriched.keywordCoverage?.totalCount, 3);
   });
 });
 
@@ -121,6 +170,139 @@ describe('buildContextualKeywordWeavingInstruction', () => {
   });
 });
 
+describe('resolveAllSemrushMissingKeywordsForRound', () => {
+  it('returns all missing recommended terms without batch cap', async () => {
+    const { resolveAllSemrushMissingKeywordsForRound } = await import(modPath);
+    const semrushResult = {
+      overall: 8.7,
+      suggestions: [],
+      semrushRecommendedKeywords: [
+        'peak demand charges',
+        'energy management system',
+        'reduces costs',
+        'demand response',
+        'battery storage',
+        'grid services',
+        'load shifting',
+        'tariff optimization',
+        'virtual power plant',
+        'ancillary services',
+      ],
+      semrushMissingRecommendedKeywords: [
+        'peak demand charges',
+        'reduces costs',
+        'demand response',
+      ],
+      keywordCoverage: {
+        source: 'semrush',
+        recommended: [
+          { phrase: 'peak demand charges', covered: false, role: 'recommended' },
+          { phrase: 'energy management system', covered: true, role: 'recommended' },
+          { phrase: 'reduces costs', covered: false, role: 'recommended' },
+          { phrase: 'demand response', covered: false, role: 'recommended' },
+          { phrase: 'battery storage', covered: false, role: 'recommended' },
+          { phrase: 'grid services', covered: false, role: 'recommended' },
+          { phrase: 'load shifting', covered: false, role: 'recommended' },
+          { phrase: 'tariff optimization', covered: false, role: 'recommended' },
+          { phrase: 'virtual power plant', covered: false, role: 'recommended' },
+          { phrase: 'ancillary services', covered: false, role: 'recommended' },
+        ],
+        missing: ['peak demand charges', 'reduces costs', 'demand response'],
+        coveredCount: 1,
+        totalCount: 10,
+        coverageRate: 0.1,
+      },
+    };
+    const content = 'Guide about energy management system for fleets.';
+    const missing = resolveAllSemrushMissingKeywordsForRound({
+      content,
+      semrushResult,
+      manifest: semrushResult.keywordCoverage,
+    });
+    assert.equal(missing.length, 9);
+    assert.ok(missing.includes('peak demand charges'));
+    assert.ok(missing.includes('virtual power plant'));
+    assert.ok(!missing.includes('energy management system'));
+  });
+
+  it('includes strictly missing submitted SWA goal keywords', async () => {
+    const { resolveAllSemrushMissingKeywordsForRound } = await import(modPath);
+    const missing = resolveAllSemrushMissingKeywordsForRound({
+      content: 'BMS overview with battery pack only.',
+      semrushResult: {
+        overall: 8.7,
+        suggestions: [],
+        keywordCoverage: {
+          source: 'semrush',
+          recommended: [
+            { phrase: 'battery pack', covered: true, role: 'recommended' },
+            { phrase: 'cell balancing', covered: false, role: 'recommended' },
+          ],
+          missing: [],
+          coveredCount: 1,
+          totalCount: 2,
+          coverageRate: 0.5,
+        },
+      },
+      manifest: {
+        source: 'semrush',
+        recommended: [{ phrase: 'battery pack', covered: true, role: 'recommended' }],
+        missing: [],
+        coveredCount: 1,
+        totalCount: 1,
+        coverageRate: 1,
+      },
+      submittedKeywords: ['cell balancing', 'state of charge'],
+    });
+    assert.ok(missing.includes('cell balancing'));
+    assert.ok(missing.includes('state of charge'));
+  });
+
+  it('includes single-word SWA manifest missing terms', async () => {
+    const { resolveAllSemrushMissingKeywordsForRound } = await import(modPath);
+    const manifest = {
+      source: 'semrush',
+      recommended: [
+        { phrase: 'known', covered: false, role: 'recommended' },
+        { phrase: 'properly', covered: false, role: 'recommended' },
+        { phrase: 'countless', covered: false, role: 'recommended' },
+      ],
+      missing: ['known', 'properly', 'countless'],
+      coveredCount: 0,
+      totalCount: 3,
+      coverageRate: 0,
+    };
+    const missing = resolveAllSemrushMissingKeywordsForRound({
+      content: '# BMS Guide\n\nBody without the tags.',
+      semrushResult: {
+        overall: 7.4,
+        suggestions: [],
+        keywordCoverage: manifest,
+      },
+      manifest,
+    });
+    assert.equal(missing.length, 3);
+    assert.ok(missing.includes('known'));
+    assert.ok(missing.includes('properly'));
+    assert.ok(missing.includes('countless'));
+  });
+
+  it('filters extracted keyword noise from candidates', async () => {
+    const { resolveAllSemrushMissingKeywordsForRound } = await import(modPath);
+    const missing = resolveAllSemrushMissingKeywordsForRound({
+      content: 'Article body.',
+      semrushResult: {
+        overall: 8.5,
+        suggestions: [],
+        semrushRecommendedKeywords: ['it turns raw', 'peak demand charges', 'as can rs'],
+      },
+    });
+    assert.ok(missing.includes('peak demand charges'));
+    assert.ok(!missing.includes('it turns raw'));
+    assert.ok(!missing.includes('as can rs'));
+  });
+});
+
 describe('collectPresentSeoPhrases', () => {
   it('returns only phrases already in content', () => {
     const content = 'Guide about smart bms and cell balancing.';
@@ -130,5 +312,36 @@ describe('collectPresentSeoPhrases', () => {
       'battery capacity',
     ]);
     assert.deepEqual(present, ['smart bms', 'cell balancing']);
+  });
+});
+
+describe('pickSemrushRecommendationsApiPayload', () => {
+  it('prefers data_ready capture with the most recommended_keywords', () => {
+    const payload = pickSemrushRecommendationsApiPayload([
+      {
+        url: 'https://sem.example.com/swa/api/recommendations/last_status/',
+        body: { data_ready: true, score: 0.87 },
+      },
+      {
+        url: 'https://sem.example.com/swa/api/recommendations/gdoc_id/smr-1/',
+        body: {
+          data_ready: true,
+          recommended_keywords: [
+            { keyword: 'lithium ion batteries' },
+            { keyword: 'fire safety' },
+          ],
+        },
+      },
+      {
+        url: 'https://sem.example.com/swa/api/recommendations/gdoc_id/smr-2/',
+        body: {
+          data_ready: true,
+          recommended_keywords: Array.from({ length: 20 }, (_, i) => ({
+            keyword: `recommended term ${i}`,
+          })),
+        },
+      },
+    ]);
+    assert.equal(payload?.recommended_keywords?.length, 20);
   });
 });

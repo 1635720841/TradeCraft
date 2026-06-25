@@ -75,6 +75,8 @@
 
     <ScoreCalibrationManualImportPanel :project-id="projectId" @imported="handleManualImported" />
 
+    <ScoreReverseExperimentPanel :project-id="projectId" />
+
     <ScoreCalibrationMissingJobsPanel
       ref="missingJobsRef"
       :project-id="projectId"
@@ -216,6 +218,9 @@
         <el-table-column prop="modelAbsError" label="校准误差" width="90" />
         <el-table-column label="标记" width="120">
           <template #default="{ row }">
+            <el-tooltip v-if="!row.trainingEligible" content="旧评分规则样本：保留查看，但不参与当前模型训练" placement="top">
+              <el-tag size="small" type="info" class="mr-1">旧版</el-tag>
+            </el-tooltip>
             <el-tag v-if="row.isHoldout" size="small" type="warning" class="mr-1">验证</el-tag>
             <el-tag v-if="row.missingKeywordsBackfilled" size="small" type="info" class="mr-1">回填</el-tag>
             <el-tooltip v-if="row.possiblyOutlier && row.outlierReason" :content="row.outlierReason" placement="top">
@@ -339,6 +344,7 @@ import { message } from "@/utils/message";
 import { ElMessageBox } from "element-plus";
 import ScoreCalibrationFeatureAttributionPanel from "./components/score-calibration/ScoreCalibrationFeatureAttributionPanel.vue";
 import ScoreCalibrationManualImportPanel from "./components/score-calibration/ScoreCalibrationManualImportPanel.vue";
+import ScoreReverseExperimentPanel from "./components/score-calibration/ScoreReverseExperimentPanel.vue";
 import ScoreCalibrationMissingJobsPanel from "./components/score-calibration/ScoreCalibrationMissingJobsPanel.vue";
 import ScoreCalibrationShadowLogPanel from "./components/score-calibration/ScoreCalibrationShadowLogPanel.vue";
 

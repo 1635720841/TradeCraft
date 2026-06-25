@@ -140,10 +140,10 @@
           </p>
         </el-form-item>
 
-        <el-form-item label="只分析博客页">
+        <el-form-item label="只分析标准文章">
           <el-switch v-model="adminForm.serpArticlesOnly" />
           <p class="mt-1 text-xs text-gray-500">
-            开启后优先博客/资讯类页面；样本不足时系统会自动补充公司页等（仍排除电商）。
+            开启后仅保留博客、指南和资讯文章；论坛、问答、社区、产品页和公司页不会参与样本分析。
           </p>
         </el-form-item>
 
@@ -167,13 +167,6 @@
               <el-input-number v-model="adminForm.serpOrganicFetchNum" :min="10" :max="50" :step="5" />
               <p class="mt-1 text-xs text-gray-500">
                 过滤前从 Google 拉多少条结果，默认 30。博客很少时可调到 40～50。
-              </p>
-            </el-form-item>
-
-            <el-form-item label="自动补充阈值">
-              <el-input-number v-model="adminForm.serpMinArticleCandidates" :min="1" :max="20" />
-              <p class="mt-1 text-xs text-gray-500">
-                博客类不足该数时，从其余搜索结果回补，默认 3。
               </p>
             </el-form-item>
 

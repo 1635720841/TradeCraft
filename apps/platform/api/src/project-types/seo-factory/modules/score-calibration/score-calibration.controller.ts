@@ -19,13 +19,99 @@ import { UpdateManualCalibrationSampleDto } from './dto/update-manual-calibratio
 import { SetWorkflowPairExcludedDto } from './dto/set-workflow-pair-excluded.dto';
 import { QueryScoreCalibrationLabListDto } from './dto/query-score-calibration-lab-list.dto';
 import { ScoreCalibrationService } from './score-calibration.service';
+import { ScoreReverseExperimentService } from './score-reverse-experiment.service';
+import { CreateScoreReverseExperimentDto } from './dto/create-score-reverse-experiment.dto';
+import { UpdateScoreReverseTrialsDto } from './dto/update-score-reverse-trials.dto';
+import { RunScoreReverseTrialDto } from './dto/run-score-reverse-trial.dto';
 
 @Controller('api/v1/projects/:projectId/seo-score-lab')
 export class ScoreCalibrationController {
   constructor(
     private readonly scoreCalibrationService: ScoreCalibrationService,
+    private readonly scoreReverseExperimentService: ScoreReverseExperimentService,
     private readonly projectService: ProjectService,
   ) {}
+
+  @Get('reverse-experiments')
+  async listReverseExperiments(@ReqCtx() ctx: RequestContext, @Param('projectId') projectId: string) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const data = await this.scoreReverseExperimentService.list(ctx.organizationId, projectId);
+    return { data, meta: { traceId: ctx.traceId, pagination: { total: data.length } } };
+  }
+
+  @Get('reverse-evidence')
+  async reverseEvidence(@ReqCtx() ctx: RequestContext, @Param('projectId') projectId: string) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const data = await this.scoreReverseExperimentService.evidence(ctx.organizationId, projectId);
+    return { data, meta: { traceId: ctx.traceId, pagination: { total: data.length } } };
+  }
+
+  @Post('reverse-experiments')
+  async createReverseExperiment(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Body() dto: CreateScoreReverseExperimentDto,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const data = await this.scoreReverseExperimentService.create(
+      ctx.organizationId, projectId, dto, ctx.traceId,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Patch('reverse-experiments/:experimentId/trials')
+  async updateReverseTrials(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('experimentId') experimentId: string,
+    @Body() dto: UpdateScoreReverseTrialsDto,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const data = await this.scoreReverseExperimentService.updateTrials(
+      ctx.organizationId, projectId, experimentId, dto, ctx.traceId,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Post('reverse-experiments/:experimentId/ai-analysis')
+  async analyzeReverseExperiment(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('experimentId') experimentId: string,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const data = await this.scoreReverseExperimentService.analyze(
+      ctx.organizationId, projectId, experimentId, ctx.traceId,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Post('reverse-experiments/:experimentId/run-trial')
+  async runReverseTrial(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('experimentId') experimentId: string,
+    @Body() dto: RunScoreReverseTrialDto,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const data = await this.scoreReverseExperimentService.runTrial(
+      ctx.organizationId, projectId, experimentId, dto, ctx.traceId,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Delete('reverse-experiments/:experimentId')
+  async deleteReverseExperiment(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('experimentId') experimentId: string,
+  ) {
+    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    const data = await this.scoreReverseExperimentService.delete(
+      ctx.organizationId, projectId, experimentId, ctx.traceId,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
 
   @Get('readiness')
   async readiness(@ReqCtx() ctx: RequestContext, @Param('projectId') projectId: string) {
