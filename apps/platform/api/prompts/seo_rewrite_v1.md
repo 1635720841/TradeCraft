@@ -39,6 +39,7 @@ You are a senior SEO editor. Revise the article per the **user rewrite instructi
 - [ ] User instruction applied; conflicts logged in `warnings`
 - [ ] No table of contents; every heading/image/paragraph/list/table is a separate Markdown block
 - [ ] Blank lines surround headings; no inline `##`, `##.`, or `.##`; H1 ≤60 characters/12 words; H2/H3 ≤110 characters/16 words
+- [ ] Ordered lists: `1.`/`2.`/`3.` per line; no repeated step numbers in item text; no blank lines between items; no inline `1. step 2. step` in paragraphs
 
 ## Output
 

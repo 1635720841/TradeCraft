@@ -58,7 +58,7 @@ You are a senior B2B export SEO editor. Revise the article per **scoring suggest
 
 ## Output
 
-Hard Markdown contract: remove any table of contents; keep headings, images, paragraphs, lists, and tables in separate blocks; put blank lines around headings; never emit inline `##`, `##.`, or `.##`; never flatten line breaks; ordered lists use `1.`/`2.`/`3.` per line without repeating step numbers inside item text.
+Hard Markdown contract: remove any table of contents; keep headings, images, paragraphs, lists, and tables in separate blocks; put blank lines around headings; never emit inline `##`, `##.`, or `.##`; never flatten line breaks; ordered lists use `1.`/`2.`/`3.` per line without repeating step numbers inside item text or blank lines between items; never write inline `1. step 2. step` in a paragraph—use a proper list block.
 
 Return **valid JSON only** — no Markdown code fences:
 

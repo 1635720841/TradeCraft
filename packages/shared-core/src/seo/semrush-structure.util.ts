@@ -79,16 +79,28 @@ function repairOversizedSectionHeadings(content: string): string {
 }
 
 function splitHeadingBody(text: string): { heading: string; body: string } | null {
-  const dash = text.match(/^(.{8,80}?)\s+[–—-]\s+(.{18,})$/);
+  const dash = text.match(/^(.{4,80}?)\s+[–—-]\s+(.{12,})$/);
   if (dash && countWords(dash[1]) >= 2 && countWords(dash[2]) >= 4) {
     return { heading: dash[1].trim(), body: dash[2].trim() };
   }
 
   const suffixBoundary = text.match(
-    /^(.{10,90}?\b(?:steps|review|troubleshooting|matrix|overview|guide|checklist|requirements|mistakes|considerations|works|means))\s+([A-Z][\s\S]{12,})$/i,
+    /^(.{4,90}?\b(?:steps|setup|review|troubleshooting|matrix|overview|guide|checklist|requirements|considerations|works|means))\s+([A-Z][\s\S]{8,})$/i,
   );
   if (suffixBoundary && countWords(suffixBoundary[1]) >= 2) {
     return { heading: suffixBoundary[1].trim(), body: suffixBoundary[2].trim() };
+  }
+
+  const keywordEndBody = text.match(
+    /^(.{4,110}?\b(?:steps|setup|guide|checklist|requirements|troubleshooting|overview|review|works|means|parameters|installation|configuration))\s+([A-Z][\s\S]{10,})$/i,
+  );
+  if (
+    keywordEndBody &&
+    countWords(keywordEndBody[1]) >= 2 &&
+    countWords(keywordEndBody[1]) <= SEMRUSH_MARKDOWN_SECTION_MAX_WORDS &&
+    countWords(keywordEndBody[2]) >= 4
+  ) {
+    return { heading: keywordEndBody[1].trim(), body: keywordEndBody[2].trim() };
   }
 
   const sentence = text.match(/^(.{12,110}?[.!?])\s+([A-Z][\s\S]{12,})$/);
@@ -163,6 +175,107 @@ export function repairOrderedListArtifacts(content: string): string {
   }
 
   return result.join('\n');
+}
+
+function isProseParagraphBlock(block: string): boolean {
+  const t = block.trim();
+  return (
+    t.length > 0 &&
+    !t.startsWith('#') &&
+    !t.startsWith('![') &&
+    !/^-\s+/m.test(t) &&
+    !/^\d+\.\s+/m.test(t) &&
+    !/^\|.+\|/m.test(t) &&
+    !/\|[\s.:]*-{3,}/.test(t) &&
+    !/\|\s*\|/.test(t) &&
+    !/^```/m.test(t)
+  );
+}
+
+function splitInlineOrderedSteps(text: string): { intro?: string; items: string[] } | null {
+  const re = /(?:^|[\s:;])(\d+)\.\s+/g;
+  const matches = [...text.matchAll(re)];
+  if (matches.length < 2) return null;
+
+  const firstIndex = matches[0].index ?? 0;
+  const intro = text.slice(0, firstIndex).trimEnd();
+  const items: string[] = [];
+
+  for (let i = 0; i < matches.length; i += 1) {
+    const marker = matches[i];
+    const start = (marker.index ?? 0) + marker[0].length;
+    const end = i + 1 < matches.length ? (matches[i + 1].index ?? text.length) : text.length;
+    const item = text.slice(start, end).trim();
+    if (item) items.push(item);
+  }
+
+  return items.length >= 2 ? { intro: intro || undefined, items } : null;
+}
+
+/**
+ * 将段内「1. item 2. item」伪有序列表转为 Markdown 有序列表。
+ * 不处理已是逐行 `1.` 开头的列表块。
+ */
+export function convertInlineOrderedEnumerations(content: string): string {
+  const blocks = content.split(/\n\n+/);
+  const result: string[] = [];
+
+  for (const block of blocks) {
+    const trimmed = block.trim();
+    if (!trimmed || !isProseParagraphBlock(trimmed)) {
+      if (trimmed) result.push(trimmed);
+      continue;
+    }
+
+    const steps = splitInlineOrderedSteps(trimmed);
+    if (!steps) {
+      result.push(trimmed);
+      continue;
+    }
+
+    if (steps.intro) result.push(steps.intro);
+    result.push(steps.items.map((item, index) => `${index + 1}. ${item}`).join('\n'));
+  }
+
+  return result.join('\n\n');
+}
+
+/** 去掉同类型列表项之间的空行，避免渲染成多个 `<ol>` 均从 1. 开始。 */
+export function repairListBlankLineGaps(content: string): string {
+  const lines = content.replace(/\r\n/g, '\n').split('\n');
+  const result: string[] = [];
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (line.trim() !== '') {
+      result.push(line);
+      continue;
+    }
+
+    const prev = result[result.length - 1]?.trim() ?? '';
+    let j = i + 1;
+    while (j < lines.length && lines[j].trim() === '') j += 1;
+    const next = lines[j]?.trim() ?? '';
+    const sameOrdered = /^\d+\.\s+/.test(prev) && /^\d+\.\s+/.test(next);
+    const sameBullet = /^[-*]\s+/.test(prev) && /^[-*]\s+/.test(next);
+    if (sameOrdered || sameBullet) continue;
+
+    result.push(line);
+  }
+
+  return result.join('\n');
+}
+
+/**
+ * 轻量结构修复（不依赖 detect 错误）：段内编号列表化、列表空行、有序列表脏序号。
+ * 落库 / boost / 编辑器导出前均可调用。
+ */
+export function repairMarkdownStructureArtifacts(content: string): string {
+  let result = content.replace(/\r\n/g, '\n');
+  result = convertInlineOrderedEnumerations(result);
+  result = repairListBlankLineGaps(result);
+  result = repairOrderedListArtifacts(result);
+  return result;
 }
 
 /** 清理 LLM/FAQ 遗留的 orphan `**`、重复列表符等 Markdown 脏字符 */
@@ -313,6 +426,19 @@ function removeDuplicateHeadings(content: string): string {
   return lines.join('\n').replace(/\n{3,}/g, '\n\n');
 }
 
+function hasListBlankLineGaps(content: string): boolean {
+  const lines = content.replace(/\r\n/g, '\n').split('\n');
+  for (let i = 0; i < lines.length; i += 1) {
+    if (lines[i].trim() !== '') continue;
+    const prev = lines.slice(0, i).reverse().find((line) => line.trim())?.trim() ?? '';
+    const next = lines.slice(i + 1).find((line) => line.trim())?.trim() ?? '';
+    const sameOrdered = /^\d+\.\s+/.test(prev) && /^\d+\.\s+/.test(next);
+    const sameBullet = /^[-*]\s+/.test(prev) && /^[-*]\s+/.test(next);
+    if (sameOrdered || sameBullet) return true;
+  }
+  return false;
+}
+
 /** 检测常见结构损坏（不修改已有 `-` Markdown 列表块） */
 export function detectSemrushStructureErrors(content: string): string[] {
   const errors: string[] = [];
@@ -326,6 +452,16 @@ export function detectSemrushStructureErrors(content: string): string[] {
   if (/[a-z]\.[A-Z]/.test(content)) errors.push('missing_break_after_lowercase_period');
   if (/[.!?]##/.test(content)) errors.push('heading_missing_leading_newline');
   if (/[:;.!?][ \t]+-[ \t]+(?=[A-Za-z])/.test(content)) errors.push('inline_list_marker');
+  if (
+    content.split(/\n\n+/).some((block) => {
+      const trimmed = block.trim();
+      if (!isProseParagraphBlock(trimmed)) return false;
+      return (trimmed.match(/(?:^|[\s:;])\d+\.\s+/g) ?? []).length >= 2;
+    })
+  ) {
+    errors.push('inline_ordered_list_marker');
+  }
+  if (hasListBlankLineGaps(content)) errors.push('list_blank_line_gap');
   if (hasDuplicateHeadings(content)) errors.push('duplicate_heading');
   if (hasMissingHeadingSpacing(content)) errors.push('missing_heading_spacing');
   if (
@@ -402,7 +538,7 @@ export function detectSemrushStructureErrors(content: string): string[] {
 /** 自动修复结构损坏，保证 `## Heading` 与段落间有空行 */
 export function validateAndFixSemrushStructure(content: string): SemrushStructureValidation {
   const source = content.replace(/\r\n/g, '\n');
-  let result = repairOrderedListArtifacts(source);
+  let result = repairMarkdownStructureArtifacts(source);
   const errors = detectSemrushStructureErrors(result);
   if (errors.length === 0 && result === source) {
     return { content: result, errors: [], fixed: false };
@@ -427,7 +563,7 @@ export function validateAndFixSemrushStructure(content: string): SemrushStructur
     .join('\n');
 
   result = normalizeMarkdownBlockSpacing(result);
-  result = repairOrderedListArtifacts(result);
+  result = repairMarkdownStructureArtifacts(result);
 
   return {
     content: result,

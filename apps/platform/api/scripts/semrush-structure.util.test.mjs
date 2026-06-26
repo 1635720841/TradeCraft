@@ -8,7 +8,7 @@ import { dirname, resolve } from 'node:path';
 
 const sharedRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../packages/shared-core');
 const modPath = pathToFileURL(resolve(sharedRoot, 'dist/seo/semrush-structure.util.js')).href;
-const { detectSemrushStructureErrors, enforceArticleH1Boundary, validateAndFixSemrushStructure } = await import(modPath);
+const { detectSemrushStructureErrors, enforceArticleH1Boundary, validateAndFixSemrushStructure, repairMarkdownStructureArtifacts } = await import(modPath);
 
 describe('validateAndFixSemrushStructure', () => {
   it('fixes glued heading after period', () => {
@@ -156,5 +156,44 @@ describe('validateAndFixSemrushStructure', () => {
     assert.doesNotMatch(out.content, /^1\. 2\.$/m);
     assert.match(out.content, /^1\. Disconnect the main leads\./m);
     assert.match(out.content, /Keep the leads apart\./);
+  });
+
+  it('converts inline ordered steps in a paragraph to a list block', () => {
+    const broken =
+      'Follow this order: 1. Turn off the system. 2. Disconnect the main leads. 3. Label each balance wire.';
+    const out = validateAndFixSemrushStructure(broken);
+    assert.match(out.content, /Follow this order:/);
+    assert.match(out.content, /^1\. Turn off the system\./m);
+    assert.match(out.content, /^2\. Disconnect the main leads\./m);
+    assert.match(out.content, /^3\. Label each balance wire\./m);
+    assert.equal(detectSemrushStructureErrors(out.content).length, 0);
+  });
+
+  it('removes blank lines between ordered list items', () => {
+    const broken = '1. Step one.\n\n2. Step two.\n\n3. Step three.';
+    const out = validateAndFixSemrushStructure(broken);
+    assert.doesNotMatch(out.content, /1\. Step one\.\n\n2\./);
+    assert.match(out.content, /1\. Step one\.\n2\. Step two\./);
+  });
+
+  it('splits short H2 headings that swallowed body text', () => {
+    const broken = '## Setup steps Record the value before changes.';
+    const out = validateAndFixSemrushStructure(broken);
+    assert.match(out.content, /## Setup steps\n\nRecord the value before changes\./);
+    assert.equal(detectSemrushStructureErrors(out.content).length, 0);
+  });
+
+  it('repairMarkdownStructureArtifacts fixes user BMS list without other errors', () => {
+    const broken = `Follow this order:
+1. Turn off the system and confirm no charging and discharging current flows.
+1. 2.
+1. Disconnect the main leads and secure them apart.
+1. 3.
+1. Label each balance wire before removal.
+1. 4.`;
+    const fixed = repairMarkdownStructureArtifacts(broken);
+    assert.doesNotMatch(fixed, /^1\. 2\.$/m);
+    assert.match(fixed, /^1\. Disconnect the main leads/m);
+    assert.match(fixed, /^1\. Label each balance wire/m);
   });
 });

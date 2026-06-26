@@ -2,7 +2,7 @@
  * 稿件正文 Markdown ↔ HTML（与 api semrush-content.ts 对齐，供 Quill 编辑）。
  */
 
-import { buildSemrushTableHtml, repairMarkdownTables } from "@wm/shared-core";
+import { buildSemrushTableHtml, repairMarkdownStructureArtifacts, repairMarkdownTables } from "@wm/shared-core";
 
 import {
   isMarkdownTableRow,
@@ -312,7 +312,9 @@ export function htmlToMarkdown(html: string): string {
     if (markdown) blocks.push(markdown);
   });
 
-  return blocks.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
+  return repairMarkdownStructureArtifacts(
+    blocks.join("\n\n").replace(/\n{3,}/g, "\n\n").trim()
+  );
 }
 
 export { splitTableRow, isMarkdownTableStart, readMarkdownTable };

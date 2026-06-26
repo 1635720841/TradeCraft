@@ -112,7 +112,7 @@ Do not rewrite the entire article unless structure is broken. Prefer surgical ed
 - Remove any `Table of contents` block. Do not create a new one.
 - Keep every heading, image, paragraph, list, and table in a separate Markdown block.
 - Put one blank line before and after each heading. Never emit inline `##`, `##.`, or `.##`.
-- **Ordered lists**: use `1.` / `2.` / `3.` on each line — never repeat the step number inside item text (`1. 2. Step` is wrong); never put a lone `2.` on its own line.
+- **Ordered lists**: use `1.` / `2.` / `3.` on each line — never repeat the step number inside item text (`1. 2. Step` is wrong); never put a lone `2.` on its own line; do not insert blank lines between list items.
 - H1 must be at most 60 characters/12 words; H2/H3 at most 110 characters/16 words.
 - Never flatten line breaks while rewriting.
 

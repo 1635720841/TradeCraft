@@ -6,7 +6,7 @@
  * - 计数规则与 local-seo-score.scoreReadability 对齐（>22 词长句）
  */
 
-import { stripRedundantOrderedListBody } from './semrush-structure.util';
+import { stripRedundantOrderedListBody, repairMarkdownStructureArtifacts } from './semrush-structure.util';
 
 const LONG_SENTENCE_MAX_WORDS = 22;
 /** 与 Semrush SWA 本地预检对齐：单段 >65 词计为超长段 */
@@ -492,6 +492,8 @@ export function boostLocalSeoContent(
   if (!options.skipWordCap && countWords(result) > wordCap) {
     result = trimBodyToWordCap(result, wordCap);
   }
+
+  result = repairMarkdownStructureArtifacts(result);
 
   return result;
 }
