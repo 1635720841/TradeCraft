@@ -126,7 +126,13 @@ export interface DraftOptimizeRound {
   /** Semrush 轮回滚时候选稿本地分 */
   candidateLocalScoreAfter?: number;
   /** 回滚原因 */
-  rollbackReason?: 'score_regressed' | 'predicted_semrush_regressed' | 'keyword_coverage_regressed' | 'local_below_threshold' | 'both';
+  rollbackReason?:
+    | 'score_regressed'
+    | 'predicted_semrush_regressed'
+    | 'keyword_coverage_regressed'
+    | 'target_keyword_regressed'
+    | 'local_below_threshold'
+    | 'both';
 }
 
 export type ManualRewriteMode = 'suggestions' | 'instruction';

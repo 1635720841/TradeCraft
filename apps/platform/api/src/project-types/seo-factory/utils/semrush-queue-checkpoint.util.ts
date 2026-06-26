@@ -12,18 +12,29 @@ import type { SeoScore } from '@wm/provider-interfaces';
 import { PrismaService } from '../../../core/database/prisma.service';
 import { LoggerService } from '../../../core/logger/logger.service';
 import { SEMRUSH_PASS_THRESHOLD } from '../constants/seo-score';
+import { hashSemrushContent } from '../providers/semrush/semrush-content-hash.util';
 import { buildSemrushSubmittedKeywords, filterSemrushSubmittedKeywordsInContent } from '../providers/semrush/semrush-submitted-keywords.util';
 
 const LATE_RECOVERY_ERROR_PATTERN = /timed out before finishing|Job wait|超时/i;
 
+function getRpaInFlightContentHash(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const contentHash = (value as { contentHash?: unknown }).contentHash;
+  return typeof contentHash === 'string' && contentHash.length > 0
+    ? contentHash
+    : undefined;
+}
+
 export function shouldPersistSemrushQueueCheckpoint(input: {
   status: string;
   seoCheckData: unknown;
+  errorMessage?: string | null;
 }): boolean {
   const data = (input.seoCheckData ?? {}) as {
     semrush?: {
       cancelled?: boolean;
       pending?: unknown;
+      rpaInFlight?: unknown;
       lastManualCheckError?: string;
     };
   };
@@ -37,8 +48,13 @@ export function shouldPersistSemrushQueueCheckpoint(input: {
   if (data.semrush?.pending) {
     return true;
   }
+  if (data.semrush?.rpaInFlight) {
+    return true;
+  }
 
-  const lastError = data.semrush?.lastManualCheckError ?? '';
+  const lastError = [data.semrush?.lastManualCheckError, input.errorMessage]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .join(' ');
   return LATE_RECOVERY_ERROR_PATTERN.test(lastError);
 }
 
@@ -86,16 +102,41 @@ export async function persistSemrushQueueCheckpoint(
 
   const prevCheck = (job.seoCheckData ?? {}) as Record<string, unknown>;
   const prevSemrush = (prevCheck.semrush ?? {}) as Record<string, unknown>;
+  const checkedContentHash = hashSemrushContent(checkedContent);
+  const resultContentHash = semrushResult.semrushCheckRecord?.contentHash;
+  if (resultContentHash && resultContentHash !== checkedContentHash) {
+    logger?.warn('Semrush RPA checkpoint skipped for mismatched result hash', {
+      jobId: articleJobId,
+      action: 'semrush_queue.checkpoint_hash_mismatch',
+      resultContentHash,
+      checkedContentHash,
+    });
+    return false;
+  }
+
+  const inFlightContentHash = getRpaInFlightContentHash(prevSemrush.rpaInFlight);
+  if (inFlightContentHash && inFlightContentHash !== checkedContentHash) {
+    logger?.warn('Semrush RPA checkpoint skipped for stale in-flight hash', {
+      jobId: articleJobId,
+      action: 'semrush_queue.checkpoint_stale_inflight',
+      inFlightContentHash,
+      checkedContentHash,
+    });
+    return false;
+  }
+
   const {
     pending,
+    rpaInFlight: _rpaInFlight,
     manualCheckPreviousStatus: _manualPrev,
     lastManualCheckError,
     ...semrushRest
   } = prevSemrush;
 
-  const wasLateRecovery =
-    typeof lastManualCheckError === 'string' &&
-    LATE_RECOVERY_ERROR_PATTERN.test(lastManualCheckError);
+  const lateRecoveryError = [lastManualCheckError, job.errorMessage]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .join(' ');
+  const wasLateRecovery = LATE_RECOVERY_ERROR_PATTERN.test(lateRecoveryError);
   const submittedKeywords = resolveSubmittedKeywords(
     checkedContent,
     job.targetKeyword,

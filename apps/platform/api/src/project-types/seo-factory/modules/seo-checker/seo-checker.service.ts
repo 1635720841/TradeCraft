@@ -71,9 +71,10 @@ import {
 import {
   canResumeSemrushOptimization,
   countOptimizeRounds,
+  decideSemrushCandidateAcceptance,
   hasOptimizeBaseline,
   resolveSemrushOptimizeRoundCap,
-  shouldAcceptSemrushCandidate,
+  shouldForceLocalPipelineForWordGap,
   isSemrushSurgicalTier,
   shouldSkipLocalPipeline,
   type SeoOptimizeHistoryEntry,
@@ -91,6 +92,8 @@ import {
   buildSemrushReadabilityAudit,
   buildFallbackSemrushSuggestions,
   buildSemrushRewriteSuggestions,
+  evaluateSemrushRoundOutput,
+  repairSemrushRoundOutput,
   resolveSemrushBoostWordTarget,
 } from '../../utils/semrush-optimize.util';
 import {
@@ -109,6 +112,7 @@ import {
   buildContextualKeywordWeavingInstruction,
   collectPresentSeoPhrases,
   enrichSemrushKeywordCoverage,
+  findMissingSemrushKeywords,
   mergeSemrushKeywordLists,
   resolveAllSemrushMissingKeywordsForRound,
 } from '../../providers/semrush/semrush-keyword-coverage.util';
@@ -134,6 +138,7 @@ import {
   isSemrushCheckStale,
   shouldRecoverOrphanOptimizing,
   type SemrushCheckPending,
+  type SemrushRpaInFlight,
 } from '../../constants/semrush-check';
 import { withWorkflowMeta } from '../../constants/workflow-resume';
 import { resolveOrphanOptimizingRestore } from '../../utils/semrush-orphan-restore.util';
@@ -146,6 +151,8 @@ import {
 import type { InternalLinkRecord } from '../linking/link-match.util';
 import { SemrushQueueService } from '../../services/semrush-queue.service';
 import { persistSemrushQueueCheckpoint } from '../../utils/semrush-queue-checkpoint.util';
+import { isPlaywrightJobWaitTimeout } from '../../utils/semrush-queue-wait.util';
+import { hashSemrushContent } from '../../providers/semrush/semrush-content-hash.util';
 import { parseSiteWorkflowSettings } from '../../constants/brief-approval';
 import { ScoreCalibrationService } from '../score-calibration/score-calibration.service';
 import {
@@ -161,6 +168,7 @@ import {
   isLocalGateNearMiss,
   isLocalGatePassed,
   isLocalGateSoftPass,
+  buildLocalGatePersistedFields,
   localGatePointsToGo,
   resolveLocalAlignEffective,
   resolveLocalGateContext,
@@ -225,6 +233,16 @@ interface PersistedSeoCheckData {
     keywordCoverage?: SeoScore['keywordCoverage'];
     semrushCheckRecord?: SeoScore['semrushCheckRecord'];
   };
+}
+
+interface SemrushPlanningFeedback {
+  semrushCompetitorWordCount?: number;
+  semrushTargetKeywords?: string[];
+  semrushRecommendedKeywords?: string[];
+  semrushMissingTargetKeywords?: string[];
+  semrushMissingRecommendedKeywords?: string[];
+  suggestionDetails?: SeoScore['suggestionDetails'];
+  actionableIssues?: SeoScore['actionableIssues'];
 }
 
 const GSC_UNDERPERFORM_OPTIMIZE_HINTS = [
@@ -319,7 +337,15 @@ export class SeoCheckerService implements OnModuleInit {
     ) {
       semrushResumable = true;
     }
-    const skipLocalPipeline = shouldSkipLocalPipeline(localAlreadyPassed, semrushResumable);
+    const currentWordCount = flowWordCount(content);
+    const forceLocalForWordGap = shouldForceLocalPipelineForWordGap({
+      localAlreadyPassed,
+      semrushResumable,
+      wordCount: currentWordCount,
+      targetWordCount,
+    });
+    const skipLocalPipeline =
+      shouldSkipLocalPipeline(localAlreadyPassed, semrushResumable) && !forceLocalForWordGap;
 
     let currentContent = content;
     await this.touchWorkflowProgress(ctx, {
@@ -349,9 +375,15 @@ export class SeoCheckerService implements OnModuleInit {
       skipLocalPipeline,
       localAlreadyPassed,
       semrushResumable,
+      forceLocalForWordGap,
       localGateMode: localGate.mode,
       localGateThreshold: localGate.threshold,
       semrushPassThreshold: scoreConfig.semrushPassThreshold,
+      localMaxOptimizeRounds: scoreConfig.localMaxOptimizeRounds,
+      localRetryExtraRounds: scoreConfig.localRetryExtraRounds,
+      semrushMaxOptimizeRounds: scoreConfig.semrushMaxOptimizeRounds,
+      semrushRetryExtraRounds: scoreConfig.semrushRetryExtraRounds,
+      strictRoundCap: roundCapOptions.strictCap,
       localOptimizeRoundsDone: optimizeRounds,
       semrushOptimizeRoundsDone: countOptimizeRounds(optimizeHistory, 'semrush'),
       targetWordCount,
@@ -1054,6 +1086,7 @@ export class SeoCheckerService implements OnModuleInit {
       );
       semrushResult = enrichSemrushKeywordCoverage(semrushResult, currentContent, {
         submittedKeywords: resumeSubmittedKeywords,
+        targetKeyword: ctx.targetKeyword,
       });
       this.logger.info('Resuming SEO pipeline: Semrush optimization from last checkpoint', {
         traceId: ctx.traceId,
@@ -1181,6 +1214,7 @@ export class SeoCheckerService implements OnModuleInit {
       localOptimizeRounds: optimizeRounds,
       preferredNodeKey,
       calibrationRuntime,
+      localGate,
       calibrationShadowLog,
       scoreConfig,
       roundCapOptions,
@@ -1213,6 +1247,23 @@ export class SeoCheckerService implements OnModuleInit {
       recommendedKeywords,
       semrushResult,
     );
+    const persistedLocalGate = this.buildLocalGateEvaluation(calibrationRuntime, localGate, {
+      localResult,
+      targetKeyword: ctx.targetKeyword,
+      content: currentContent,
+      jobBriefData: job.briefData,
+      serpData,
+      targetWordCount,
+      articleTitle,
+      poolKeywords: recommendedKeywords,
+      submittedKeywords: submittedKeywordsFinal,
+      semrushResult,
+    });
+    const persistedLocalFields = buildLocalGatePersistedFields({
+      gate: localGate,
+      localScore: localResult.score,
+      prediction: persistedLocalGate.prediction,
+    });
 
     const seoCheckBase = {
       ...prevCheck,
@@ -1239,7 +1290,7 @@ export class SeoCheckerService implements OnModuleInit {
         suggestions: localResult.suggestions,
         metrics: localResult.metrics,
         optimizeRounds,
-        passed: localResult.score >= scoreConfig.localPassThreshold,
+        ...persistedLocalFields,
         passedAt: new Date().toISOString(),
       },
       semrush: semrushResult.skipped
@@ -1725,6 +1776,7 @@ export class SeoCheckerService implements OnModuleInit {
       optimizeHistory: draftWithHistory.optimizeHistory ?? [],
       preferredNodeKey,
       calibrationRuntime,
+      localGate,
       calibrationShadowLog,
       scoreConfig,
       roundCapOptions,
@@ -1769,6 +1821,25 @@ export class SeoCheckerService implements OnModuleInit {
       recommendedKeywords,
       semrushResult,
     );
+    const manualPersistedLocalGate = this.buildLocalGateEvaluation(
+      calibrationRuntime,
+      localGate,
+      {
+        localResult,
+        targetKeyword: ctx.targetKeyword,
+        content: currentContent,
+        jobBriefData: job.briefData,
+        serpData,
+        targetWordCount,
+        submittedKeywords: manualSubmittedKeywords,
+        semrushResult,
+      },
+    );
+    const manualPersistedLocalFields = buildLocalGatePersistedFields({
+      gate: localGate,
+      localScore: localResult.score,
+      prediction: manualPersistedLocalGate.prediction,
+    });
 
     const seoCheckBase = {
       ...prevCheck,
@@ -1794,7 +1865,7 @@ export class SeoCheckerService implements OnModuleInit {
         breakdown: localResult.breakdown,
         suggestions: localResult.suggestions,
         metrics: localResult.metrics,
-        passed: localResult.score >= scoreConfig.localPassThreshold,
+        ...manualPersistedLocalFields,
         refreshedAt: new Date().toISOString(),
       },
       semrush: {
@@ -2149,6 +2220,9 @@ export class SeoCheckerService implements OnModuleInit {
       existingSeoCheck: PersistedSeoCheckData;
       recommendedKeywords: string[];
       targetKeyword: string;
+      localGatePassed?: boolean;
+      localGateMode?: 'legacy' | 'calibrated';
+      predictedSemrush?: number;
       /** 本轮真实 RPA 候选结果（回滚轮也记录候选稿分数） */
       rpaSnapshot?: {
         content: string;
@@ -2177,7 +2251,13 @@ export class SeoCheckerService implements OnModuleInit {
         suggestions: input.localResult.suggestions,
         metrics: input.localResult.metrics,
         optimizeRounds: input.localOptimizeRounds,
-        passed: input.localResult.score >= input.scoreConfig.localPassThreshold,
+        passed:
+          input.localGatePassed ??
+          input.localResult.score >= input.scoreConfig.localPassThreshold,
+        ...(input.predictedSemrush !== undefined
+          ? { predictedSemrush: input.predictedSemrush }
+          : {}),
+        ...(input.localGateMode ? { gateMode: input.localGateMode } : {}),
       },
       semrush: input.semrushResult.skipped
         ? { ...prevSemrush, skipped: true, suggestions: input.semrushResult.suggestions }
@@ -2242,6 +2322,63 @@ export class SeoCheckerService implements OnModuleInit {
   private getSemrushPending(seoCheckData: unknown): SemrushCheckPending | null {
     const data = (seoCheckData ?? {}) as { semrush?: { pending?: SemrushCheckPending } };
     return data.semrush?.pending ?? null;
+  }
+
+  private async markSemrushRpaInFlight(
+    ctx: LlmJobContext,
+    input: {
+      rpaKind: string;
+      round?: number;
+      contentHash: string;
+      submittedKeywords: string[];
+    },
+  ): Promise<void> {
+    const job = await this.prisma.articleJob.findFirst({
+      where: { id: ctx.jobId, organizationId: ctx.organizationId, projectId: ctx.projectId },
+      select: { seoCheckData: true },
+    });
+    const prevCheck = (job?.seoCheckData ?? {}) as Record<string, unknown>;
+    const prevSemrush = (prevCheck.semrush ?? {}) as Record<string, unknown>;
+    const rpaInFlight: SemrushRpaInFlight = {
+      startedAt: new Date().toISOString(),
+      rpaKind: input.rpaKind,
+      contentHash: input.contentHash,
+      submittedKeywords: input.submittedKeywords,
+      ...(typeof input.round === 'number' ? { round: input.round } : {}),
+    };
+
+    await this.prisma.articleJob.updateMany({
+      where: { id: ctx.jobId, organizationId: ctx.organizationId, projectId: ctx.projectId },
+      data: {
+        seoCheckData: {
+          ...prevCheck,
+          semrush: {
+            ...prevSemrush,
+            rpaInFlight,
+          },
+        } as object,
+      },
+    });
+  }
+
+  private async clearSemrushRpaInFlight(ctx: LlmJobContext): Promise<void> {
+    const job = await this.prisma.articleJob.findFirst({
+      where: { id: ctx.jobId, organizationId: ctx.organizationId, projectId: ctx.projectId },
+      select: { seoCheckData: true },
+    });
+    const prevCheck = (job?.seoCheckData ?? {}) as Record<string, unknown>;
+    const prevSemrush = (prevCheck.semrush ?? {}) as Record<string, unknown>;
+    const { rpaInFlight: _rpaInFlight, ...semrushRest } = prevSemrush;
+
+    await this.prisma.articleJob.updateMany({
+      where: { id: ctx.jobId, organizationId: ctx.organizationId, projectId: ctx.projectId },
+      data: {
+        seoCheckData: {
+          ...prevCheck,
+          semrush: semrushRest,
+        } as object,
+      },
+    });
   }
 
   /** 取消/僵死恢复后，中止仍在内存中执行的 Semrush 优化与 RPA */
@@ -2867,6 +3004,144 @@ export class SeoCheckerService implements OnModuleInit {
     };
   }
 
+  /** Keep latest RPA planning signals even when a candidate body is rolled back. */
+  private extractSemrushPlanningFeedback(result: SeoScore): SemrushPlanningFeedback {
+    return {
+      semrushCompetitorWordCount: result.semrushCompetitorWordCount,
+      semrushTargetKeywords: result.semrushTargetKeywords,
+      semrushRecommendedKeywords: result.semrushRecommendedKeywords,
+      semrushMissingTargetKeywords: result.semrushMissingTargetKeywords,
+      semrushMissingRecommendedKeywords: result.semrushMissingRecommendedKeywords,
+      suggestionDetails: result.suggestionDetails,
+      actionableIssues: result.actionableIssues,
+    };
+  }
+
+  private mergeSemrushPlanningFeedbackState(
+    current: SemrushPlanningFeedback,
+    result: SeoScore,
+  ): SemrushPlanningFeedback {
+    const next = this.extractSemrushPlanningFeedback(result);
+    const competitorCandidates = [
+      current.semrushCompetitorWordCount,
+      next.semrushCompetitorWordCount,
+    ].filter((value): value is number => typeof value === 'number' && value > 0);
+    return {
+      semrushCompetitorWordCount:
+        competitorCandidates.length > 0 ? Math.max(...competitorCandidates) : undefined,
+      semrushTargetKeywords: current.semrushTargetKeywords,
+      semrushRecommendedKeywords: mergeSemrushKeywordLists(
+        next.semrushRecommendedKeywords,
+        current.semrushRecommendedKeywords,
+      ),
+      semrushMissingTargetKeywords: mergeSemrushKeywordLists(
+        next.semrushMissingTargetKeywords,
+        current.semrushMissingTargetKeywords,
+      ),
+      semrushMissingRecommendedKeywords: mergeSemrushKeywordLists(
+        next.semrushMissingRecommendedKeywords,
+        current.semrushMissingRecommendedKeywords,
+      ),
+      suggestionDetails: this.mergeSemrushSuggestionDetails(
+        current.suggestionDetails,
+        next.suggestionDetails,
+      ),
+      actionableIssues: this.mergeSemrushActionableIssues(
+        current.actionableIssues,
+        next.actionableIssues,
+      ),
+    };
+  }
+
+  private mergeSemrushPlanningFeedback(
+    base: SeoScore,
+    feedback?: SemrushPlanningFeedback,
+  ): SeoScore {
+    if (!feedback) return base;
+    const competitorCandidates = [
+      base.semrushCompetitorWordCount,
+      feedback.semrushCompetitorWordCount,
+    ].filter((value): value is number => typeof value === 'number' && value > 0);
+    return {
+      ...base,
+      semrushCompetitorWordCount:
+        competitorCandidates.length > 0 ? Math.max(...competitorCandidates) : undefined,
+      semrushTargetKeywords: this.nonEmptyKeywordList(
+        base.semrushTargetKeywords?.length
+          ? base.semrushTargetKeywords
+          : (feedback.semrushTargetKeywords ?? []),
+      ),
+      semrushRecommendedKeywords: this.nonEmptyKeywordList(
+        mergeSemrushKeywordLists(
+          feedback.semrushRecommendedKeywords,
+          base.semrushRecommendedKeywords,
+        ),
+      ),
+      semrushMissingTargetKeywords: this.nonEmptyKeywordList(
+        mergeSemrushKeywordLists(
+          feedback.semrushMissingTargetKeywords,
+          base.semrushMissingTargetKeywords,
+        ),
+      ),
+      semrushMissingRecommendedKeywords: this.nonEmptyKeywordList(
+        mergeSemrushKeywordLists(
+          feedback.semrushMissingRecommendedKeywords,
+          base.semrushMissingRecommendedKeywords,
+        ),
+      ),
+      suggestionDetails: this.mergeSemrushSuggestionDetails(
+        base.suggestionDetails,
+        feedback.suggestionDetails,
+      ),
+      actionableIssues: this.mergeSemrushActionableIssues(
+        base.actionableIssues,
+        feedback.actionableIssues,
+      ),
+    };
+  }
+
+  private nonEmptyKeywordList(keywords: string[]): string[] | undefined {
+    return keywords.length > 0 ? keywords : undefined;
+  }
+
+  private mergeSemrushSuggestionDetails(
+    base?: SeoScore['suggestionDetails'],
+    feedback?: SeoScore['suggestionDetails'],
+  ): SeoScore['suggestionDetails'] | undefined {
+    if (!base && !feedback) return undefined;
+    const merge = (left?: string[], right?: string[]) => {
+      const merged = [...new Set([...(left ?? []), ...(right ?? [])])];
+      return merged.length > 0 ? merged : undefined;
+    };
+    return {
+      readability: merge(base?.readability, feedback?.readability),
+      seo: merge(base?.seo, feedback?.seo),
+      tone: merge(base?.tone, feedback?.tone),
+      originality: merge(base?.originality, feedback?.originality),
+    };
+  }
+
+  private mergeSemrushActionableIssues(
+    base?: SeoScore['actionableIssues'],
+    feedback?: SeoScore['actionableIssues'],
+  ): SeoScore['actionableIssues'] | undefined {
+    const merged: NonNullable<SeoScore['actionableIssues']> = [];
+    const seen = new Set<string>();
+    for (const issue of [...(base ?? []), ...(feedback ?? [])]) {
+      const key = JSON.stringify({
+        category: issue.category,
+        rule: issue.rule,
+        label: issue.label,
+        terms: issue.terms,
+        quotes: issue.quotes,
+      });
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(issue);
+    }
+    return merged.length > 0 ? merged : undefined;
+  }
+
   /** Semrush < 9.0 时：LLM 按侧栏改写 → 规则拆段 → 再终检（工作流与手动终检共用） */
   private async executeSemrushOptimizeRounds(
     ctx: LlmJobContext,
@@ -2885,6 +3160,7 @@ export class SeoCheckerService implements OnModuleInit {
       localOptimizeRounds?: number;
       preferredNodeKey?: string;
       calibrationRuntime?: ScoreCalibrationRuntime;
+      localGate: LocalGateContext;
       calibrationShadowLog?: CalibrationShadowEntry[];
       scoreConfig: ResolvedSiteSeoScoreConfig;
       roundCapOptions?: { strictCap?: boolean };
@@ -2908,10 +3184,24 @@ export class SeoCheckerService implements OnModuleInit {
     let bestSemrushContent = currentContent;
     let bestSemrushResult = semrushResult;
     let bestLocalAtSemrush = localResult;
+    const stableSemrushSubmittedKeywords = sanitizeSemrushSubmittedKeywords(
+      semrushResult.semrushTargetKeywords?.length
+        ? semrushResult.semrushTargetKeywords
+        : input.seoCheck.semrush?.submittedKeywords?.length
+          ? input.seoCheck.semrush.submittedKeywords
+          : buildSemrushSubmittedKeywords(currentContent, {
+              targetKeyword: ctx.targetKeyword,
+              poolKeywords: input.recommendedKeywords,
+            }),
+    );
+    let semrushPlanningFeedback: SemrushPlanningFeedback = {
+      ...this.extractSemrushPlanningFeedback(semrushResult),
+      semrushTargetKeywords: stableSemrushSubmittedKeywords,
+    };
     let consecutiveSemrushRollbacks = 0;
     const scoreConfig = input.scoreConfig;
     const roundCapOptions = input.roundCapOptions;
-    const isSemrushResume = (input.semrushOptimizeRounds ?? 0) > 0;
+    const isSemrushResume = semrushOptimizeRounds > 0;
     const skipSurgicalDueToStaleNearMiss =
       isSemrushResume &&
       isSemrushSurgicalTier(bestSemrushScore) &&
@@ -2934,27 +3224,29 @@ export class SeoCheckerService implements OnModuleInit {
 
       await this.assertSemrushWorkNotCancelled(ctx);
 
-      const rewriteSuggestions = buildSemrushRewriteSuggestions(semrushResult, currentContent);
+      const planningSemrushResult = this.mergeSemrushPlanningFeedback(
+        semrushResult,
+        semrushPlanningFeedback,
+      );
+      const rewriteSuggestions = buildSemrushRewriteSuggestions(
+        planningSemrushResult,
+        currentContent,
+      );
       const suggestionsForRoundBase =
         rewriteSuggestions.length > 0
           ? rewriteSuggestions
-          : buildFallbackSemrushSuggestions(semrushResult, currentContent);
+          : buildFallbackSemrushSuggestions(planningSemrushResult, currentContent);
 
       semrushOptimizeRounds += 1;
-      const roundSubmittedKeywords = filterSemrushSubmittedKeywordsInContent(
-        currentContent,
-        semrushResult.semrushTargetKeywords?.length
-          ? semrushResult.semrushTargetKeywords
-          : input.seoCheck.semrush?.submittedKeywords?.length
-            ? input.seoCheck.semrush.submittedKeywords
-            : buildSemrushSubmittedKeywords(currentContent, {
-                targetKeyword: ctx.targetKeyword,
-                poolKeywords: input.recommendedKeywords,
-              }),
-      );
-      semrushResult = enrichSemrushKeywordCoverage(semrushResult, currentContent, {
+      const roundSubmittedKeywords = stableSemrushSubmittedKeywords;
+      semrushResult = enrichSemrushKeywordCoverage(planningSemrushResult, currentContent, {
         submittedKeywords: roundSubmittedKeywords,
+        targetKeyword: ctx.targetKeyword,
       });
+      semrushPlanningFeedback = this.mergeSemrushPlanningFeedbackState(
+        semrushPlanningFeedback,
+        semrushResult,
+      );
       if (semrushResult.overall >= bestSemrushScore) {
         bestSemrushResult = semrushResult;
       }
@@ -3002,6 +3294,7 @@ export class SeoCheckerService implements OnModuleInit {
         semrushResult,
         manifest: keywordManifest,
         submittedKeywords: roundSubmittedKeywords,
+        targetKeyword: ctx.targetKeyword,
       });
       const hasKeywordGap = keywordBatch.length > 0;
       const needsWordExpand = semrushOptCtx.wordCountExpandPriority === true;
@@ -3018,9 +3311,10 @@ export class SeoCheckerService implements OnModuleInit {
             ].filter(Boolean)
           : [
               keywordWeavingForRound,
-              `[SEO·关键词优先·必做] 本轮只做推荐关键词自然融入（共 ${keywordBatch.length} 条）；不要大规模删句压字数；可读性仅做最小必要修正。`,
+              `[SEO·关键词+侧栏·必做] 本轮须融入全部 ${keywordBatch.length} 条缺失 SWA 推荐词（${keywordBatch.join('、')}）；同时处理侧栏可读性、语气、原创性建议；禁止改变 Semrush 目标关键词表。`,
+              ...suggestionsForRoundBase,
             ].filter(Boolean)
-        : suggestionsForRoundBase;
+      : suggestionsForRoundBase;
       const keywordsForRound = hasKeywordGap
         ? mergeSemrushKeywordLists(keywordBatch, keywordsForAi)
         : keywordsForAi;
@@ -3029,15 +3323,13 @@ export class SeoCheckerService implements OnModuleInit {
           ? {
               ...semrushOptCtx,
               scoreGapPlan: `Weave ALL ${keywordBatch.length} missing SWA terms (${keywordBatch.join(', ')}) while expanding toward ${wordPlan.localExpandTarget ?? 'benchmark +5%'} words. Do not trim body copy.`,
-            }
-          : {
-              ...semrushOptCtx,
-              readabilityPriority: false,
-              wordCountTrimPriority: false,
-              wordCountExpandPriority: false,
-              scoreGapPlan: `Keyword-first round: naturally weave ALL ${keywordBatch.length} missing SWA recommended terms listed in suggestions. Avoid major trimming or readability rewrites this round.`,
-            }
-        : semrushOptCtx;
+          }
+        : {
+            ...semrushOptCtx,
+            wordCountExpandPriority: false,
+            scoreGapPlan: `Weave ALL ${keywordBatch.length} missing SWA recommended terms (${keywordBatch.join(', ')}) without changing submitted Semrush target keywords. Also complete sidebar readability, tone, and originality fixes from suggestions; do not treat this as a keyword-only round.`,
+          }
+      : semrushOptCtx;
       const nearMissTier =
         isSemrushSurgicalTier(bestSemrushScore) || isSemrushUltraNearMiss(bestSemrushScore);
       const useSurgicalMode =
@@ -3108,6 +3400,7 @@ export class SeoCheckerService implements OnModuleInit {
       });
       const bestComplexWordHits = countSemrushComplexWordHits(bestSemrushContent);
       const bestHardSentenceHits = detectHardToReadSentences(bestSemrushContent).length;
+      const contentBeforeRoundRewrite = currentContent;
 
       if (runSurgicalThisRound) {
         currentContent = applySemrushNearMissDeterministicFixes(currentContent);
@@ -3192,16 +3485,23 @@ export class SeoCheckerService implements OnModuleInit {
           }),
         );
         if (semrushOptCtxForRound.wordCountExpandPriority) {
-          const wordsBefore = flowWordCount(contentBeforeLlm);
-          const wordsAfter = flowWordCount(currentContent);
-          if (wordsAfter < wordsBefore - 30) {
+          const guard = evaluateSemrushRoundOutput({
+            beforeContent: contentBeforeLlm,
+            afterContent: currentContent,
+            keywordBatch,
+            wordCountExpandPriority: semrushOptCtxForRound.wordCountExpandPriority,
+            localExpandTarget: wordPlan.localExpandTarget,
+          });
+          if (guard.reasons.includes('shrank_body')) {
             this.logger.warn('Semrush expand round shrank body, reverting LLM output', {
               traceId: ctx.traceId,
               jobId: ctx.jobId,
               action: 'seo_checker.semrush_expand_shrink_revert',
               round: semrushOptimizeRounds,
-              wordsBefore,
-              wordsAfter,
+              wordsBefore: guard.wordsBefore,
+              wordsAfter: guard.wordsAfter,
+              minWordCount: guard.minWordCount,
+              missingKeywords: guard.missingKeywords,
             });
             currentContent = contentBeforeLlm;
           }
@@ -3217,8 +3517,54 @@ export class SeoCheckerService implements OnModuleInit {
         currentContent,
         buildSemrushBoostOptions(semrushBoostTarget, useSurgicalMode),
       );
-      const structureFix = validateAndFixSemrushStructure(currentContent);
+      let structureFix = validateAndFixSemrushStructure(currentContent);
       currentContent = structureFix.content;
+      const roundRepair = repairSemrushRoundOutput({
+        content: currentContent,
+        targetKeyword: ctx.targetKeyword,
+        keywordBatch,
+        wordCountExpandPriority: semrushOptCtxForRound.wordCountExpandPriority,
+        localExpandTarget: wordPlan.localExpandTarget,
+      });
+      if (roundRepair.changed) {
+        currentContent = roundRepair.content;
+        const repairedStructureFix = validateAndFixSemrushStructure(currentContent);
+        currentContent = repairedStructureFix.content;
+        structureFix = {
+          ...repairedStructureFix,
+          fixed: structureFix.fixed || repairedStructureFix.fixed,
+        };
+        this.logger.info('Semrush round deterministic repair applied', {
+          traceId: ctx.traceId,
+          jobId: ctx.jobId,
+          action: 'seo_checker.semrush_round_repair',
+          round: semrushOptimizeRounds,
+          addedKeywords: roundRepair.addedKeywords,
+          injectedWordBlocks: roundRepair.injectedWordBlocks,
+          wordsBefore: roundRepair.wordsBefore,
+          wordsAfter: roundRepair.wordsAfter,
+        });
+      }
+      const finalRoundGuard = evaluateSemrushRoundOutput({
+        beforeContent: contentBeforeRoundRewrite,
+        afterContent: currentContent,
+        keywordBatch,
+        wordCountExpandPriority: semrushOptCtxForRound.wordCountExpandPriority,
+        localExpandTarget: wordPlan.localExpandTarget,
+      });
+      if (!finalRoundGuard.accepted) {
+        this.logger.warn('Semrush round output still below guard after repair', {
+          traceId: ctx.traceId,
+          jobId: ctx.jobId,
+          action: 'seo_checker.semrush_round_guard_failed',
+          round: semrushOptimizeRounds,
+          reasons: finalRoundGuard.reasons,
+          wordsBefore: finalRoundGuard.wordsBefore,
+          wordsAfter: finalRoundGuard.wordsAfter,
+          minWordCount: finalRoundGuard.minWordCount,
+          missingKeywords: finalRoundGuard.missingKeywords,
+        });
+      }
       const roundAudit = buildSemrushReadabilityAudit(currentContent);
       const bestAudit = buildSemrushReadabilityAudit(bestSemrushContent);
       const bestSubmittedKeywords =
@@ -3232,6 +3578,11 @@ export class SeoCheckerService implements OnModuleInit {
         ctx.targetKeyword,
         bestSemrushResult,
         keywordsForRound,
+        bestSubmittedKeywords,
+      );
+      const bestMissingTargetKeywords = this.countSemrushMissingSubmittedKeywords(
+        bestSemrushContent,
+        ctx.targetKeyword,
         bestSubmittedKeywords,
       );
       const candidateLocal = this.evaluateLocal(
@@ -3251,7 +3602,12 @@ export class SeoCheckerService implements OnModuleInit {
         { semrushResult: bestSemrushResult, content: currentContent },
       );
       const semrushRpaPool = mergeSemrushKeywordLists(
+        keywordBatch,
         semrushKeywords,
+        semrushPlanningFeedback.semrushTargetKeywords,
+        semrushPlanningFeedback.semrushRecommendedKeywords,
+        semrushPlanningFeedback.semrushMissingRecommendedKeywords,
+        semrushPlanningFeedback.semrushMissingTargetKeywords,
         bestSemrushResult.semrushTargetKeywords,
         bestSemrushResult.semrushRecommendedKeywords,
         bestSemrushResult.semrushMissingRecommendedKeywords,
@@ -3266,11 +3622,12 @@ export class SeoCheckerService implements OnModuleInit {
         message: `第 ${semrushOptimizeRounds} 轮正文已更新，重新 Semrush 终检中…`,
       });
       await this.assertSemrushWorkNotCancelled(ctx);
-      const semrushRpaInput = buildSemrushCheckInputFromContent(
-        currentContent,
-        ctx.targetKeyword,
-        semrushRpaPool,
-      );
+      const semrushRpaInput = {
+        content: currentContent,
+        keyword: stableSemrushSubmittedKeywords[0] ?? ctx.targetKeyword,
+        recommendedKeywords: stableSemrushSubmittedKeywords.slice(1),
+        submittedKeywords: stableSemrushSubmittedKeywords,
+      };
 
       const candidatePrediction = this.buildCalibrationPredictionForContent(
         input.calibrationRuntime ?? {
@@ -3412,6 +3769,12 @@ export class SeoCheckerService implements OnModuleInit {
           );
         }
       }
+      if (!candidateSemrush.skipped && candidateSemrush.calibrationProxy !== true) {
+        semrushPlanningFeedback = this.mergeSemrushPlanningFeedbackState(
+          semrushPlanningFeedback,
+          candidateSemrush,
+        );
+      }
       const rpaSnapshotContent = currentContent;
       const candidateMissingKeywords = this.countSemrushMissingKeywords(
         currentContent,
@@ -3420,15 +3783,22 @@ export class SeoCheckerService implements OnModuleInit {
         semrushKeywords,
         semrushRpaInput.submittedKeywords,
       );
+      const candidateMissingTargetKeywords = this.countSemrushMissingSubmittedKeywords(
+        currentContent,
+        ctx.targetKeyword,
+        semrushRpaInput.submittedKeywords,
+      );
       const readabilityImproved =
         roundAudit.longParagraphCount < bestAudit.longParagraphCount ||
         roundAudit.longSentenceCount < bestAudit.longSentenceCount;
-      const accepted = shouldAcceptSemrushCandidate(
+      const acceptDecision = decideSemrushCandidateAcceptance(
         {
           candidateOverall: candidateSemrush.overall,
           bestOverall: bestSemrushScore,
           candidateMissingKeywordCount: candidateMissingKeywords,
           bestMissingKeywordCount: bestMissingKeywords,
+          candidateMissingTargetKeywordCount: candidateMissingTargetKeywords,
+          bestMissingTargetKeywordCount: bestMissingTargetKeywords,
           readabilityImproved,
           candidateComplexWordHits: countSemrushComplexWordHits(currentContent),
           bestComplexWordHits,
@@ -3437,13 +3807,19 @@ export class SeoCheckerService implements OnModuleInit {
         },
         scoreConfig,
       );
+      const accepted = acceptDecision.accepted;
       logSeoPipelineFlow(this.logger, this.flowCtx(ctx), 'pipeline.semrush_round_decision', {
         round: semrushOptimizeRounds,
         rpaRan: rpaRanThisRound,
         candidateSemrushScore: candidateSemrush.overall,
         bestSemrushScore,
+        candidateReadabilityScore: candidateSemrush.semrushReadabilityScore,
         missingKeywords: candidateMissingKeywords,
+        bestMissingKeywords,
+        missingTargetKeywords: candidateMissingTargetKeywords,
+        bestMissingTargetKeywords,
         accepted,
+        acceptReason: acceptDecision.reason,
         readabilityImproved,
       });
       this.logger.info('Semrush optimize round metrics', {
@@ -3453,6 +3829,7 @@ export class SeoCheckerService implements OnModuleInit {
         round: semrushOptimizeRounds,
         semrushScore: candidateSemrush.overall,
         bestSemrushScore,
+        semrushReadabilityScore: candidateSemrush.semrushReadabilityScore,
         wordGap:
           typeof candidateSemrush.semrushCompetitorWordCount === 'number' &&
           typeof candidateSemrush.semrushCurrentWordCount === 'number'
@@ -3460,6 +3837,9 @@ export class SeoCheckerService implements OnModuleInit {
               candidateSemrush.semrushCurrentWordCount
             : undefined,
         missingKeywords: candidateMissingKeywords,
+        bestMissingKeywords,
+        missingTargetKeywords: candidateMissingTargetKeywords,
+        bestMissingTargetKeywords,
         longParagraphs: roundAudit.longParagraphCount,
         longSentences: roundAudit.longSentenceCount,
         structureErrors: detectSemrushStructureErrors(currentContent).length,
@@ -3470,9 +3850,12 @@ export class SeoCheckerService implements OnModuleInit {
         consecutiveSemrushRollbacks = 0;
         bestSemrushScore = candidateSemrush.overall;
         bestSemrushContent = currentContent;
-        bestSemrushResult = candidateSemrush;
+        bestSemrushResult = this.mergeSemrushPlanningFeedback(
+          candidateSemrush,
+          semrushPlanningFeedback,
+        );
         bestLocalAtSemrush = candidateLocal;
-        semrushResult = candidateSemrush;
+        semrushResult = bestSemrushResult;
         localResult = candidateLocal;
         logSeoPipelineFlow(this.logger, this.flowCtx(ctx), 'pipeline.semrush_round_accept', {
           round: semrushOptimizeRounds,
@@ -3488,7 +3871,15 @@ export class SeoCheckerService implements OnModuleInit {
           },
         );
       } else {
+        const semrushRollbackReason =
+          acceptDecision.reason === 'target_keyword_regressed'
+            ? 'target_keyword_regressed'
+            : 'score_regressed';
         consecutiveSemrushRollbacks += 1;
+        bestSemrushResult = this.mergeSemrushPlanningFeedback(
+          bestSemrushResult,
+          semrushPlanningFeedback,
+        );
         await this.llmService.revertDraftContent(ctx, bestSemrushContent);
         currentContent = bestSemrushContent;
         semrushResult = bestSemrushResult;
@@ -3499,6 +3890,7 @@ export class SeoCheckerService implements OnModuleInit {
           bestSemrushScore,
           candidateLocalScore: candidateLocal.score,
           bestLocalScore: bestLocalAtSemrush.score,
+          rollbackReason: acceptDecision.reason,
         });
         this.logger.warn('Semrush optimize rolled back to best version', {
           traceId: ctx.traceId,
@@ -3509,6 +3901,7 @@ export class SeoCheckerService implements OnModuleInit {
           candidateLocal: candidateLocal.score,
           bestSemrush: bestSemrushScore,
           bestLocal: bestLocalAtSemrush.score,
+          rollbackReason: acceptDecision.reason,
         });
         await this.llmService.patchLastOptimizeRound(
           ctx,
@@ -3519,10 +3912,36 @@ export class SeoCheckerService implements OnModuleInit {
             rolledBack: true,
             candidateScoreAfter: candidateSemrush.overall,
             candidateLocalScoreAfter: candidateLocal.score,
-            rollbackReason: 'score_regressed',
+            rollbackReason: semrushRollbackReason,
           },
         );
       }
+      const persistedRoundGate = this.buildLocalGateEvaluation(
+        input.calibrationRuntime ?? {
+          shadowEnabled: false,
+          reduceRpaEnabled: false,
+          localAlignEnabled: false,
+          localAlignEffective: false,
+          model: null,
+          featureMeans: null,
+        },
+        input.localGate,
+        {
+          localResult: bestLocalAtSemrush,
+          targetKeyword: ctx.targetKeyword,
+          content: bestSemrushContent,
+          jobBriefData: input.jobBriefData,
+          serpData: input.serpData,
+          targetWordCount: input.targetWordCount,
+          poolKeywords: input.recommendedKeywords,
+          semrushResult: bestSemrushResult,
+        },
+      );
+      const persistedRoundLocalFields = buildLocalGatePersistedFields({
+        gate: input.localGate,
+        localScore: bestLocalAtSemrush.score,
+        prediction: persistedRoundGate.prediction,
+      });
       await this.persistSemrushProgress(ctx, {
         localResult: bestLocalAtSemrush,
         semrushResult: bestSemrushResult,
@@ -3532,6 +3951,9 @@ export class SeoCheckerService implements OnModuleInit {
         existingSeoCheck: input.seoCheck,
         recommendedKeywords: input.recommendedKeywords,
         targetKeyword: ctx.targetKeyword,
+        localGatePassed: persistedRoundLocalFields.passed,
+        localGateMode: persistedRoundLocalFields.gateMode,
+        predictedSemrush: persistedRoundLocalFields.predictedSemrush,
         scoreConfig,
         rpaSnapshot: rpaRanThisRound
           ? {
@@ -3833,18 +4255,46 @@ export class SeoCheckerService implements OnModuleInit {
       round: flowMeta?.round,
     });
 
-    const result = await this.semrushQueue.runCheck(resolved, {
-      traceId: ctx.traceId,
-      jobId: ctx.jobId,
+    await this.markSemrushRpaInFlight(ctx, {
+      rpaKind,
+      round: flowMeta?.round,
+      contentHash: hashSemrushContent(resolved.content),
+      submittedKeywords: resolved.submittedKeywords ?? [],
     });
 
-    await persistSemrushQueueCheckpoint(
-      this.prisma,
-      ctx.jobId,
-      result,
-      input.content,
-      this.logger,
-    );
+    let result: SeoScore;
+    let shouldClearRpaInFlight = true;
+    try {
+      result = await this.semrushQueue.runCheck(resolved, {
+        traceId: ctx.traceId,
+        jobId: ctx.jobId,
+      });
+
+      await persistSemrushQueueCheckpoint(
+        this.prisma,
+        ctx.jobId,
+        result,
+        input.content,
+        this.logger,
+      );
+    } catch (error) {
+      if (isPlaywrightJobWaitTimeout(error)) {
+        shouldClearRpaInFlight = false;
+        this.logger.warn('Semrush RPA wait timed out while worker may still be active', {
+          traceId: ctx.traceId,
+          jobId: ctx.jobId,
+          action: 'seo_checker.semrush_rpa_wait_timeout_inflight_kept',
+          rpaKind,
+          round: flowMeta?.round,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      throw error;
+    } finally {
+      if (shouldClearRpaInFlight) {
+        await this.clearSemrushRpaInFlight(ctx);
+      }
+    }
 
     const endStep =
       rpaKind === 'baseline'
@@ -3856,6 +4306,7 @@ export class SeoCheckerService implements OnModuleInit {
       semrushScore: result.overall,
       skipped: result.skipped,
       node: result.node,
+      readabilityScore: result.semrushReadabilityScore,
       missingRecommended: summarizeFlowKeywords(result.semrushMissingRecommendedKeywords),
       recommended: summarizeFlowKeywords(result.semrushRecommendedKeywords),
       competitorWordCount: result.semrushCompetitorWordCount,
@@ -4217,7 +4668,17 @@ export class SeoCheckerService implements OnModuleInit {
       semrushResult,
       manifest,
       submittedKeywords: submitted,
+      targetKeyword,
     }).length;
+  }
+
+  private countSemrushMissingSubmittedKeywords(
+    content: string,
+    targetKeyword: string,
+    submittedKeywords?: string[],
+  ): number {
+    const submitted = mergeSemrushKeywordLists([targetKeyword], submittedKeywords);
+    return findMissingSemrushKeywords(content, submitted).length;
   }
 
   private buildSemrushOptimizeMeta(

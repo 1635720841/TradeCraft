@@ -1382,16 +1382,22 @@ export class ArticleJobService {
 
     if (!pending) {
       if (job.status === 'OPTIMIZING') {
-        const restoreStatus = await this.seoCheckerService.recoverOrphanOptimizingJob(
-          ctx,
-          'Semrush 检测已手动取消（僵死优化状态）',
+        if (shouldRecoverOrphanOptimizing(job)) {
+          const restoreStatus = await this.seoCheckerService.recoverOrphanOptimizingJob(
+            ctx,
+            'Semrush 检测已手动取消（僵死优化状态）',
+          );
+          return {
+            id: job.id,
+            traceId: job.traceId,
+            status: restoreStatus,
+            targetKeyword: job.targetKeyword,
+          };
+        }
+        throw new BusinessException(
+          ErrorCodes.VALIDATION_ERROR,
+          '任务优化或 Semrush 终检进行中，请稍候；若长时间无响应可等待约 8 分钟后重试',
         );
-        return {
-          id: job.id,
-          traceId: job.traceId,
-          status: restoreStatus,
-          targetKeyword: job.targetKeyword,
-        };
       }
       throw new BusinessException(ErrorCodes.VALIDATION_ERROR, '当前没有进行中的 Semrush 检测');
     }

@@ -135,6 +135,29 @@ assert.equal(
   }),
   true,
 );
+assert.deepEqual(
+  align.buildLocalGatePersistedFields({
+    gate: calibratedGate,
+    localScore: 94,
+    prediction,
+  }),
+  {
+    passed: true,
+    gateMode: 'calibrated',
+    predictedSemrush: 7.6,
+  },
+);
+assert.deepEqual(
+  align.buildLocalGatePersistedFields({
+    gate: explicitLegacyGate,
+    localScore: 74,
+    prediction: null,
+  }),
+  {
+    passed: false,
+    gateMode: 'legacy',
+  },
+);
 assert.equal(
   align.isLocalGatePassed({
     gate: calibratedGate,

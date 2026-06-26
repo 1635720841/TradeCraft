@@ -17,6 +17,7 @@ describe('resolveSiteSeoScoreConfig', () => {
     assert.deepEqual(resolveSiteSeoScoreConfig({}), DEFAULT_SITE_SEO_SCORE_CONFIG);
     assert.equal(DEFAULT_SITE_SEO_SCORE_CONFIG.localPassThreshold, 95);
     assert.equal(DEFAULT_SITE_SEO_SCORE_CONFIG.semrushPassThreshold, 9.0);
+    assert.equal(DEFAULT_SITE_SEO_SCORE_CONFIG.semrushMaxOptimizeRounds, 5);
   });
 
   it('clamps custom thresholds and rounds', () => {

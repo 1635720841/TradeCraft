@@ -11,10 +11,25 @@ export interface SemrushCheckPending {
   previousStatus: string;
 }
 
+export interface SemrushRpaInFlight {
+  startedAt: string;
+  rpaKind?: string;
+  round?: number;
+  contentHash?: string;
+  submittedKeywords?: string[];
+}
+
 export function isSemrushCheckStale(startedAt: string, now = Date.now()): boolean {
   const started = Date.parse(startedAt);
   if (Number.isNaN(started)) return true;
   return now - started > SEMRUSH_MANUAL_CHECK_STALE_MS;
+}
+
+export function isSemrushRpaInFlightStale(
+  rpaInFlight: SemrushRpaInFlight,
+  now = Date.now(),
+): boolean {
+  return isSemrushCheckStale(rpaInFlight.startedAt, now);
 }
 
 export function isOptimizingOrphanStale(updatedAt: Date, now = Date.now()): boolean {
@@ -29,7 +44,7 @@ export function resolveOptimizingHeartbeatMs(
 ): number {
   const data = (seoCheckData ?? {}) as {
     workflowProgress?: { updatedAt?: string };
-    semrush?: { pending?: SemrushCheckPending };
+    semrush?: { pending?: SemrushCheckPending; rpaInFlight?: SemrushRpaInFlight };
   };
 
   const candidates = [updatedAt.getTime()];
@@ -43,6 +58,12 @@ export function resolveOptimizingHeartbeatMs(
   const pendingAt = data.semrush?.pending?.startedAt;
   if (pendingAt) {
     const t = Date.parse(pendingAt);
+    if (!Number.isNaN(t)) candidates.push(t);
+  }
+
+  const rpaStartedAt = data.semrush?.rpaInFlight?.startedAt;
+  if (rpaStartedAt) {
+    const t = Date.parse(rpaStartedAt);
     if (!Number.isNaN(t)) candidates.push(t);
   }
 
@@ -62,9 +83,15 @@ export function shouldRecoverOrphanOptimizing(input: {
   if (input.status !== 'OPTIMIZING') return false;
 
   const data = (input.seoCheckData ?? {}) as {
-    semrush?: { pending?: SemrushCheckPending };
+    semrush?: { pending?: SemrushCheckPending; rpaInFlight?: SemrushRpaInFlight };
   };
   if (data.semrush?.pending) return false;
+  if (
+    data.semrush?.rpaInFlight &&
+    !isSemrushRpaInFlightStale(data.semrush.rpaInFlight, input.now)
+  ) {
+    return false;
+  }
 
   const now = input.now ?? Date.now();
   const lastActivity = resolveOptimizingHeartbeatMs(input.seoCheckData, input.updatedAt, now);

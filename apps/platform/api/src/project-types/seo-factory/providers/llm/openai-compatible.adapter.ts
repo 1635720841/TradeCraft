@@ -18,6 +18,7 @@ import {
   parseLlmJson,
   LlmJsonParseError,
   resolveSemrushReadabilityTarget,
+  SEMRUSH_FLESCH_TARGET_DEFAULT,
   SEMRUSH_FLESCH_TOLERANCE,
   SEMRUSH_WORD_COUNT_SOFT_MAX_RATIO,
   SEMRUSH_WORD_COUNT_TRIM_OVER_RATIO,
@@ -65,6 +66,39 @@ const BRIEF_SUMMARY_FALLBACK_EN =
 const SUGGESTION_FALLBACK_ZH = '（无具体条目，请按可读性、去 AI 感与原创性整体润色）';
 const KEYWORD_FALLBACK_ZH = '（无额外实体词，保持现有术语覆盖）';
 const LLM_DEBUG_PROMPT_ENABLED = process.env.LLM_DEBUG_PROMPT === 'true';
+const SEMRUSH_TOO_PLAIN_SIGNAL_RE =
+  /最为随意|随意句子|Most casual sentences|太过浅显|语言平实|更高级|professional audience|too plain|too simple|too easy|plain language/i;
+
+function hasSemrushTooPlainSignals(input: OptimizeInput): boolean {
+  if (input.optimizePhase !== 'semrush') return false;
+  const readability = input.semrushReadabilityScore;
+  if (
+    typeof readability === 'number' &&
+    readability > SEMRUSH_FLESCH_TARGET_DEFAULT + SEMRUSH_FLESCH_TOLERANCE
+  ) {
+    return true;
+  }
+  return SEMRUSH_TOO_PLAIN_SIGNAL_RE.test(input.suggestions.join('\n'));
+}
+
+function buildSemrushToneGuardBlock(input: OptimizeInput): string {
+  if (input.optimizePhase !== 'semrush') return '';
+  const hasKeywordBatch = (input.keywordBatch?.length ?? 0) > 0;
+  const hasTooPlainSignals = hasSemrushTooPlainSignals(input);
+  if (!hasKeywordBatch && !hasTooPlainSignals) return '';
+
+  return [
+    '## SEMRUSH TONE / ANTI-STUFFING GUARD (highest priority)',
+    '',
+    'Do not solve keyword coverage by adding standalone keyword sentences, keyword lists, or repeated short commands.',
+    '',
+    '- Group 2–3 missing SWA terms inside one technical explanation, FAQ answer, or decision paragraph',
+    '- Each edited sentence must explain why/when/how, not merely name a term',
+    '- Avoid stacked imperative openings such as Measure, Check, Replace, Stop, Seat, Wait',
+    '- If Semrush flags casual sentences, rewrite those exact short fragments into B2B technical prose first',
+    '- Keep the submitted Semrush target keywords unchanged; only weave recommended terms into the body',
+  ].join('\n');
+}
 
 function buildWordCountExpandPriorityBlock(input: OptimizeInput): string {
   if (!input.wordCountExpandPriority) return '';
@@ -338,6 +372,7 @@ function buildReadabilityPriorityBlock(input: OptimizeInput): string {
       typeof input.pointsToGo === 'number'
         ? String(input.pointsToGo)
         : '?';
+    const tooPlainSignals = hasSemrushTooPlainSignals(input);
     const ultraNear = typeof input.pointsToGo === 'number' && input.pointsToGo <= 0.1;
     const surgicalBlock = ultraNear
       ? [
@@ -355,9 +390,11 @@ function buildReadabilityPriorityBlock(input: OptimizeInput): string {
       '',
       `Semrush Overall is **${gap} points** below ${SEMRUSH_PASS_THRESHOLD}. **SWA sidebar fixes are mandatory this round.**`,
       '',
-      '- Split **every** paragraph over **60 words** (2–3 sentences each); split sentences over **22 words**',
+      tooPlainSignals
+        ? '- Keep paragraphs under **60 words**, but do **not** keep making already-short sentences shorter; merge stacked 3–10 word command fragments into 16–24 word technical sentences'
+        : '- Split **every** paragraph over **60 words** (2–3 sentences each); split sentences over **22 words**',
       '- Rewrite **every** casual sentence flagged in suggestions; remove filler adverbs/phrases',
-      '- Weave **every** SWA recommended keyword at least once (contextual weaving — no list sentences)',
+      '- Weave **every** SWA recommended keyword at least once (contextual weaving — no list sentences, no standalone keyword sentences)',
       '- Do **not** add length — surgical fixes only unless sidebar says copy is too short',
       '',
       audit,
@@ -535,9 +572,13 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
     const contentCoverageMaxedBlock = buildContentCoverageMaxedBlock(input);
     const serpCoverageMaxedBlock = buildSerpCoverageMaxedBlock(input);
     const keywordDensityFocusBlock = buildKeywordDensityFocusBlock(input);
-    const scoreGapPlanRaw =
+    const semrushToneGuardBlock = buildSemrushToneGuardBlock(input);
+    const scoreGapPlanRawBase =
       input.scoreGapPlan?.trim() ||
       '(Use the breakdown above — fix the smallest gap dimension first.)';
+    const scoreGapPlanRaw = semrushToneGuardBlock
+      ? `${semrushToneGuardBlock}\n\n${scoreGapPlanRawBase}`
+      : scoreGapPlanRawBase;
     const serpPriorityBlock = buildSerpPriorityBlock(input);
     const titlePriorityBlock = buildTitlePriorityBlock(input);
     const wordCountTrimPriorityBlock = buildWordCountTrimPriorityBlock(input);

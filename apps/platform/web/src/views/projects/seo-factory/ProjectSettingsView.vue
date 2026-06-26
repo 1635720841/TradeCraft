@@ -84,7 +84,7 @@
             </el-form-item>
             <el-form-item label="Semrush 优化轮次">
               <el-input-number v-model="adminForm.semrushMaxOptimizeRounds" :min="1" :max="15" :step="1" controls-position="right" />
-              <p class="mt-1 text-xs text-gray-500">Semrush 未达标时按侧栏建议改写，默认 4 轮。</p>
+              <p class="mt-1 text-xs text-gray-500">Semrush 未达标时按侧栏建议改写，默认 5 轮。</p>
             </el-form-item>
             <el-form-item label="Semrush 重试追加">
               <el-input-number v-model="adminForm.semrushRetryExtraRounds" :min="0" :max="10" :step="1" controls-position="right" />

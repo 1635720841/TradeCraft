@@ -15,6 +15,8 @@ const {
   buildSemrushRewriteSuggestions,
   buildFallbackSemrushSuggestions,
   buildSemrushOptimizeContext,
+  evaluateSemrushRoundOutput,
+  repairSemrushRoundOutput,
   resolveSemrushBoostWordTarget,
 } = await import(utilPath);
 
@@ -80,12 +82,29 @@ describe('buildSemrushRewriteSuggestions', () => {
     );
     assert.ok(lines.some((l) => l.includes('SEO·语境融合·必做') && l.includes('cell balancing')));
     assert.ok(lines.some((l) => l.includes('H2 或 H3 的问句') || l.includes('H2/H3')));
+    assert.ok(lines.some((l) => l.includes('短祈使句') && l.includes('Most casual sentences')));
     assert.ok(
       lines
         .filter((l) => !l.includes('禁止'))
         .every((l) => !/For procurement teams, relevant search terms include/i.test(l)),
       'must not inject B2B filler sentence',
     );
+  });
+
+  it('warns against short imperative keyword stuffing when Semrush says copy is too plain', () => {
+    const lines = buildSemrushRewriteSuggestions(
+      {
+        overall: 7.4,
+        suggestions: ['专业受众可能认为您的文本太过浅显。尝试使用更高级的词语和句子。'],
+        suggestionDetails: {
+          tone: ['Measure after a short rest.', 'Seat each connector fully.'],
+        },
+        semrushReadabilityScore: 64.9,
+      },
+      'Measure after a short rest. Seat each connector fully. Stop charging and discharging.',
+    );
+    assert.ok(lines.some((l) => l.includes('过于浅显') && l.includes('短命令句')));
+    assert.ok(lines.some((l) => l.includes('Flesch 64.9') && l.includes('短祈使句')));
   });
   it('suggests precise FAQ word gap when below competitor benchmark', () => {
     const body = '# Title\n\n' + 'word '.repeat(1000);
@@ -133,5 +152,43 @@ describe('resolveSemrushBoostWordTarget', () => {
     const shortBody = '# Title\n\n' + 'word '.repeat(900);
     assert.equal(resolveSemrushBoostWordTarget(1700, 1500, shortBody, 1700), 1785);
     assert.equal(resolveSemrushBoostWordTarget(undefined, 2000), 2000);
+  });
+});
+
+describe('Semrush round output guard and repair', () => {
+  it('flags expand rounds that shrink and miss mandatory keywords', () => {
+    const before = '# Smart BMS\n\n' + 'battery '.repeat(120);
+    const after = '# Smart BMS\n\nShort buyer note.';
+    const guard = evaluateSemrushRoundOutput({
+      beforeContent: before,
+      afterContent: after,
+      keywordBatch: ['energy storage system', 'fully charged'],
+      wordCountExpandPriority: true,
+      localExpandTarget: 220,
+    });
+
+    assert.equal(guard.accepted, false);
+    assert.ok(guard.reasons.includes('shrank_body'));
+    assert.ok(guard.reasons.includes('missing_round_keywords'));
+    assert.deepEqual(guard.missingKeywords, ['energy storage system', 'fully charged']);
+  });
+
+  it('repairs missing round keywords before RPA recheck', () => {
+    const repaired = repairSemrushRoundOutput({
+      content: '# Smart BMS\n\nBuyers compare protection and monitoring.',
+      targetKeyword: 'smart bms',
+      keywordBatch: ['energy storage system', 'fully charged', 'battery capacity'],
+      wordCountExpandPriority: false,
+    });
+
+    assert.equal(repaired.changed, true);
+    assert.deepEqual(repaired.addedKeywords, [
+      'energy storage system',
+      'fully charged',
+      'battery capacity',
+    ]);
+    assert.match(repaired.content, /energy storage system/);
+    assert.match(repaired.content, /fully charged/);
+    assert.match(repaired.content, /battery capacity/);
   });
 });

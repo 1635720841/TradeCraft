@@ -12,7 +12,11 @@ import {
   stripMarkdownForKeywordMatch,
   type SeoKeywordCoverageManifest,
 } from '@wm/shared-core';
-import { isSemrushSpecificKeyword, isWeakExtractedPhrase } from './semrush-keywords.util';
+import {
+  isSemrushOffTopicKeyword,
+  isSemrushSpecificKeyword,
+  isWeakExtractedPhrase,
+} from './semrush-keywords.util';
 import { dedupeActionableIssues } from './semrush-actionable.util';
 import {
   parseSemrushKeywordEntries,
@@ -46,6 +50,9 @@ export function buildContextualKeywordWeavingInstruction(missingKeywords: string
     '1) 将长尾词作为 H2/H3 问句标题（优先用于 ≥4 词的问句型短语）；',
     '2) 将口语化词汇作为患者主观感受或常见症状写进描述段落；',
     '3) 作为段内自然设问或定义句出现。',
+    '4) 将 2–3 个相关短语合并进同一个解释段或 FAQ 答案，用因果、风险、判断依据或操作条件承接。',
+    '语气要求：禁止为每个短语各造一个短祈使句；避免连续以 Measure/Check/Replace/Stop/Seat/Wait 开头。',
+    '若 Semrush 标出 Most casual sentences / 最为随意的句子，先把这些短句改成 B2B 技术说明，再在其中自然保留或融入关键词。',
     '',
     '9.5+ 高分样例（Foot Skin Blisters 9.6 / Magnesium Teeth Grinding 9.5）：',
     exemplarBlock,
@@ -84,10 +91,15 @@ export function collectKeywordTermsFromActionableIssues(
 const EXTRACTED_FRAGMENT_PREFIX_RE = /^(it|he|she|they|this|that|we|you|as|yet|so)\s+/i;
 
 /** 侧栏推荐词候选：过滤正文提取碎片，要求 ≥2 词或复合词 */
-function isEligibleRecommendedPhrase(phrase: string): boolean {
+function isEligibleRecommendedPhrase(
+  phrase: string,
+  targetKeyword = '',
+  content = '',
+): boolean {
   const trimmed = phrase.trim();
   if (!trimmed || trimmed.length < 3) return false;
   if (EXTRACTED_FRAGMENT_PREFIX_RE.test(trimmed)) return false;
+  if (isSemrushOffTopicKeyword(trimmed, targetKeyword, content)) return false;
   return isSemrushSpecificKeyword(trimmed, false);
 }
 
@@ -108,8 +120,9 @@ export function resolveAllSemrushMissingKeywordsForRound(input: {
   semrushResult: SeoScore;
   manifest?: SeoKeywordCoverageManifest | null;
   submittedKeywords?: string[];
+  targetKeyword?: string;
 }): string[] {
-  const { content, semrushResult, manifest, submittedKeywords } = input;
+  const { content, semrushResult, manifest, submittedKeywords, targetKeyword = '' } = input;
 
   const recommendedPhrases = mergeSemrushKeywordLists(
     semrushResult.semrushRecommendedKeywords,
@@ -120,24 +133,29 @@ export function resolveAllSemrushMissingKeywordsForRound(input: {
 
   const matcherMissing = recommendedPhrases.filter(
     (phrase) =>
-      isEligibleRecommendedPhrase(phrase) &&
+      isEligibleRecommendedPhrase(phrase, targetKeyword, content) &&
       !isSemrushKeywordPresentInContent(content, phrase),
   );
 
   const strictMissing = recommendedPhrases.filter(
     (phrase) =>
-      isEligibleRecommendedPhrase(phrase) &&
+      isEligibleRecommendedPhrase(phrase, targetKeyword, content) &&
       !isSemrushKeywordStrictlyPresent(content, phrase),
   );
 
   const manifestMissing =
     manifest && manifest.missing.length > 0
-      ? manifest.missing.filter(isEligibleManifestMissingPhrase)
+      ? manifest.missing.filter(
+          (phrase) =>
+            isEligibleManifestMissingPhrase(phrase) &&
+            !isSemrushOffTopicKeyword(phrase, targetKeyword, content),
+        )
       : [];
 
   const submittedStrictMissing = (submittedKeywords ?? []).filter(
     (phrase) =>
       !isWeakExtractedPhrase(phrase) &&
+      !isSemrushOffTopicKeyword(phrase, targetKeyword, content) &&
       (isEligibleManifestMissingPhrase(phrase) || isSemrushSpecificKeyword(phrase, false)) &&
       !isSemrushKeywordStrictlyPresent(content, phrase),
   );
@@ -199,6 +217,7 @@ export interface SemrushKeywordCoverageOptions {
   /** 创建任务时提交给 SWA 的主词/副词 */
   submittedKeywords?: string[];
   /** DOM SEO Tab 解析的未覆盖 Tag（合并进 API recommended_keywords） */
+  targetKeyword?: string;
   domUncoveredKeywords?: string[];
   /** Semrush recommendations API 原始 JSON（真源） */
   apiPayload?: SemrushRecommendationsPayload;
@@ -206,18 +225,23 @@ export interface SemrushKeywordCoverageOptions {
 
 function buildRecommendedPhrasesFromApi(
   apiPayload: SemrushRecommendationsPayload,
+  targetKeyword: string,
+  content: string,
   domUncoveredKeywords?: string[],
 ) {
   const { recommended } = parseSemrushKeywordEntries(apiPayload);
-  const phrases = recommended.map((entry) => ({
-    phrase: entry.keyword,
-    frequency: entry.frequency,
-    difficulty: entry.difficulty,
-  }));
+  const phrases = recommended
+    .filter((entry) => !isSemrushOffTopicKeyword(entry.keyword, targetKeyword, content))
+    .map((entry) => ({
+      phrase: entry.keyword,
+      frequency: entry.frequency,
+      difficulty: entry.difficulty,
+    }));
   const seen = new Set(phrases.map((item) => item.phrase.toLowerCase()));
   for (const term of domUncoveredKeywords ?? []) {
     const trimmed = term.trim();
     if (!trimmed) continue;
+    if (isSemrushOffTopicKeyword(trimmed, targetKeyword, content)) continue;
     const key = trimmed.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -228,12 +252,15 @@ function buildRecommendedPhrasesFromApi(
 
 function mergeRecommendedPhrasesForCoverage(
   result: SeoScore,
+  content: string,
   options?: SemrushKeywordCoverageOptions,
 ): Array<{ phrase: string; frequency?: string; difficulty?: number }> {
   const merged = new Map<string, { phrase: string; frequency?: string; difficulty?: number }>();
+  const targetKeyword = options?.targetKeyword ?? options?.submittedKeywords?.[0] ?? '';
   const push = (entry: { phrase: string; frequency?: string; difficulty?: number }) => {
     const phrase = entry.phrase.trim();
     if (!phrase) return;
+    if (isSemrushOffTopicKeyword(phrase, targetKeyword, content)) return;
     const key = phrase.toLowerCase();
     if (merged.has(key)) return;
     merged.set(key, { ...entry, phrase });
@@ -242,6 +269,8 @@ function mergeRecommendedPhrasesForCoverage(
   if (options?.apiPayload) {
     for (const entry of buildRecommendedPhrasesFromApi(
       options.apiPayload,
+      targetKeyword,
+      content,
       options.domUncoveredKeywords,
     )) {
       push(entry);
@@ -261,6 +290,7 @@ function mergeRecommendedPhrasesForCoverage(
   for (const raw of options?.submittedKeywords ?? []) {
     const phrase = raw.trim();
     if (!phrase || isWeakExtractedPhrase(phrase)) continue;
+    if (isSemrushOffTopicKeyword(phrase, targetKeyword, content)) continue;
     if (!isEligibleManifestMissingPhrase(phrase) && !isSemrushSpecificKeyword(phrase, false)) {
       continue;
     }
@@ -281,7 +311,7 @@ export function enrichSemrushKeywordCoverage(
     result.semrushTargetKeywords,
   );
 
-  const recommendedPhrases = mergeRecommendedPhrasesForCoverage(result, options);
+  const recommendedPhrases = mergeRecommendedPhrasesForCoverage(result, content, options);
   const extractedPhrases = options?.apiPayload
     ? parseSemrushKeywordEntries(options.apiPayload).extracted.map((entry) => ({
         phrase: entry.keyword,

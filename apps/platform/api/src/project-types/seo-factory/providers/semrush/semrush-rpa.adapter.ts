@@ -3,7 +3,6 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import { createHash } from 'node:crypto';
 import type {
   ISeoCheckerProvider,
   SeoCheckInput,
@@ -33,6 +32,7 @@ import {
   parseActionableIssuesFromSidebarText,
   synthesizeActionableFromSuggestionDetails,
 } from './semrush-actionable.util';
+import { hashSemrushContent } from './semrush-content-hash.util';
 import {
   enrichSemrushKeywordCoverage,
   pickSemrushRecommendationsApiPayload,
@@ -49,6 +49,7 @@ import { SemrushSessionManager } from './semrush-session.manager';
 import { SEMRUSH_SWA_SELECTORS } from './semrush.selectors';
 import {
   isSemrushSpecificKeyword,
+  flattenSemrushKeywordList,
   sanitizeSemrushKeywordGoal,
 } from './semrush-keywords.util';
 import { parseOverallScoreFromText } from './semrush-score.util';
@@ -131,6 +132,7 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
             submittedKeywords:
               input.submittedKeywords ??
               [input.keyword, ...(input.recommendedKeywords ?? [])],
+            targetKeyword: input.keyword,
             domUncoveredKeywords: domUncoveredSeoKeywords,
             apiPayload,
           });
@@ -160,7 +162,7 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
           result.semrushEvaluationRoute = routeMeta;
           result.semrushEvaluationContentFingerprint = contentMeta;
           result.semrushCheckRecord = {
-            contentHash: createHash('sha256').update(input.content).digest('hex').slice(0, 16),
+            contentHash: hashSemrushContent(input.content),
             submittedKeywords:
               input.submittedKeywords ??
               [input.keyword, ...(input.recommendedKeywords ?? [])],
@@ -190,6 +192,7 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
             overall: result.overall,
             node: nodeKey,
             analysisSource: result.analysisSource,
+            readabilityScore: result.semrushReadabilityScore,
             suggestionCount: result.suggestions.length,
             apiUrlCount: result.apiUrls?.length ?? 0,
             durationMs: Date.now() - startedAt,
@@ -389,10 +392,11 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
     recommendedKeywords?: string[],
     submittedKeywords?: string[],
   ): Promise<void> {
-    const plannedRaw =
+    const plannedRaw = flattenSemrushKeywordList(
       submittedKeywords && submittedKeywords.length > 0
         ? submittedKeywords
-        : this.collectKeywordList(keyword, recommendedKeywords);
+        : this.collectKeywordList(keyword, recommendedKeywords),
+    );
     const plannedKeywords = filterSemrushSubmittedKeywordsInContent(content, plannedRaw);
 
     if (plannedKeywords.length === 0) {
@@ -403,10 +407,11 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
       return;
     }
 
-    if (await this.isKeywordGoalAlreadySatisfied(page, plannedKeywords[0] ?? keyword)) {
+    if (await this.isKeywordGoalAlreadySatisfied(page, plannedKeywords)) {
       this.logger.info('Semrush keyword goal already active, skipping setup', {
         action: 'semrush.keyword_goal_skip',
         primaryKeyword: plannedKeywords[0] ?? keyword,
+        keywordCount: plannedKeywords.length,
       });
       return;
     }
@@ -415,7 +420,7 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
     const keywordInput = await this.ensureKeywordInputVisible(page);
 
     await this.clearExistingKeywordTags(page, keywordInput);
-    await this.typeKeywordTags(page, keywordInput, keywords);
+    await this.typeKeywordTags(keywordInput, keywords);
     await sleep(400);
 
     await this.waitForKeywordValidation(page, keyword);
@@ -431,41 +436,25 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
     });
   }
 
-  /** 侧栏已展示目标词 + 建议区时，跳过「设置新目标」填词（省 30–90s） */
-  private async isKeywordGoalAlreadySatisfied(page: Page, primary: string): Promise<boolean> {
-    const primaryPhrase = primary
-      .split(/[,，]/)
-      .map((part) => part.trim().toLowerCase())
-      .filter(Boolean)[0];
-    if (!primaryPhrase) return false;
+  /** Only skip goal setup when active SWA tags exactly match the stable target list. */
+  private async isKeywordGoalAlreadySatisfied(
+    page: Page,
+    plannedKeywords: string[],
+  ): Promise<boolean> {
+    const normalize = (value: string) =>
+      value
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}\s-]+/gu, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const planned = plannedKeywords.map(normalize).filter(Boolean);
+    if (planned.length === 0) return false;
 
-    const tagTexts = await this.getKeywordTagTexts(page);
-    if (
-      tagTexts.some(
-        (tag) =>
-          tag.toLowerCase().includes(primaryPhrase) || primaryPhrase.includes(tag.toLowerCase()),
-      )
-    ) {
-      return true;
-    }
+    const active = (await this.getKeywordTagTexts(page)).map(normalize).filter(Boolean);
+    if (active.length === 0 || active.length !== planned.length) return false;
 
-    const widgetText = await page
-      .locator(SEMRUSH_SWA_SELECTORS.checkerWidget)
-      .first()
-      .innerText()
-      .catch(() => '');
-    if (!widgetText) return false;
-
-    const normalized = widgetText.toLowerCase();
-    const hasKeyword = normalized.includes(primaryPhrase);
-    const hasAnalysisPanel = /可读性|readability|seo|语气|tone/i.test(widgetText);
-    const hasSuggestions = await page
-      .locator(SEMRUSH_SWA_SELECTORS.suggestionListItem)
-      .first()
-      .isVisible()
-      .catch(() => false);
-
-    return hasKeyword && hasAnalysisPanel && hasSuggestions;
+    const activeSet = new Set(active);
+    return planned.every((keyword) => activeSet.has(keyword));
   }
 
   private async clearExistingKeywordTags(
@@ -500,9 +489,8 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
     await sleep(400);
   }
 
-  /** 逐个或批量输入关键词并以逗号/回车生成标签（与 SWA UI 一致） */
+  /** 逐个输入关键词并以逗号/回车生成标签，避免 SWA 把整串逗号文本合并成一个标签。 */
   private async typeKeywordTags(
-    page: Page,
     keywordInput: ReturnType<Page['locator']>,
     keywords: string[],
   ): Promise<void> {
@@ -511,17 +499,6 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
 
     if (keywords.length === 0) return;
 
-    await keywordInput.fill(keywords.join(', '));
-    await sleep(200);
-    await keywordInput.press('Enter').catch(() => undefined);
-    await sleep(250);
-
-    const tagTexts = await this.getKeywordTagTexts(page);
-    if (tagTexts.length >= Math.min(2, keywords.length)) {
-      return;
-    }
-
-    await keywordInput.fill('');
     for (const kw of keywords) {
       await keywordInput.pressSequentially(kw, { delay: 12 });
       await sleep(80);
@@ -529,10 +506,8 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
       await sleep(120);
     }
 
-    if (keywords.length > 0) {
-      await keywordInput.press('Enter').catch(() => undefined);
-      await sleep(150);
-    }
+    await keywordInput.press('Enter').catch(() => undefined);
+    await sleep(150);
   }
 
   private keywordInputLocator(page: Page): ReturnType<Page['locator']> {

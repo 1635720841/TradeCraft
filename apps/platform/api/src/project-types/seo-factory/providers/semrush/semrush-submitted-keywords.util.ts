@@ -13,7 +13,12 @@ import {
   SEMRUSH_SUBMITTED_KEYWORD_MAX,
   SEMRUSH_SUBMITTED_KEYWORD_MIN,
 } from '../../constants/seo-score';
-import { isSemrushSpecificKeyword, isWeakExtractedPhrase } from './semrush-keywords.util';
+import {
+  flattenSemrushKeywordList,
+  isSemrushSpecificKeyword,
+  isWeakExtractedPhrase,
+  splitSemrushKeywordParts,
+} from './semrush-keywords.util';
 import {
   isSemrushKeywordPresentInContent,
   stripMarkdownForKeywordMatch,
@@ -320,12 +325,23 @@ export function buildSemrushSubmittedKeywords(
     .filter((phrase) => !isWeakExtractedPhrase(phrase))
     .slice(0, maxCount);
 
-  if (targetKeyword && isSemrushKeywordPresentInContent(content, targetKeyword)) {
-    const normalizedTarget = normalizePhrase(targetKeyword);
-    result = [
-      normalizedTarget,
-      ...result.filter((phrase) => phrase.toLowerCase() !== normalizedTarget),
-    ].slice(0, maxCount);
+  if (targetKeyword) {
+    const prepended: string[] = [];
+    for (const part of splitSemrushKeywordParts(targetKeyword)) {
+      if (!isSemrushKeywordPresentInContent(content, part)) continue;
+      const normalizedTarget = normalizePhrase(part);
+      if (
+        prepended.some((phrase) => phrase === normalizedTarget) ||
+        result.some((phrase) => phrase.toLowerCase() === normalizedTarget)
+      ) {
+        continue;
+      }
+      prepended.push(normalizedTarget);
+    }
+    if (prepended.length > 0) {
+      const pinned = new Set(prepended);
+      result = [...prepended, ...result.filter((phrase) => !pinned.has(phrase))].slice(0, maxCount);
+    }
   }
 
   return result;
@@ -376,16 +392,26 @@ export function buildSemrushCheckInputFromContent(
       }),
     ),
   );
-  const primary = targetKeyword.trim() || submittedKeywords[0] || '';
-  const orderedSubmitted =
-    primary.length > 0
-      ? [
-          primary,
-          ...submittedKeywords.filter(
-            (phrase) => phrase.toLowerCase() !== primary.toLowerCase(),
-          ),
-        ].slice(0, SEMRUSH_SUBMITTED_KEYWORD_MAX)
-      : submittedKeywords;
+  const primaryParts = targetKeyword.trim()
+    ? splitSemrushKeywordParts(targetKeyword)
+    : submittedKeywords[0]
+      ? [submittedKeywords[0]]
+      : [];
+  const primary = primaryParts[0] ?? '';
+  const coveredPoolKeywords: string[] = [];
+  for (const poolPhrase of flattenSemrushKeywordList(poolKeywords)) {
+    const normalized = normalizePhrase(poolPhrase);
+    if (!normalized || coveredPoolKeywords.includes(normalized)) continue;
+    if (!isUsablePhrase(normalized, 'pool')) continue;
+    if (!isSemrushKeywordPresentInContent(content, normalized)) continue;
+    if (isRedundantKeywordPhrase(normalized, coveredPoolKeywords)) continue;
+    coveredPoolKeywords.push(normalized);
+  }
+  const orderedSubmitted = flattenSemrushKeywordList([
+    ...primaryParts,
+    ...coveredPoolKeywords,
+    ...submittedKeywords,
+  ]).slice(0, SEMRUSH_SUBMITTED_KEYWORD_MAX);
 
   return {
     content,

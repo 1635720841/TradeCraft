@@ -118,6 +118,24 @@ export function isLocalGatePassed(input: {
   return input.localScore >= input.gate.threshold;
 }
 
+export function buildLocalGatePersistedFields(input: {
+  gate: LocalGateContext;
+  localScore: number;
+  prediction: ScoreCalibrationPrediction | null;
+}): {
+  passed: boolean;
+  gateMode: LocalGateMode;
+  predictedSemrush?: number;
+} {
+  return {
+    passed: isLocalGatePassed(input),
+    gateMode: input.gate.mode,
+    ...(input.prediction
+      ? { predictedSemrush: input.prediction.predictedSemrush }
+      : {}),
+  };
+}
+
 export function localGatePointsToGo(input: {
   gate: LocalGateContext;
   localScore: number;

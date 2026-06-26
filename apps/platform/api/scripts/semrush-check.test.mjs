@@ -41,6 +41,26 @@ describe('shouldRecoverOrphanOptimizing', () => {
     );
   });
 
+  it('does not recover when workflow RPA is still in flight', () => {
+    const now = Date.now();
+    assert.equal(
+      shouldRecoverOrphanOptimizing({
+        status: 'OPTIMIZING',
+        updatedAt: new Date(now - SEMRUSH_OPTIMIZING_ORPHAN_STALE_MS - 60_000),
+        seoCheckData: {
+          semrush: {
+            rpaInFlight: {
+              startedAt: new Date(now - 60_000).toISOString(),
+              rpaKind: 'baseline',
+            },
+          },
+        },
+        now,
+      }),
+      false,
+    );
+  });
+
   it('does not recover on lastManualCheckError alone when heartbeat is fresh', () => {
     const now = Date.now();
     assert.equal(

@@ -301,6 +301,33 @@ describe('resolveAllSemrushMissingKeywordsForRound', () => {
     assert.ok(!missing.includes('it turns raw'));
     assert.ok(!missing.includes('as can rs'));
   });
+
+  it('filters off-topic Semrush drift terms for BMS repair intent', async () => {
+    const { resolveAllSemrushMissingKeywordsForRound } = await import(modPath);
+    const missing = resolveAllSemrushMissingKeywordsForRound({
+      content: 'Replace BMS without damaging cells in a lithium battery pack.',
+      targetKeyword: 'replace BMS without damaging cells',
+      semrushResult: {
+        overall: 8.4,
+        suggestions: [],
+        semrushRecommendedKeywords: [
+          'thermal runaway',
+          'energy efficiency',
+          'nuclear weapons',
+          'building materials',
+          'united states',
+          'electrical demand',
+        ],
+      },
+    });
+
+    assert.ok(missing.includes('thermal runaway'));
+    assert.ok(missing.includes('energy efficiency'));
+    assert.equal(missing.includes('nuclear weapons'), false);
+    assert.equal(missing.includes('building materials'), false);
+    assert.equal(missing.includes('united states'), false);
+    assert.equal(missing.includes('electrical demand'), false);
+  });
 });
 
 describe('collectPresentSeoPhrases', () => {

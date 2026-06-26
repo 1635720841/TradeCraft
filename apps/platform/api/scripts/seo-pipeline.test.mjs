@@ -16,11 +16,13 @@ const scorePath = pathToFileURL(
 
 const {
   canResumeSemrushOptimization,
+  decideSemrushCandidateAcceptance,
   isSemrushSurgicalTier,
   resolveLocalOptimizeRoundCap,
   resolveSemrushOptimizeRoundCap,
   shouldAcceptLocalCandidate,
   shouldAcceptSemrushCandidate,
+  shouldForceLocalPipelineForWordGap,
   shouldSkipLocalOptimization,
   shouldSkipLocalPipeline,
 } = await import(utilPath);
@@ -88,6 +90,32 @@ describe('shouldSkipLocalPipeline', () => {
   });
 });
 
+describe('shouldForceLocalPipelineForWordGap', () => {
+  it('forces local expansion when a locally passed article is far below target words', () => {
+    assert.equal(
+      shouldForceLocalPipelineForWordGap({
+        localAlreadyPassed: true,
+        semrushResumable: false,
+        wordCount: 856,
+        targetWordCount: 1300,
+      }),
+      true,
+    );
+  });
+
+  it('does not force local expansion while resuming Semrush rounds', () => {
+    assert.equal(
+      shouldForceLocalPipelineForWordGap({
+        localAlreadyPassed: true,
+        semrushResumable: true,
+        wordCount: 856,
+        targetWordCount: 1300,
+      }),
+      false,
+    );
+  });
+});
+
 describe('shouldAcceptLocalCandidate', () => {
   it('rejects when keywordCoverage drops even within near-miss margin', () => {
     assert.equal(
@@ -138,9 +166,44 @@ describe('shouldAcceptSemrushCandidate', () => {
     );
   });
 
-  it('accepts passing score even when recommended keywords remain missing', () => {
+  it('accepts passing score even when recommended keyword gaps did not improve', () => {
     assert.equal(
       shouldAcceptSemrushCandidate({ ...base, candidateOverall: 9.0, bestOverall: 8.8 }),
+      true,
+    );
+  });
+
+  it('rejects passing score when submitted target keyword coverage regressed', () => {
+    const decision = decideSemrushCandidateAcceptance({
+      ...base,
+      candidateOverall: 9.1,
+      bestOverall: 8.5,
+      candidateMissingTargetKeywordCount: 1,
+      bestMissingTargetKeywordCount: 0,
+    });
+    assert.equal(decision.accepted, false);
+    assert.equal(decision.reason, 'target_keyword_regressed');
+    assert.equal(
+      shouldAcceptSemrushCandidate({
+        ...base,
+        candidateOverall: 9.1,
+        bestOverall: 8.5,
+        candidateMissingTargetKeywordCount: 1,
+        bestMissingTargetKeywordCount: 0,
+      }),
+      false,
+    );
+  });
+
+  it('accepts passing score when recommended keyword gaps improved', () => {
+    assert.equal(
+      shouldAcceptSemrushCandidate({
+        ...base,
+        candidateOverall: 9.0,
+        bestOverall: 8.8,
+        candidateMissingKeywordCount: 1,
+        bestMissingKeywordCount: 2,
+      }),
       true,
     );
   });

@@ -85,6 +85,21 @@ export function shouldSkipLocalPipeline(
   return localAlreadyPassed || semrushResumable;
 }
 
+/** 本地分已过但正文明显短于写作目标时，仍先跑本地扩写，避免把短文直接送入 Semrush 多轮补救。 */
+export function shouldForceLocalPipelineForWordGap(input: {
+  localAlreadyPassed: boolean;
+  semrushResumable: boolean;
+  wordCount: number;
+  targetWordCount: number;
+}): boolean {
+  if (!input.localAlreadyPassed || input.semrushResumable) return false;
+  if (input.targetWordCount <= 0 || input.wordCount <= 0) return false;
+
+  const gap = input.targetWordCount - input.wordCount;
+  const minAcceptableWords = Math.floor(input.targetWordCount * 0.9);
+  return gap >= 120 && input.wordCount < minAcceptableWords;
+}
+
 /** Semrush 未达标且有初检基线时可续跑，不重复 RPA 初检 */
 export function canResumeSemrushOptimization(
   semrushScore: number | null | undefined,
@@ -148,6 +163,8 @@ export interface SemrushCandidateAcceptInput {
   bestOverall: number;
   candidateMissingKeywordCount: number;
   bestMissingKeywordCount: number;
+  candidateMissingTargetKeywordCount?: number;
+  bestMissingTargetKeywordCount?: number;
   readabilityImproved?: boolean;
   candidateComplexWordHits?: number;
   bestComplexWordHits?: number;
@@ -155,53 +172,87 @@ export interface SemrushCandidateAcceptInput {
   bestHardSentenceHits?: number;
 }
 
+export type SemrushCandidateAcceptReason =
+  | 'semrush_passed'
+  | 'target_keyword_regressed'
+  | 'score_improved'
+  | 'within_rpa_tolerance'
+  | 'missing_keywords_improved'
+  | 'readability_improved'
+  | 'surgical_missing_keywords_improved'
+  | 'surgical_complex_words_improved'
+  | 'surgical_hard_sentences_improved'
+  | 'score_regressed';
+
+export interface SemrushCandidateAcceptDecision {
+  accepted: boolean;
+  reason: SemrushCandidateAcceptReason;
+}
+
 export function isSemrushSurgicalTier(overall: number): boolean {
   return overall >= SEMRUSH_SURGICAL_MODE_THRESHOLD;
 }
 
-export function shouldAcceptSemrushCandidate(
+export function decideSemrushCandidateAcceptance(
   input: SemrushCandidateAcceptInput,
   config: ResolvedSiteSeoScoreConfig = DEFAULT_SITE_SEO_SCORE_CONFIG,
-): boolean {
+): SemrushCandidateAcceptDecision {
+  const targetKeywordRegressed =
+    typeof input.candidateMissingTargetKeywordCount === 'number' &&
+    typeof input.bestMissingTargetKeywordCount === 'number' &&
+    input.candidateMissingTargetKeywordCount > input.bestMissingTargetKeywordCount;
+
   if (input.candidateOverall >= config.semrushPassThreshold) {
-    return true;
+    if (targetKeywordRegressed) {
+      return { accepted: false, reason: 'target_keyword_regressed' };
+    }
+    return { accepted: true, reason: 'semrush_passed' };
   }
-  if (input.candidateOverall >= input.bestOverall) return true;
+  if (input.candidateOverall >= input.bestOverall) {
+    return { accepted: true, reason: 'score_improved' };
+  }
   if (input.candidateOverall >= input.bestOverall - SEMRUSH_SCORE_ROLLBACK_TOLERANCE) {
-    return true;
+    return { accepted: true, reason: 'within_rpa_tolerance' };
   }
   if (
     input.candidateMissingKeywordCount < input.bestMissingKeywordCount &&
     input.candidateOverall >= input.bestOverall - 0.15
   ) {
-    return true;
+    return { accepted: true, reason: 'missing_keywords_improved' };
   }
   if (input.readabilityImproved && input.candidateOverall >= input.bestOverall - 0.1) {
-    return true;
+    return { accepted: true, reason: 'readability_improved' };
   }
   if (isSemrushSurgicalTier(input.bestOverall)) {
     if (
       input.candidateMissingKeywordCount < input.bestMissingKeywordCount &&
       input.candidateOverall >= input.bestOverall - 0.2
     ) {
-      return true;
+      return { accepted: true, reason: 'surgical_missing_keywords_improved' };
     }
     const complexImproved =
       typeof input.candidateComplexWordHits === 'number' &&
       typeof input.bestComplexWordHits === 'number' &&
       input.candidateComplexWordHits < input.bestComplexWordHits;
     if (complexImproved && input.candidateOverall >= input.bestOverall - 0.15) {
-      return true;
+      return { accepted: true, reason: 'surgical_complex_words_improved' };
     }
     const hardImproved =
       typeof input.candidateHardSentenceHits === 'number' &&
       typeof input.bestHardSentenceHits === 'number' &&
       input.candidateHardSentenceHits < input.bestHardSentenceHits;
     if (hardImproved && input.candidateOverall >= input.bestOverall - 0.15) {
-      return true;
+      return { accepted: true, reason: 'surgical_hard_sentences_improved' };
     }
   }
-  return false;
+  return { accepted: false, reason: 'score_regressed' };
+}
+
+export function shouldAcceptSemrushCandidate(
+  input: SemrushCandidateAcceptInput,
+  config: ResolvedSiteSeoScoreConfig = DEFAULT_SITE_SEO_SCORE_CONFIG,
+): boolean {
+  return decideSemrushCandidateAcceptance(input, config).accepted;
 }
 /** 本地优化轮：允许 near-miss 2 分波动，但 keywordCoverage 掉分绝对拒绝 */
 export function shouldAcceptLocalCandidate(input: {

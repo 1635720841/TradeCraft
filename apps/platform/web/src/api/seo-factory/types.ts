@@ -679,7 +679,7 @@ export interface SiteWorkflowSettings {
   localMaxOptimizeRounds?: number;
   /** 本地失败重试追加轮次，默认 3 */
   localRetryExtraRounds?: number;
-  /** Semrush 优化最大轮次，默认 4 */
+  /** Semrush 优化最大轮次，默认 5 */
   semrushMaxOptimizeRounds?: number;
   /** Semrush 失败重试追加轮次，默认 4 */
   semrushRetryExtraRounds?: number;

@@ -118,6 +118,61 @@ describe('buildSemrushCheckInputFromContent', () => {
     assert.deepEqual(input.recommendedKeywords, input.submittedKeywords.slice(1));
     assert.equal(input.submittedKeywords.length, input.recommendedKeywords.length + 1);
   });
+
+  it('splits comma-separated targetKeyword into separate submitted tags (no merged tag)', () => {
+    const input = buildSemrushCheckInputFromContent(
+      SMART_BMS_SNIPPET,
+      'smart bms, what a smart bms does',
+      LEGACY_POOL,
+    );
+
+    assert.equal(input.keyword, 'smart bms');
+    assert.equal(input.submittedKeywords[0], 'smart bms');
+    assert.equal(input.submittedKeywords[1], 'what a smart bms does');
+    assert.equal(
+      input.submittedKeywords.some((phrase) => phrase.includes(',')),
+      false,
+      `submittedKeywords must not contain comma-joined phrases: ${input.submittedKeywords.join(' | ')}`,
+    );
+  });
+
+  it('prioritizes covered Semrush pool terms in submitted tags', () => {
+    const content = `# Replace BMS Without Damaging Cells
+
+Service teams should document energy efficiency, discharge rates, thermal runaway, charging cycle, fully charged status, high power loads, cycle life, and real time monitoring before approving the battery pack. The lithium battery pack also needs cell voltage checks and final check before return to service.`;
+    const input = buildSemrushCheckInputFromContent(
+      content,
+      'replace BMS without damaging cells',
+      [
+        'energy efficiency',
+        'discharge rates',
+        'thermal runaway',
+        'charging cycle',
+        'fully charged',
+        'high power',
+        'cycle life',
+        'real time',
+      ],
+    );
+
+    assert.equal(input.submittedKeywords[0], 'replace BMS without damaging cells');
+    for (const phrase of [
+      'energy efficiency',
+      'discharge rates',
+      'thermal runaway',
+      'charging cycle',
+      'fully charged',
+      'high power',
+      'cycle life',
+      'real time',
+    ]) {
+      assert.ok(
+        input.submittedKeywords.includes(phrase),
+        `expected submitted keywords to include ${phrase}: ${input.submittedKeywords.join(', ')}`,
+      );
+    }
+  });
+
 });
 
 describe('filterSemrushSubmittedKeywordsInContent', () => {

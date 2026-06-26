@@ -13,7 +13,10 @@ import {
   type SeoKeywordCoverageManifest,
   type SeoKeywordCoverageSource,
 } from '@wm/shared-core';
-import { isSemrushSpecificKeyword } from '../providers/semrush/semrush-keywords.util';
+import {
+  isSemrushOffTopicKeyword,
+  isSemrushSpecificKeyword,
+} from '../providers/semrush/semrush-keywords.util';
 import { mergeSemrushKeywordLists, isSemrushKeywordStrictlyPresent } from '../providers/semrush/semrush-keyword-coverage.util';
 import type { SemrushRecommendationsPayload } from '../providers/semrush/semrush-recommendations.parser';
 import { parseSemrushKeywordEntries } from '../providers/semrush/semrush-recommendations.parser';
@@ -60,6 +63,7 @@ export function buildManifestFromSemrushApiPayload(
 export function buildManifestFromSemrushScore(
   semrushResult: SeoScore,
   content: string,
+  targetKeyword = '',
   apiPayload?: SemrushRecommendationsPayload | null,
 ): SeoKeywordCoverageManifest {
   if (apiPayload) {
@@ -79,10 +83,11 @@ export function buildManifestFromSemrushScore(
       frequency: meta?.frequency,
       difficulty: meta?.difficulty,
     };
-  });
+  }).filter((item) => !isSemrushOffTopicKeyword(item.phrase, targetKeyword, content));
 
   const domExtras = semrushResult.semrushMissingRecommendedKeywords ?? [];
   for (const phrase of domExtras) {
+    if (isSemrushOffTopicKeyword(phrase, targetKeyword, content)) continue;
     if (
       !recommendedPhrases.some((item) => item.phrase.toLowerCase() === phrase.toLowerCase())
     ) {
@@ -136,7 +141,7 @@ export function resolveKeywordCoverageManifest(
       input.semrushResult.keywordCoverage ||
       input.semrushResult.semrushMissingRecommendedKeywords?.length)
   ) {
-    return buildManifestFromSemrushScore(input.semrushResult, input.content);
+    return buildManifestFromSemrushScore(input.semrushResult, input.content, input.targetKeyword);
   }
 
   return buildManifestFromLocalContext(input.content, localMissing, briefEntities);

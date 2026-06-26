@@ -20,7 +20,7 @@ export const LOCAL_SEO_NEAR_MISS_EXTRA_ROUNDS = 3;
 export const LOCAL_SEO_RETRY_EXTRA_ROUNDS = 3;
 
 /** Semrush 未达标时，按侧栏建议改写初稿的最大轮次 */
-export const SEMRUSH_MAX_OPTIMIZE_ROUNDS = 4;
+export const SEMRUSH_MAX_OPTIMIZE_ROUNDS = 5;
 
 /** 距 Semrush 门槛在此分差内仍追加改写（如 8.8/9.0） */
 export const SEMRUSH_NEAR_MISS_MARGIN = 0.2;

@@ -79,6 +79,102 @@ const STOP_WORDS = new Set([
   'free',
 ]);
 
+const ALWAYS_OFF_TOPIC_PHRASES = new Set([
+  'building materials',
+  'gps locations',
+  'nuclear weapons',
+  'parental control',
+  'united states',
+]);
+
+const BMS_REPAIR_TOPIC_DRIFT_PHRASES = new Set([
+  'electrical demand',
+  'electricity generation',
+  'generating electricity',
+  'large scale',
+  'peak hours',
+  'renewable energy',
+  'small scale',
+  'store energy',
+  'stores energy',
+  'total energy',
+  'utility scale',
+]);
+
+const BMS_REPAIR_INTENT_RE =
+  /\b(bms|battery|batteries|cell|cells|pack|lifepo4|lithium|li[-\s]?ion)\b/i;
+const GRID_STORAGE_INTENT_RE =
+  /\b(grid|microgrid|utility|utilities|renewable|solar|wind|power plant|electricity|energy storage systems?|peak demand|load shifting|demand response)\b/i;
+
+function normalizeKeywordKey(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function isSemrushOffTopicKeyword(
+  term: string,
+  targetKeyword = '',
+  content = '',
+): boolean {
+  const normalized = normalizeKeywordKey(term);
+  if (!normalized) return true;
+  if (ALWAYS_OFF_TOPIC_PHRASES.has(normalized)) return true;
+
+  const normalizedTarget = normalizeKeywordKey(targetKeyword);
+  const targetLooksLikeBmsRepair = BMS_REPAIR_INTENT_RE.test(normalizedTarget);
+  const targetLooksLikeGridStorage = GRID_STORAGE_INTENT_RE.test(normalizedTarget);
+  if (
+    targetLooksLikeBmsRepair &&
+    !targetLooksLikeGridStorage &&
+    BMS_REPAIR_TOPIC_DRIFT_PHRASES.has(normalized)
+  ) {
+    return true;
+  }
+
+  const context = normalizeKeywordKey(`${targetKeyword} ${content.slice(0, 12000)}`);
+  if (
+    targetLooksLikeBmsRepair &&
+    !targetLooksLikeGridStorage &&
+    /\b(nuclear|weapon|weapons|building material|building materials)\b/i.test(normalized)
+  ) {
+    return true;
+  }
+
+  if (context && normalized === 'high power' && /\bfn high power|browning hi power\b/i.test(context)) {
+    return true;
+  }
+
+  return false;
+}
+
+/** 按 SWA 输入框规则拆分逗号分隔短语（中/英逗号） */
+export function splitSemrushKeywordParts(raw: string): string[] {
+  return raw
+    .split(/[,，]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+/** 展开词表中仍含逗号的项，去重保序（避免 RPA 生成合并 Tag） */
+export function flattenSemrushKeywordList(keywords: string[]): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+
+  for (const raw of keywords) {
+    for (const part of splitSemrushKeywordParts(raw)) {
+      const key = part.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(part);
+    }
+  }
+
+  return result;
+}
+
 /** 主目标词始终保留；推荐词须为具体短语（≥2 词或连字符复合词） */
 export function isSemrushSpecificKeyword(term: string, isPrimary = false): boolean {
   const trimmed = term.trim();
@@ -131,7 +227,7 @@ export function sanitizeSemrushKeywordGoal(
 
 /** 正文 n-gram 提取噪声，不应进入 LLM 推荐词列表 */
 const WEAK_EXTRACTED_PREFIX_RE =
-  /^(so it|pack so|it can|not only by|as can|it turns|how the bms|at the same|more for evaluation|view of pack|guide to you|you can also|life for b2b|bms can slow|no two cells|gap is why|common buyer questions|quick selection checklist|related references|varies depending|final takeaways|toggle the table|wikipedia the free|browning hi power|fn high power)\b/i;
+  /^(so it|pack so|it can|not only by|as can|as the|must all|bms if all|wait until all|trust the cell|when comparing|it turns|how the bms|at the same|more for evaluation|view of pack|guide to you|you can also|life for b2b|bms can slow|no two cells|gap is why|common buyer questions|quick selection checklist|related references|varies depending|final takeaways|toggle the table|wikipedia the free|browning hi power|fn high power)\b/i;
 
 export function isWeakExtractedPhrase(phrase: string): boolean {
   const normalized = phrase.trim().toLowerCase();
@@ -154,6 +250,7 @@ export function isWeakExtractedPhrase(phrase: string): boolean {
 export function filterSemrushRecommendedKeywords(
   terms: string[],
   targetKeyword: string,
+  options: { content?: string } = {},
 ): string[] {
   const main = targetKeyword.trim().toLowerCase();
   const result: string[] = [];
@@ -166,6 +263,7 @@ export function filterSemrushRecommendedKeywords(
       const key = trimmed.toLowerCase();
       if (key === main || seen.has(key)) continue;
       if (WEAK_EXTRACTED_PREFIX_RE.test(trimmed)) continue;
+      if (isSemrushOffTopicKeyword(trimmed, targetKeyword, options.content ?? '')) continue;
       if (!isSemrushSpecificKeyword(trimmed, false)) continue;
       seen.add(key);
       result.push(trimmed);

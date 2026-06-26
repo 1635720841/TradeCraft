@@ -607,7 +607,8 @@ function scoreReadability(
 
   let score = Math.round((swaReadability / 10) * 20);
   if (!semrushReadabilityReady) {
-    score = Math.min(score, 16);
+    const readinessCap = longParagraphsOver65 > 1 ? 15 : 16;
+    score = Math.min(score, readinessCap);
     if (score >= 16 && suggestions.length < 6) {
       suggestions.push(
         'Semrush 可读性未齐：须清零复杂词/随意句/难读句，长句≤2、长段≤1，Flesch 对齐目标后再拿满分',

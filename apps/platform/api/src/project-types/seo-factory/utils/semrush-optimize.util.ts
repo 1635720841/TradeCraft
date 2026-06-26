@@ -4,9 +4,12 @@
 
 import type { SeoScore } from '@wm/provider-interfaces';
 import {
+  countWords,
   extractLongParagraphs,
   extractLongSentences,
+  injectSemrushWordCountExpansion,
   resolveSemrushReadabilityTarget,
+  SEMRUSH_FLESCH_TARGET_DEFAULT,
   SEMRUSH_FLESCH_TOLERANCE,
   SEMRUSH_PARAGRAPH_MAX_SENTENCES,
   SEMRUSH_PARAGRAPH_MAX_WORDS,
@@ -31,6 +34,8 @@ const SUGGESTION_CAP = 28;
 
 const PARAGRAPH_ISSUE_RE =
   /段落太长|拆分长段|paragraph.*too long|split.*paragraph|long paragraph/i;
+const TOO_PLAIN_READABILITY_RE =
+  /太过浅显|语言平实|更高级|professional audience|too plain|too simple|too easy|plain language/i;
 const CASUAL_QUOTE_RE =
   /^[A-Za-z][^.!?]{8,280}[.!?]?$|^".+"$|^'.+'$/;
 
@@ -119,6 +124,24 @@ export interface SemrushOptimizeContext {
   scoreGapPlan: string;
 }
 
+export interface SemrushRoundOutputGuardResult {
+  accepted: boolean;
+  reasons: string[];
+  wordsBefore: number;
+  wordsAfter: number;
+  minWordCount?: number;
+  missingKeywords: string[];
+}
+
+export interface SemrushRoundRepairResult {
+  content: string;
+  changed: boolean;
+  addedKeywords: string[];
+  wordsBefore: number;
+  wordsAfter: number;
+  injectedWordBlocks: number;
+}
+
 /** Semrush 轮优化上下文：以 SWA 分数与正文结构为准，不依赖本地预检是否已过关 */
 export function buildSemrushOptimizeContext(
   semrushResult: SeoScore,
@@ -167,6 +190,133 @@ export function buildSemrushOptimizeContext(
   };
 }
 
+function uniqueKeywords(keywords: string[]): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of keywords) {
+    const phrase = raw.trim();
+    if (!phrase) continue;
+    const key = phrase.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(phrase);
+  }
+  return result;
+}
+
+function missingStrictKeywords(content: string, keywords: string[]): string[] {
+  return uniqueKeywords(keywords).filter(
+    (phrase) => !isSemrushKeywordStrictlyPresent(content, phrase),
+  );
+}
+
+function chunkKeywords(keywords: string[], size: number): string[][] {
+  const chunks: string[][] = [];
+  for (let index = 0; index < keywords.length; index += size) {
+    chunks.push(keywords.slice(index, index + size));
+  }
+  return chunks;
+}
+
+function buildKeywordRepairBlock(targetKeyword: string, keywords: string[]): string {
+  const groups = chunkKeywords(keywords, 3);
+  const blocks = ['## Additional Selection Checks'];
+  for (const [index, group] of groups.entries()) {
+    const headingTerm = group[0];
+    blocks.push(
+      [
+        `### How should buyers verify ${headingTerm}?`,
+        '',
+        `When comparing ${targetKeyword}, document ${group.join(', ')} in the same review. Connect these requirements to charging behavior, protection limits, monitoring data, service access, and supplier support before installation.`,
+        index === groups.length - 1
+          ? 'This keeps the final specification easier to inspect, quote, and maintain over the long term.'
+          : '',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    );
+  }
+  return blocks.join('\n\n');
+}
+
+export function evaluateSemrushRoundOutput(input: {
+  beforeContent: string;
+  afterContent: string;
+  keywordBatch?: string[];
+  wordCountExpandPriority?: boolean;
+  localExpandTarget?: number;
+  shrinkToleranceWords?: number;
+}): SemrushRoundOutputGuardResult {
+  const wordsBefore = countWords(input.beforeContent);
+  const wordsAfter = countWords(input.afterContent);
+  const reasons: string[] = [];
+  const missingKeywords = missingStrictKeywords(input.afterContent, input.keywordBatch ?? []);
+
+  let minWordCount: number | undefined;
+  if (input.wordCountExpandPriority) {
+    const tolerance = input.shrinkToleranceWords ?? 30;
+    if (wordsAfter < wordsBefore - tolerance) {
+      reasons.push('shrank_body');
+    }
+
+    if (input.localExpandTarget && input.localExpandTarget > wordsBefore) {
+      minWordCount = Math.min(input.localExpandTarget, wordsBefore + 40);
+      if (wordsAfter < minWordCount) {
+        reasons.push('missed_expand_floor');
+      }
+    }
+  }
+
+  if (missingKeywords.length > 0) {
+    reasons.push('missing_round_keywords');
+  }
+
+  return {
+    accepted: reasons.length === 0,
+    reasons: [...new Set(reasons)],
+    wordsBefore,
+    wordsAfter,
+    minWordCount,
+    missingKeywords,
+  };
+}
+
+export function repairSemrushRoundOutput(input: {
+  content: string;
+  targetKeyword: string;
+  keywordBatch?: string[];
+  wordCountExpandPriority?: boolean;
+  localExpandTarget?: number;
+}): SemrushRoundRepairResult {
+  const wordsBefore = countWords(input.content);
+  let content = input.content.trim();
+  const addedKeywords = missingStrictKeywords(content, input.keywordBatch ?? []);
+
+  if (addedKeywords.length > 0) {
+    content = `${content}\n\n${buildKeywordRepairBlock(input.targetKeyword, addedKeywords)}`;
+  }
+
+  let injectedWordBlocks = 0;
+  if (input.wordCountExpandPriority && input.localExpandTarget) {
+    const gap = input.localExpandTarget - countWords(content);
+    if (gap >= 55) {
+      const injected = injectSemrushWordCountExpansion(content, gap, input.targetKeyword);
+      content = injected.content;
+      injectedWordBlocks = injected.blockCount;
+    }
+  }
+
+  const wordsAfter = countWords(content);
+  return {
+    content,
+    changed: content !== input.content.trim(),
+    addedKeywords,
+    wordsBefore,
+    wordsAfter,
+    injectedWordBlocks,
+  };
+}
+
 function isCasualSentenceQuote(text: string): boolean {
   const trimmed = text.trim();
   if (trimmed.length < 12 || trimmed.length > 320) return false;
@@ -190,6 +340,17 @@ export function buildSemrushRewriteSuggestions(result: SeoScore, content: string
   pushSection('可读性', details?.readability);
   pushSection('SEO', details?.seo);
   pushSection('原创性', details?.originality);
+
+  const readabilitySignals = [
+    ...(details?.readability ?? []),
+    ...(details?.tone ?? []),
+    ...result.suggestions,
+  ].join('\n');
+  if (TOO_PLAIN_READABILITY_RE.test(readabilitySignals)) {
+    lines.unshift(
+      '[可读性·必做] Semrush 认为文本过于浅显/随意：不要继续拆成短命令句；把连续 Measure/Check/Replace/Stop/Seat/Wait 句合并为 16–24 词的技术解释句，加入原因、风险、判断依据或操作条件；仍保持每段 ≤60 词。',
+    );
+  }
 
   for (const item of details?.tone ?? []) {
     const trimmed = item.trim();
@@ -221,7 +382,7 @@ export function buildSemrushRewriteSuggestions(result: SeoScore, content: string
         !isSemrushKeywordStrictlyPresent(content, phrase),
     );
     if (uncovered.length > 0) {
-      keywordWeaving = `[SEO] SWA 推荐词须各至少出现 1 次（语境化融合，禁止列表堆砌）: ${uncovered.join(', ')}`;
+      keywordWeaving = `[SEO] SWA 推荐词须各至少出现 1 次（语境化融合，禁止列表堆砌、独立短句堆词或连续祈使句）: ${uncovered.join(', ')}`;
     }
   }
 
@@ -317,12 +478,17 @@ export function buildSemrushRewriteSuggestions(result: SeoScore, content: string
   }
 
   const readability = result.semrushReadabilityScore;
-  const fleschTarget = resolveSemrushReadabilityTarget(readability);
+  const currentFleschLooksTooPlain =
+    typeof readability === 'number' &&
+    readability > SEMRUSH_FLESCH_TARGET_DEFAULT + SEMRUSH_FLESCH_TOLERANCE;
+  const fleschTarget = currentFleschLooksTooPlain
+    ? SEMRUSH_FLESCH_TARGET_DEFAULT
+    : resolveSemrushReadabilityTarget(readability);
   if (typeof readability === 'number') {
     const delta = Math.abs(readability - fleschTarget);
     if (delta > SEMRUSH_FLESCH_TOLERANCE) {
       lines.unshift(
-        `[可读性] Semrush Flesch ${readability}，目标约 ${fleschTarget}（±${SEMRUSH_FLESCH_TOLERANCE}）：${readability > fleschTarget + SEMRUSH_FLESCH_TOLERANCE ? '略增句长/正式词' : '缩短句子、简化音节复杂词'}`,
+        `[可读性] Semrush Flesch ${readability}，目标约 ${fleschTarget}（±${SEMRUSH_FLESCH_TOLERANCE}）：${readability > fleschTarget + SEMRUSH_FLESCH_TOLERANCE ? '文本偏浅显；合并短祈使句，增加专业术语、条件和因果解释' : '缩短句子、简化音节复杂词'}`,
       );
     }
   }
