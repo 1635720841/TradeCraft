@@ -1252,6 +1252,9 @@ function formatRollbackReason(row: ArticleJobOptimizeRound): string {
   if (row.rollbackReason === "both") {
     return `Semrush 未提升且本地分 ${row.candidateLocalScoreAfter ?? "?"} 未达 ${localPassThreshold.value}（历史策略）`;
   }
+  if (row.rollbackReason === "target_keyword_regressed") {
+    return "目标词覆盖下降";
+  }
   return "Semrush 分未提升";
 }
 
@@ -1286,6 +1289,9 @@ function formatRollbackDetail(item: ArticleJobOptimizeRound): string {
   }
   if (item.rollbackReason === "both") {
     return `Semrush 候选 ${candidate} 未提升，且本地分 ${candidateLocal} 低于门槛 ${localPassThreshold.value}，已保留 Semrush ${kept}、本地 ${keptLocal} 的最优稿。`;
+  }
+  if (item.rollbackReason === "target_keyword_regressed") {
+    return `Semrush 候选 ${candidate} 已达标，但提交目标词覆盖比保留稿下降（本地 ${candidateLocal}），已保留 Semrush ${kept}、本地 ${keptLocal} 的最优稿。`;
   }
   return `Semrush 候选 ${candidate} 未超过保留稿 ${kept}（本地 ${candidateLocal}），已回滚。`;
 }

@@ -173,7 +173,7 @@ describe('shouldAcceptSemrushCandidate', () => {
     );
   });
 
-  it('rejects passing score when submitted target keyword coverage regressed', () => {
+  it('accepts passing score even when submitted target keyword coverage regressed', () => {
     const decision = decideSemrushCandidateAcceptance({
       ...base,
       candidateOverall: 9.1,
@@ -181,8 +181,8 @@ describe('shouldAcceptSemrushCandidate', () => {
       candidateMissingTargetKeywordCount: 1,
       bestMissingTargetKeywordCount: 0,
     });
-    assert.equal(decision.accepted, false);
-    assert.equal(decision.reason, 'target_keyword_regressed');
+    assert.equal(decision.accepted, true);
+    assert.equal(decision.reason, 'semrush_passed');
     assert.equal(
       shouldAcceptSemrushCandidate({
         ...base,
@@ -191,7 +191,7 @@ describe('shouldAcceptSemrushCandidate', () => {
         candidateMissingTargetKeywordCount: 1,
         bestMissingTargetKeywordCount: 0,
       }),
-      false,
+      true,
     );
   });
 

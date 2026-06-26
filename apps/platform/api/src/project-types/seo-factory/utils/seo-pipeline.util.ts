@@ -197,15 +197,7 @@ export function decideSemrushCandidateAcceptance(
   input: SemrushCandidateAcceptInput,
   config: ResolvedSiteSeoScoreConfig = DEFAULT_SITE_SEO_SCORE_CONFIG,
 ): SemrushCandidateAcceptDecision {
-  const targetKeywordRegressed =
-    typeof input.candidateMissingTargetKeywordCount === 'number' &&
-    typeof input.bestMissingTargetKeywordCount === 'number' &&
-    input.candidateMissingTargetKeywordCount > input.bestMissingTargetKeywordCount;
-
   if (input.candidateOverall >= config.semrushPassThreshold) {
-    if (targetKeywordRegressed) {
-      return { accepted: false, reason: 'target_keyword_regressed' };
-    }
     return { accepted: true, reason: 'semrush_passed' };
   }
   if (input.candidateOverall >= input.bestOverall) {
