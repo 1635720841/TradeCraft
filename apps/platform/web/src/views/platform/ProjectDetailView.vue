@@ -113,7 +113,7 @@ async function fetchProject() {
 }
 
 function goBack() {
-  router.push({ name: "PlatformProjects" });
+  router.push({ name: "Welcome" });
 }
 
 function enterProject() {

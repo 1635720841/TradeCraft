@@ -4,7 +4,7 @@ export default {
   path: "/platform",
   name: "Platform",
   component: Layout,
-  redirect: "/platform/projects",
+  redirect: "/welcome",
   meta: {
     icon: "ep:folder-opened",
     title: "平台",
@@ -14,10 +14,11 @@ export default {
     {
       path: "/platform/projects",
       name: "PlatformProjects",
-      component: () => import("@/views/platform/ProjectListView.vue"),
+      component: () => import("@/views/platform/ProjectHomeView.vue"),
       meta: {
         title: "项目列表",
-        roles: ["admin", "common"]
+        roles: ["admin", "common"],
+        showLink: false
       }
     },
     {

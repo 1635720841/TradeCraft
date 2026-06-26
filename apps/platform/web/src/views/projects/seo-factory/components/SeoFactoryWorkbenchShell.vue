@@ -12,7 +12,7 @@
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div class="flex flex-wrap items-center gap-2">
-            <el-button link type="primary" @click="goProjects">← 返回项目列表</el-button>
+            <el-button link type="primary" @click="goProjects">← 返回首页</el-button>
             <span class="text-gray-300">|</span>
             <span class="font-medium">{{ projectName || "SEO 内容工厂" }}</span>
           </div>
@@ -72,7 +72,7 @@ async function loadContext() {
 }
 
 function goProjects() {
-  router.push({ name: "PlatformProjects" });
+  router.push({ name: "Welcome" });
 }
 
 function goCreateJob() {
