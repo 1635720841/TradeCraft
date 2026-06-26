@@ -114,6 +114,57 @@ function countWords(text: string): number {
   return text.split(/\s+/).filter(Boolean).length;
 }
 
+const ORDERED_LIST_LINE_RE = /^(\s*)(\d+)\.\s+(.+)$/;
+
+/** 列表项正文是否仅为手写序号（如 `2.` / `3`），无实际内容 */
+function isOrphanOrderedListBody(body: string): boolean {
+  return /^\d+\.?$/.test(body.trim());
+}
+
+/**
+ * 去掉有序列表项正文开头重复的手写序号（`1. 2. Disconnect` → `Disconnect`）。
+ * 不匹配小数或段中序号（要求 `\d+. ` 后接非数字开头正文）。
+ */
+export function stripRedundantOrderedListBody(body: string): string {
+  const trimmed = body.trim();
+  const match = trimmed.match(/^(\d+)\.\s+(\S[\s\S]*)$/);
+  if (!match) return trimmed;
+  const rest = match[2].trim();
+  if (!rest || isOrphanOrderedListBody(rest)) return trimmed;
+  return rest;
+}
+
+/**
+ * 修复 LLM 有序列表脏格式：去掉正文内重复序号、合并/丢弃「仅序号」空行。
+ * 典型坏例：`1. 2.` + `1. Disconnect...` 或 `1. 2. Disconnect...`。
+ */
+export function repairOrderedListArtifacts(content: string): string {
+  const lines = content.replace(/\r\n/g, '\n').split('\n');
+  const result: string[] = [];
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const match = line.match(ORDERED_LIST_LINE_RE);
+    if (!match) {
+      result.push(line);
+      continue;
+    }
+
+    const [, indent, markerNum, rawBody] = match;
+    const body = rawBody.trim();
+
+    if (isOrphanOrderedListBody(body)) {
+      const nextMatch = lines[i + 1]?.match(ORDERED_LIST_LINE_RE);
+      if (nextMatch) continue;
+      continue;
+    }
+
+    result.push(`${indent}${markerNum}. ${stripRedundantOrderedListBody(body)}`);
+  }
+
+  return result.join('\n');
+}
+
 /** 清理 LLM/FAQ 遗留的 orphan `**`、重复列表符等 Markdown 脏字符 */
 export function repairMarkdownProseArtifacts(content: string): string {
   let result = content.replace(/\r\n/g, '\n');
@@ -204,11 +255,22 @@ function splitLongProseLine(line: string): string[] {
 function splitLongListItem(line: string): string[] {
   const match = line.match(/^(\s*)([-*]|\d+\.)\s+(.+)$/);
   if (!match) return [line];
-  const sentences = match[3].match(/[^.!?]+[.!?]+(?:["']|$)?|[^.!?]+$/g)
+
+  const isOrdered = /^\d+\.$/.test(match[2]);
+  let body = match[3].trim();
+  if (isOrdered) {
+    body = stripRedundantOrderedListBody(body);
+    if (!body || isOrphanOrderedListBody(body)) return [];
+  }
+
+  const sentences = body
+    .match(/[^.!?]+[.!?]+(?:["']|$)?|[^.!?]+$/g)
     ?.map((item) => item.trim())
-    .filter(Boolean) ?? [];
-  if (countWords(match[3]) <= 32 && sentences.length <= 2) return [line];
-  if (sentences.length < 2) return [line];
+    .filter((item) => Boolean(item) && !(isOrdered && isOrphanOrderedListBody(item))) ?? [];
+  if (countWords(body) <= 32 && sentences.length <= 2) {
+    return [`${match[1]}${match[2]} ${body}`];
+  }
+  if (sentences.length < 2) return [`${match[1]}${match[2]} ${body}`];
   return sentences.map((sentence) => `${match[1]}${match[2]} ${sentence}`);
 }
 
@@ -318,17 +380,35 @@ export function detectSemrushStructureErrors(content: string): string[] {
   if (/^\s*\*{1,2}\s*$/m.test(content)) errors.push('orphan_bold_marker');
   if (/^\*{2}[^*\n]+?\?\s*$/m.test(content)) errors.push('unclosed_bold_question');
   if (/^\s*-\s+-\s+/m.test(content)) errors.push('double_list_marker');
+  if (
+    content.split('\n').some((line) => {
+      const item = line.trim().match(/^\d+\.\s+(.+)$/)?.[1]?.trim();
+      return Boolean(item && isOrphanOrderedListBody(item));
+    })
+  ) {
+    errors.push('orphan_ordered_list_marker');
+  }
+  if (
+    content.split('\n').some((line) => {
+      const item = line.trim().match(/^\d+\.\s+(\d+\.\s+\S)/)?.[1];
+      return Boolean(item);
+    })
+  ) {
+    errors.push('duplicate_ordered_list_marker');
+  }
   return errors;
 }
 
 /** 自动修复结构损坏，保证 `## Heading` 与段落间有空行 */
 export function validateAndFixSemrushStructure(content: string): SemrushStructureValidation {
-  const errors = detectSemrushStructureErrors(content);
-  if (errors.length === 0) {
-    return { content, errors: [], fixed: false };
+  const source = content.replace(/\r\n/g, '\n');
+  let result = repairOrderedListArtifacts(source);
+  const errors = detectSemrushStructureErrors(result);
+  if (errors.length === 0 && result === source) {
+    return { content: result, errors: [], fixed: false };
   }
 
-  let result = repairLeakedTableOfContents(content);
+  result = repairLeakedTableOfContents(result);
   result = repairMarkdownTables(result);
   result = repairMarkdownProseArtifacts(result);
   result = result.replace(/(#{2,6})\.\s+/g, '$1 ');
@@ -347,10 +427,11 @@ export function validateAndFixSemrushStructure(content: string): SemrushStructur
     .join('\n');
 
   result = normalizeMarkdownBlockSpacing(result);
+  result = repairOrderedListArtifacts(result);
 
   return {
     content: result,
     errors,
-    fixed: result !== content,
+    fixed: result !== source,
   };
 }

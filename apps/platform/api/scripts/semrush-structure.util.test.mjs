@@ -130,4 +130,31 @@ describe('validateAndFixSemrushStructure', () => {
     assert.match(out.content, /### How does remote monitoring help daily operations\?/);
     assert.match(out.content, /^- A 12 volts pack/m);
   });
+
+  it('repairs duplicate ordered-list markers from LLM lazy numbering', () => {
+    const broken = `Follow this order:
+1. Turn off the system and confirm no charging and discharging current flows.
+1. 2.
+1. Disconnect the main leads and secure them apart.
+1. 3.
+1. Label each balance wire before removal.
+1. 4.`;
+    const out = validateAndFixSemrushStructure(broken);
+    assert.ok(out.fixed);
+    assert.doesNotMatch(out.content, /^1\. 2\.$/m);
+    assert.doesNotMatch(out.content, /^1\. 3\.$/m);
+    assert.match(out.content, /^1\. Turn off the system/m);
+    assert.match(out.content, /^1\. Disconnect the main leads/m);
+    assert.match(out.content, /^1\. Label each balance wire/m);
+    assert.equal(detectSemrushStructureErrors(out.content).length, 0);
+  });
+
+  it('strips inline step numbers without splitting into orphan rows', () => {
+    const broken =
+      'Follow this order:\n1. Turn off the system.\n1. 2. Disconnect the main leads. Keep the leads apart. Verify polarity.\n1. 3. Label each balance wire.';
+    const out = validateAndFixSemrushStructure(broken);
+    assert.doesNotMatch(out.content, /^1\. 2\.$/m);
+    assert.match(out.content, /^1\. Disconnect the main leads\./m);
+    assert.match(out.content, /Keep the leads apart\./);
+  });
 });

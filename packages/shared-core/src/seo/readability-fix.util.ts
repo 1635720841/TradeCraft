@@ -6,6 +6,8 @@
  * - 计数规则与 local-seo-score.scoreReadability 对齐（>22 词长句）
  */
 
+import { stripRedundantOrderedListBody } from './semrush-structure.util';
+
 const LONG_SENTENCE_MAX_WORDS = 22;
 /** 与 Semrush SWA 本地预检对齐：单段 >65 词计为超长段 */
 const LONG_PARAGRAPH_MAX_WORDS = 65;
@@ -257,13 +259,18 @@ export function applyReadabilityParagraphFix(
         }
 
         const prefix = match[1];
-        let chunks = [match[2].trim()];
+        const isOrdered = /^\s*\d+[.)]\s+$/.test(prefix);
+        let body = match[2].trim();
+        if (isOrdered) {
+          body = stripRedundantOrderedListBody(body);
+        }
+        let chunks = [body];
         if (
           maxSentences != null &&
           maxSentences > 0 &&
-          countSentencesInBlock(match[2]) > maxSentences
+          countSentencesInBlock(body) > maxSentences
         ) {
-          chunks = splitParagraphByMaxSentences(match[2], maxSentences);
+          chunks = splitParagraphByMaxSentences(body, maxSentences);
         }
 
         const expanded = chunks.flatMap((chunk) =>
