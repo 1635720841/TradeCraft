@@ -1146,13 +1146,24 @@ export class ArticleJobService {
     const resumeFrom = resolveResumeStep(job);
     const retryTraceId = `tr_${uuidv4()}`;
 
+    // 清除上次「Semrush 检测已取消」标记，否则续跑到 optimizing 时
+    // assertSemrushWorkNotCancelled 会立即再次中止。
+    const baseCheck = withWorkflowMeta(job.seoCheckData, null);
+    const prevSemrush = baseCheck.semrush as Record<string, unknown> | undefined;
+    const retrySeoCheckData = prevSemrush
+      ? (() => {
+          const { cancelled: _cancelled, ...semrushRest } = prevSemrush;
+          return { ...baseCheck, semrush: semrushRest };
+        })()
+      : baseCheck;
+
     await this.prisma.articleJob.update({
       where: { id },
       data: {
         status: 'QUEUED',
         errorMessage: null,
         traceId: retryTraceId,
-        seoCheckData: withWorkflowMeta(job.seoCheckData, null) as object,
+        seoCheckData: retrySeoCheckData as object,
       },
     });
 

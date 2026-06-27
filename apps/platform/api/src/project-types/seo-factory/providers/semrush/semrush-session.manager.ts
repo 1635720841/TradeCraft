@@ -93,20 +93,44 @@ export class SemrushSessionManager {
   async navigateToSwaChecker(page: Page): Promise<void> {
     await page.bringToFront().catch(() => undefined);
 
-    if (await this.isSwaCheckerReady(page)) {
-      await this.finalizeCheckerReady(page);
-      return;
+    // 打开节点后偶发「进了 sem 但页面空白、无写作输入框」的情况。
+    // 逐次尝试进入 checker；若空白/未就绪则刷新页面重试，让 SPA 重新渲染。
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const entered = await this.enterCheckerOnce(page);
+      if (entered) {
+        await this.finalizeCheckerReady(page);
+        return;
+      }
+
+      this.logger.warn('SWA checker blank/not ready, reloading page', {
+        action: 'semrush.swa_reload',
+        attempt,
+        maxAttempts,
+        url: page.url(),
+      });
+
+      if (attempt < maxAttempts) {
+        await page
+          .reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
+          .catch(() => undefined);
+        await sleep(SEMRUSH_UI_SETTLE_MS);
+      }
     }
+
+    throw new Error('无法进入 SEO 写作助手 checker 页（多次刷新后仍空白）');
+  }
+
+  /** 单次尝试进入 checker：成功返回 true，空白/未找到入口返回 false（不抛错，交由外层刷新重试） */
+  private async enterCheckerOnce(page: Page): Promise<boolean> {
+    if (await this.isSwaCheckerReady(page)) return true;
 
     this.logger.info('Entering SEO Writing Assistant', {
       action: 'semrush.swa_nav_start',
       url: page.url(),
     });
 
-    if (await this.tryGotoCheckerDirect(page)) {
-      await this.finalizeCheckerReady(page);
-      return;
-    }
+    if (await this.tryGotoCheckerDirect(page)) return true;
 
     if (!page.url().includes('/swa/')) {
       const swaUrl = new URL(page.url());
@@ -117,14 +141,14 @@ export class SemrushSessionManager {
 
     const listDeadline = Date.now() + 45_000;
     while (Date.now() < listDeadline) {
-      if (await this.isSwaCheckerReady(page)) break;
+      if (await this.isSwaCheckerReady(page)) return true;
       if ((await page.locator(SEMRUSH_SWA_SELECTORS.newAnalysis).count()) > 0) break;
       if ((await page.locator(SEMRUSH_SWA_SELECTORS.newDocument).count()) > 0) break;
 
       const title = await page.title().catch(() => '');
       if (/SEO Writing|写作助手|写作工具/i.test(title) && (await this.getBodyHtmlLength(page)) > 1000) {
         await page.waitForTimeout(2_000);
-        if (await this.isSwaCheckerReady(page)) break;
+        if (await this.isSwaCheckerReady(page)) return true;
         if ((await page.locator(SEMRUSH_SWA_SELECTORS.newAnalysis).count()) > 0) break;
       }
       await page.waitForTimeout(1_500);
@@ -133,11 +157,11 @@ export class SemrushSessionManager {
     if (!(await this.isSwaCheckerReady(page))) {
       const entered = await this.tryClickCheckerEntry(page);
       if (!entered && !(await this.tryGotoCheckerDirect(page))) {
-        throw new Error('无法进入 SEO 写作助手 checker 页（未找到可用入口）');
+        return false;
       }
     }
 
-    await this.finalizeCheckerReady(page);
+    return this.isSwaCheckerReady(page);
   }
 
   /** 以 UI 为准判断 checker 是否可用（URL 可能仍为 /swa/） */
@@ -423,13 +447,50 @@ export class SemrushSessionManager {
       .first()
       .waitFor({ state: 'visible', timeout: 30_000 });
 
+    const preferred = options?.preferredNodeKey?.trim();
+
+    // 快速路径：dashboard 默认已选好节点。若其在线，直接点「打开」进入，
+    // 跳过下拉枚举/随机打乱/重选（绝大多数正常情况走这条，最快）。
+    const defaultLabel = await this.readSelectedNodeLabel(dashPage);
+    if (
+      defaultLabel &&
+      this.isNodeOnline(defaultLabel) &&
+      (!preferred || this.extractNodeKey(defaultLabel) === preferred)
+    ) {
+      let semrushPage: Page | null = null;
+      try {
+        semrushPage = await this.clickOpenSemrush(dashPage, context);
+        await this.waitForSemrushAppReady(semrushPage, SEMRUSH_NODE_ATTEMPT_TIMEOUT_MS);
+        const nodeKey = this.extractNodeKey(defaultLabel);
+        this.logger.info('Semrush opened via default node', {
+          action: 'semrush.node_ok',
+          node: nodeKey,
+          attempt: 0,
+          via: 'default',
+        });
+        return { page: semrushPage, nodeKey, nodeLabel: defaultLabel };
+      } catch (err) {
+        this.logger.warn('Semrush default node open failed, falling back to node list', {
+          action: 'semrush.default_node_fail',
+          node: this.extractNodeKey(defaultLabel),
+          errorMessage: err instanceof Error ? err.message : String(err),
+        });
+        await this.recoverToDashboard(semrushPage, dashPage);
+      }
+    } else if (defaultLabel) {
+      this.logger.info('Semrush default node not usable, will pick another', {
+        action: 'semrush.default_node_offline',
+        node: this.extractNodeKey(defaultLabel),
+        online: this.isNodeOnline(defaultLabel),
+      });
+    }
+
     const onlineNodes = await this.listOnlineNodes(dashPage);
     if (!onlineNodes.length) {
       throw new Error('未找到可用的 Semrush 节点（均离线或未加载）');
     }
 
     const candidates = this.shuffleNodeLabels(onlineNodes);
-    const preferred = options?.preferredNodeKey?.trim();
     if (preferred) {
       const preferredLabel = onlineNodes.find((label) => this.extractNodeKey(label) === preferred);
       if (preferredLabel) {
@@ -538,6 +599,15 @@ export class SemrushSessionManager {
       .evaluate('() => document.body?.innerHTML?.length ?? 0')
       .catch(() => 0);
     return typeof len === 'number' ? len : 0;
+  }
+
+  /** 读取节点选择框当前已选节点文本（不展开下拉），用于判断默认节点是否在线 */
+  private async readSelectedNodeLabel(page: Page): Promise<string | null> {
+    const card = page.locator(TOOLS_SHARE_SELECTORS.semrushCard).first();
+    const btn = card.locator(TOOLS_SHARE_SELECTORS.nodeSelectButton).first();
+    if (!(await btn.isVisible().catch(() => false))) return null;
+    const text = ((await btn.textContent().catch(() => '')) ?? '').trim();
+    return text || null;
   }
 
   private async listOnlineNodes(page: Page): Promise<string[]> {

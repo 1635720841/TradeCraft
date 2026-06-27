@@ -14,6 +14,11 @@ export const SEMRUSH_EXPAND_POLL_MS = Number(process.env.SEMRUSH_EXPAND_POLL_MS 
 /** 侧栏分数连续相同读数达到此次数后才视为终态（避免分析未完成就退出） */
 export const SEMRUSH_SCORE_STABLE_POLLS = Number(process.env.SEMRUSH_SCORE_STABLE_POLLS ?? 3);
 
+/** 侧栏 Tab 切换后等待建议列表渲染（原 6s 过长，实测空等占 ~26s/轮） */
+export const SEMRUSH_SIDEBAR_TAB_POLL_MS = Number(
+  process.env.SEMRUSH_SIDEBAR_TAB_POLL_MS ?? 2_000,
+);
+
 /** checker 编辑器就绪最长等待 */
 export const SEMRUSH_SWA_EDITOR_TIMEOUT_MS = Number(
   process.env.SEMRUSH_SWA_EDITOR_TIMEOUT_MS ?? 90_000,

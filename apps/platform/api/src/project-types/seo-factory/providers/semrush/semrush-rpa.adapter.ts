@@ -20,6 +20,7 @@ import {
   SEMRUSH_EXPAND_POLL_MS,
   SEMRUSH_RPA_TIMEOUT_MS,
   SEMRUSH_SCORE_STABLE_POLLS,
+  SEMRUSH_SIDEBAR_TAB_POLL_MS,
   SEMRUSH_SWA_EDITOR_TIMEOUT_MS,
   SEMRUSH_SWA_SIDEBAR_TIMEOUT_MS,
   SEMRUSH_UI_SETTLE_MS,
@@ -35,6 +36,7 @@ import {
 import { hashSemrushContent } from './semrush-content-hash.util';
 import {
   enrichSemrushKeywordCoverage,
+  isSemrushKeywordStrictlyPresent,
   pickSemrushRecommendationsApiPayload,
 } from './semrush-keyword-coverage.util';
 import {
@@ -379,9 +381,9 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
 
     await this.triggerAnalysisIfNeeded(page);
 
-    await sleep(2_000);
+    await sleep(1_000);
     const score = await this.waitForScore(page, getCaptured);
-    await sleep(SEMRUSH_UI_SETTLE_MS);
+    await sleep(400);
     return score;
   }
 
@@ -397,7 +399,28 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
         ? submittedKeywords
         : this.collectKeywordList(keyword, recommendedKeywords),
     );
-    const plannedKeywords = filterSemrushSubmittedKeywordsInContent(content, plannedRaw);
+    const looselyPresent = filterSemrushSubmittedKeywordsInContent(content, plannedRaw);
+
+    // 只把「正文里连续完整出现」的词填进 Semrush 关键词框：宽松匹配（跨填充词/
+    // 词形变体）会把正文里其实没有的目标词放进去。严格过滤后若不足 2 个（Semrush
+    // 设目标的最低要求），回退到宽松结果，避免无法设目标导致评分流程异常。
+    const strictlyPresent = looselyPresent.filter((kw) =>
+      isSemrushKeywordStrictlyPresent(content, kw),
+    );
+    const droppedLooseKeywords = looselyPresent.filter(
+      (kw) => !strictlyPresent.includes(kw),
+    );
+    const plannedKeywords =
+      strictlyPresent.length >= 2 ? strictlyPresent : looselyPresent;
+
+    if (droppedLooseKeywords.length > 0 && strictlyPresent.length >= 2) {
+      this.logger.info('Semrush keywords dropped: not strictly present in content', {
+        action: 'semrush.keyword_loose_dropped',
+        dropped: droppedLooseKeywords,
+        kept: plannedKeywords,
+        keptCount: plannedKeywords.length,
+      });
+    }
 
     if (plannedKeywords.length === 0) {
       this.logger.warn('Semrush keyword goal skipped: no content-aligned keywords', {
@@ -421,11 +444,13 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
 
     await this.clearExistingKeywordTags(page, keywordInput);
     await this.typeKeywordTags(keywordInput, keywords);
-    await sleep(400);
+    await sleep(300);
 
-    await this.waitForKeywordValidation(page, keyword);
-    await this.applyKeywordGoal(page, keywordInput);
-    await sleep(400);
+    // 输完关键词标签立即去填正文：仅本地快速裁剪一次明显的泛词，
+    // 不在此阶段长轮询校验、也不点「获取推荐」。关键词作为 goal 已存在，
+    // 待正文填好后由 triggerAnalysisIfNeeded 统一点一次「获取推荐」触发分析，
+    // 避免空正文的多余分析与两段 15s 等待。
+    await this.pruneInvalidKeywordTags(page, keyword);
 
     this.logger.info('Semrush keyword goal set', {
       action: 'semrush.keyword_goal',
@@ -703,67 +728,6 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
     }
   }
 
-  private async isKeywordGoalValid(page: Page, primary: string): Promise<boolean> {
-    const primaryKeys = this.primaryKeywordKeys(primary);
-    const tagTexts = await this.getKeywordTagTexts(page);
-    if (tagTexts.length < 2) return false;
-
-    return tagTexts.every(
-      (tag) =>
-        primaryKeys.has(tag.toLowerCase()) || isSemrushSpecificKeyword(tag, false),
-    );
-  }
-
-  private async waitForKeywordValidation(page: Page, primary: string): Promise<void> {
-    if (await this.isKeywordGoalValid(page, primary)) return;
-
-    await pollUntil(
-      async () => {
-        await this.pruneInvalidKeywordTags(page, primary);
-        return this.isKeywordGoalValid(page, primary);
-      },
-      {
-        timeoutMs: 15_000,
-        intervalMs: SEMRUSH_EXPAND_POLL_MS,
-        label: 'SWA 关键词具体性校验',
-      },
-    ).catch(() => undefined);
-  }
-
-  private async applyKeywordGoal(
-    page: Page,
-    keywordInput: ReturnType<Page['locator']>,
-  ): Promise<void> {
-    const deadline = Date.now() + 15_000;
-
-    while (Date.now() < deadline) {
-      const applyBtn = page.locator(SEMRUSH_SWA_SELECTORS.applyKeywordGoal).first();
-      if (await applyBtn.isVisible().catch(() => false)) {
-        await applyBtn.scrollIntoViewIfNeeded().catch(() => undefined);
-        await applyBtn.click().catch(() => undefined);
-        await sleep(400);
-        return;
-      }
-
-      const roleBtn = page.getByRole('button', {
-        name: /应用|确认|设置目标|Apply|Set goal/i,
-      });
-      if (await roleBtn.first().isVisible().catch(() => false)) {
-        await roleBtn.first().click().catch(() => undefined);
-        await sleep(400);
-        return;
-      }
-
-      await sleep(SEMRUSH_EXPAND_POLL_MS);
-    }
-
-    await keywordInput.press('Enter').catch(() => undefined);
-    await sleep(200);
-    await page.keyboard.press('Tab').catch(() => undefined);
-    await page.keyboard.press('Enter').catch(() => undefined);
-    await sleep(400);
-  }
-
   private async dismissOverlays(page: Page): Promise<void> {
     const closers = [
       'button[aria-label="Close"]',
@@ -962,7 +926,7 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
         .then((t) => t.replace(/\s+/g, ' ').slice(0, 200))
         .catch(() => '');
 
-      await sleep(analysisComplete ? 1_500 : 2_000);
+      await sleep(analysisComplete ? 800 : 1_500);
     }
 
     throw new Error(
@@ -1095,6 +1059,10 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
       if (this.hasAnySuggestions(parsed)) return parsed;
     }
 
+    if (pickBestRecommendationsCapture(captured)) {
+      return {};
+    }
+
     const gdocMatch = page.url().match(/smr-[0-9a-f-]+/i);
     if (!gdocMatch) return {};
 
@@ -1203,7 +1171,7 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
       } catch {
         /* 网络抖动时继续轮询 */
       }
-      await sleep(2_000);
+      await sleep(timeoutMs <= 3_000 ? 600 : 1_200);
     }
 
     return lastParsed;
@@ -1223,7 +1191,12 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
     }
   > {
     const apiCaptured = pickBestRecommendationsCapture(captured);
-    const apiPrefetched = apiCaptured ?? (await this.fetchRecommendationsWhenReady(page, 5_000));
+    const apiPrefetched =
+      apiCaptured ??
+      (await this.fetchRecommendationsWhenReady(
+        page,
+        resolvedScore !== undefined ? 2_500 : 4_000,
+      ));
     const domScore = this.resolveScore(
       (await this.tryReadScore(page)) ?? resolvedScore,
     );
@@ -1242,36 +1215,63 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
       );
     }
 
+    const sidebarCollectStartedAt = Date.now();
+    let sidebarPrepareMs = 0;
+    let sidebarApiMs = 0;
+    let sidebarDomMs = 0;
+
     this.logger.info('Semrush collecting sidebar suggestions', {
       action: 'semrush.sidebar_collect_start',
       overall,
       hasCapturedApi: Boolean(apiCaptured),
     });
 
-    await this.prepareSidebarForExtraction(page);
-    await pollUntil(
-      async () => {
-        const listItemCount = await page
-          .locator(SEMRUSH_SWA_SELECTORS.suggestionListItem)
-          .count()
-          .catch(() => 0);
-        const widgetVisible = await page
-          .locator(SEMRUSH_SWA_SELECTORS.checkerWidget)
-          .isVisible()
-          .catch(() => false);
-        return listItemCount > 0 || widgetVisible || Boolean(apiCaptured);
-      },
-      { timeoutMs: 20_000, intervalMs: 800, label: 'Semrush 侧栏就绪' },
-    ).catch(() => undefined);
+    const prepareStartedAt = Date.now();
+    await page
+      .locator(SEMRUSH_SWA_SELECTORS.checkerWidget)
+      .first()
+      .scrollIntoViewIfNeeded()
+      .catch(() => undefined);
 
+    const sidebarAlreadyReady =
+      (await page
+        .locator(SEMRUSH_SWA_SELECTORS.suggestionListItem)
+        .count()
+        .catch(() => 0)) > 0;
+
+    if (!sidebarAlreadyReady) {
+      await pollUntil(
+        async () => {
+          const listItemCount = await page
+            .locator(SEMRUSH_SWA_SELECTORS.suggestionListItem)
+            .count()
+            .catch(() => 0);
+          const widgetVisible = await page
+            .locator(SEMRUSH_SWA_SELECTORS.checkerWidget)
+            .isVisible()
+            .catch(() => false);
+          return listItemCount > 0 || widgetVisible;
+        },
+        { timeoutMs: 8_000, intervalMs: 500, label: 'Semrush 侧栏就绪' },
+      ).catch(() => undefined);
+    }
+    sidebarPrepareMs = Date.now() - prepareStartedAt;
+
+    const apiStartedAt = Date.now();
     const apiFetched =
-      apiCaptured ?? (await this.fetchRecommendationsWhenReady(page, 5_000));
-    const lastStatusDetails = this.normalizeSuggestionDetails(
-      await this.fetchLastStatusSuggestions(page),
-    );
-    const checksDetails = this.normalizeSuggestionDetails(
-      await this.fetchChecksSuggestions(page, captured),
-    );
+      apiCaptured ??
+      apiPrefetched ??
+      (await this.fetchRecommendationsWhenReady(page, 2_500));
+
+    const [lastStatusDetails, checksDetails] = await Promise.all([
+      this.fetchLastStatusSuggestions(page).then((d) =>
+        this.normalizeSuggestionDetails(d),
+      ),
+      this.fetchChecksSuggestions(page, captured).then((d) =>
+        this.normalizeSuggestionDetails(d),
+      ),
+    ]);
+    sidebarApiMs = Date.now() - apiStartedAt;
     const apiDetails = this.normalizeSuggestionDetails(
       this.mergeSuggestionDetails(
         this.mergeSuggestionDetails(apiFetched?.details, apiCaptured?.details),
@@ -1279,10 +1279,22 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
       ),
     );
 
-    await this.prepareSidebarForExtraction(page);
-    const domExtracted = await this.extractSuggestionsFromDom(page, { skipPrepare: true });
+    const domStartedAt = Date.now();
+    const domExtracted = await this.extractSuggestionsFromDom(page);
+    sidebarDomMs = Date.now() - domStartedAt;
     const domDetails = this.normalizeSuggestionDetails(domExtracted.details);
     const domActionable = domExtracted.actionableIssues;
+
+    this.logger.info('Semrush sidebar collection finished', {
+      action: 'semrush.sidebar_collect_done',
+      elapsedMs: Date.now() - sidebarCollectStartedAt,
+      prepareMs: sidebarPrepareMs,
+      apiMs: sidebarApiMs,
+      domMs: sidebarDomMs,
+      hasApi: this.hasAnySuggestions(apiDetails),
+      hasDom: this.hasAnySuggestions(domDetails),
+      actionableCount: domActionable.length,
+    });
 
     if (domActionable.length === 0) {
       const sidebarSnippet = await page
@@ -1374,9 +1386,7 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
 
     const finalDomScore = this.resolveScore(await this.tryReadScore(page));
     const finalApiScore = this.resolveScore(
-      (await this.fetchRecommendationsWhenReady(page, 3_000))?.overall ??
-        apiFetched?.overall ??
-        apiPrefetched?.overall,
+      apiFetched?.overall ?? apiPrefetched?.overall ?? apiCaptured?.overall,
     );
     const finalOverall =
       this.pickOverallScore(finalDomScore, finalApiScore, 'extractScoreAndSuggestions.final') ??
@@ -1570,75 +1580,35 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
     });
   }
 
-  private async prepareSidebarForExtraction(page: Page): Promise<void> {
-    await this.expandSidebarSuggestionSections(page);
-    await page
-      .evaluate(`() => {
-        const widget = document.querySelector('[data-test="swa-spa-checker-widget"]');
-        widget?.scrollIntoView({ block: 'start' });
-        const scroll = widget?.querySelector('[data-ui-name="ScrollArea.Container"]');
-        if (scroll) {
-          const step = 320;
-          for (let y = 0; y <= scroll.scrollHeight; y += step) {
-            scroll.scrollTop = y;
-          }
-          scroll.scrollTop = scroll.scrollHeight;
-        }
-      }`)
-      .catch(() => undefined);
-    await sleep(600);
-  }
-
-  /**
-   * SWA 侧栏需点击「可读性/语气」并「展示更多」后，DOM 才包含全部原句建议。
-   */
-  private async expandSidebarSuggestionSections(page: Page): Promise<void> {
-    const widget = page.locator(SEMRUSH_SWA_SELECTORS.checkerWidget).first();
-    if (!(await widget.isVisible().catch(() => false))) return;
-
-    const dimensionLabels = ['可读性', 'Readability', '语气', 'Tone'];
-    for (const label of dimensionLabels) {
+  /** 点击侧栏维度 Tab（中英只点第一个可见项，避免重复轮询） */
+  private async clickSidebarDimensionTab(
+    widget: ReturnType<Page['locator']>,
+    labels: string[],
+  ): Promise<boolean> {
+    for (const label of labels) {
       const tab = widget
         .locator(`[role="tab"]:has-text("${label}"), button:has-text("${label}")`)
         .first();
       if (await tab.isVisible().catch(() => false)) {
         await tab.click({ timeout: 2_500 }).catch(() => undefined);
-      } else {
-        const hit = widget.getByText(label, { exact: true }).first();
-        if (await hit.isVisible().catch(() => false)) {
-          await hit.click({ timeout: 2_500 }).catch(() => undefined);
-        }
+        return true;
       }
-      await sleep(SEMRUSH_EXPAND_POLL_MS);
-      await pollUntil(
-        async () => (await widget.locator('[role="listitem"]').count().catch(() => 0)) > 1,
-        {
-          timeoutMs: 6_000,
-          intervalMs: SEMRUSH_EXPAND_POLL_MS,
-          label: `SWA ${label} suggestions`,
-        },
-      ).catch(() => undefined);
-    }
-
-    const subsectionPatterns = [
-      /最为随意的句子|Most casual sentences/i,
-      /考虑使用主动语态|Consider using active voice/i,
-      /考虑移除或替换|Consider removing or replacing/i,
-      /替换太过复杂的词语|Replace overly complex words/i,
-      /拆分长段|Split long paragraph/i,
-      /段落太长|paragraph is too long/i,
-    ];
-    for (const pattern of subsectionPatterns) {
-      const hits = widget.getByText(pattern);
-      const hitCount = await hits.count().catch(() => 0);
-      for (let i = 0; i < hitCount; i += 1) {
-        const hit = hits.nth(i);
-        if (!(await hit.isVisible().catch(() => false))) continue;
+      const hit = widget.getByText(label, { exact: true }).first();
+      if (await hit.isVisible().catch(() => false)) {
         await hit.click({ timeout: 2_500 }).catch(() => undefined);
-        await sleep(SEMRUSH_EXPAND_POLL_MS);
+        return true;
       }
     }
+    return false;
+  }
 
+  /**
+   * 展开当前激活 Tab 内的折叠原句（被动语态/复杂词/随意句）与全部「展示更多」。
+   * 全程用 widget.evaluate 批量点击，避免逐个 Playwright 点击 + sleep 的累计耗时。
+   */
+  private async expandCurrentTabRows(
+    widget: ReturnType<Page['locator']>,
+  ): Promise<void> {
     const issueRowPatternSources = [
       '考虑使用主动语态|Consider using active voice',
       '最为随意|随意句子|casual sentence',
@@ -1656,17 +1626,19 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
           const safePatterns = Array.isArray(patterns) ? patterns : [];
           const reList = safePatterns.map((p) => new RegExp(p, 'i'));
 
+          const activePanel = widgetEl;
+
           const clickExpandables = (root) => {
             for (const btn of root.querySelectorAll('button[aria-expanded="false"]')) {
               btn.click();
             }
           };
 
-          clickExpandables(widgetEl);
-          for (const section of widgetEl.querySelectorAll('section[aria-labelledby]')) {
+          clickExpandables(activePanel);
+          for (const section of activePanel.querySelectorAll('section[aria-labelledby]')) {
             clickExpandables(section);
           }
-          for (const item of widgetEl.querySelectorAll('[role="listitem"]')) {
+          for (const item of activePanel.querySelectorAll('[role="listitem"]')) {
             const text = (item.textContent || '').replace(/\\s+/g, ' ').trim();
             if (text.length > 120) continue;
             if (!reList.some((re) => re.test(text))) continue;
@@ -1674,55 +1646,54 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
             if (btn) btn.click();
             else item.click();
           }
-          clickExpandables(widgetEl);
         }`,
         issueRowPatternSources,
       )
       .catch(() => undefined);
-    await sleep(SEMRUSH_EXPAND_POLL_MS * 2);
-
-    for (let round = 0; round < 10; round += 1) {
-      const showMore = widget.getByText(/展示更多|Show more/i);
-      const count = await showMore.count().catch(() => 0);
-      if (count === 0) break;
-
-      let clickedAny = false;
-      for (let i = 0; i < count; i += 1) {
-        const btn = showMore.nth(i);
-        if (!(await btn.isVisible().catch(() => false))) continue;
-        await btn.click({ timeout: 2_000 }).catch(() => undefined);
-        clickedAny = true;
-        await sleep(SEMRUSH_EXPAND_POLL_MS);
-      }
-      if (!clickedAny) break;
-    }
-
-    this.logger.info('Semrush sidebar sections expanded', {
-      action: 'semrush.sidebar_expand',
-    });
-
-    await widget
-      .locator(SEMRUSH_SWA_SELECTORS.suggestionScrollContainer)
-      .first()
-      .evaluate((el) => {
-        el.scrollTop = el.scrollHeight;
-      })
-      .catch(() => undefined);
     await sleep(SEMRUSH_EXPAND_POLL_MS);
+
+    for (let round = 0; round < 2; round += 1) {
+      const clicked = await widget
+        .evaluate(`() => {
+          const widgetEl = document.querySelector('[data-test="swa-spa-checker-widget"]');
+          if (!widgetEl) return 0;
+          let n = 0;
+          const isShowMore = (text) => /^(展示更多|Show more)$/i.test((text || '').trim());
+          for (const el of widgetEl.querySelectorAll('button, a, [role="button"]')) {
+            if (!isShowMore(el.textContent)) continue;
+            const style = window.getComputedStyle(el);
+            if (style.display === 'none' || style.visibility === 'hidden') continue;
+            el.click();
+            n += 1;
+            if (n >= 8) break;
+          }
+          return n;
+        }`)
+        .catch(() => 0);
+      if (!clicked) break;
+      await sleep(SEMRUSH_EXPAND_POLL_MS);
+    }
+  }
+
+  private async readSidebarWidgetText(
+    widget: ReturnType<Page['locator']>,
+  ): Promise<string> {
+    const text = await widget
+      .evaluate(`() => {
+        const el = document.querySelector('[data-test="swa-spa-checker-widget"]');
+        return el ? (el.innerText || el.textContent || '') : '';
+      }`)
+      .catch(() => '');
+    return typeof text === 'string' ? text : '';
   }
 
   private async extractSuggestionsFromDom(
     page: Page,
-    options?: { skipPrepare?: boolean },
   ): Promise<{
     details: SemrushSuggestionDetails;
     actionableIssues: SemrushActionableIssue[];
     domUncoveredSeoKeywords?: string[];
   }> {
-    if (!options?.skipPrepare) {
-      await this.prepareSidebarForExtraction(page);
-    }
-
     let mergedDetails: SemrushSuggestionDetails = {};
     let mergedActionable: SemrushActionableIssue[] = [];
     const widget = page.locator(SEMRUSH_SWA_SELECTORS.checkerWidget).first();
@@ -1736,7 +1707,17 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
     let domUncoveredSeoKeywords: string[] = [];
 
     const mergePartial = async () => {
-      for (const frame of page.frames()) {
+      const hasQuoteActionable = (rule: string) =>
+        mergedActionable.some((i) => i.rule === rule && (i.quotes?.length ?? 0) > 0);
+      if (
+        hasQuoteActionable('passive_voice') &&
+        hasQuoteActionable('casual_sentence') &&
+        this.hasAnySuggestions(mergedDetails)
+      ) {
+        return;
+      }
+
+      const tryFrame = async (frame: Frame) => {
         try {
           const partial = await this.extractSuggestionsFromFrame(frame);
           mergedDetails = this.mergeSuggestionDetails(mergedDetails, partial.details);
@@ -1744,57 +1725,48 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
         } catch {
           /* cross-origin or detached frame */
         }
+      };
+
+      await tryFrame(page.mainFrame());
+      if (this.hasAnySuggestions(mergedDetails) && mergedActionable.length > 0) {
+        return;
+      }
+
+      for (const frame of page.frames()) {
+        if (frame === page.mainFrame()) continue;
+        const url = frame.url();
+        if (url && !/sem\.3ue\.com|semrush\.com/i.test(url)) continue;
+        await tryFrame(frame);
       }
     };
 
-    for (const labels of dimensionTabGroups) {
-      let tabClicked = false;
-      for (const label of labels) {
-        const tab = widget
-          .locator(`[role="tab"]:has-text("${label}"), button:has-text("${label}")`)
-          .first();
-        if (await tab.isVisible().catch(() => false)) {
-          await tab.click({ timeout: 2_500 }).catch(() => undefined);
-          tabClicked = true;
-          break;
+    const applySidebarText = (sidebarText: string) => {
+      if (!sidebarText) return;
+      const parsedFromText = parseActionableIssuesFromSidebarText(sidebarText);
+      mergedActionable.push(...parsedFromText);
+      for (const issue of parsedFromText) {
+        if (issue.rule === 'casual_sentence' && issue.quotes?.length) {
+          mergedDetails.tone = [
+            ...new Set([...(mergedDetails.tone ?? []), ...issue.quotes]),
+          ].slice(0, 30);
         }
-        const hit = widget.getByText(label, { exact: true }).first();
-        if (await hit.isVisible().catch(() => false)) {
-          await hit.click({ timeout: 2_500 }).catch(() => undefined);
-          tabClicked = true;
-          break;
+        if (issue.rule === 'passive_voice' && issue.quotes?.length) {
+          mergedDetails.readability = [
+            ...new Set([...(mergedDetails.readability ?? []), ...issue.quotes]),
+          ].slice(0, 30);
         }
       }
+    };
+
+    if (!(await widget.isVisible().catch(() => false))) {
+      return { details: {}, actionableIssues: [] };
+    }
+
+    for (const labels of dimensionTabGroups) {
+      const tabClicked = await this.clickSidebarDimensionTab(widget, labels);
       if (!tabClicked) continue;
 
       await sleep(SEMRUSH_EXPAND_POLL_MS);
-      for (let round = 0; round < 6; round += 1) {
-        const showMore = widget.getByText(/展示更多|Show more/i);
-        const count = await showMore.count().catch(() => 0);
-        if (count === 0) break;
-        for (let i = 0; i < count; i += 1) {
-          await showMore.nth(i).click({ timeout: 2_000 }).catch(() => undefined);
-          await sleep(SEMRUSH_EXPAND_POLL_MS);
-        }
-      }
-
-      const sidebarText = await widget.innerText().catch(() => '');
-      if (sidebarText) {
-        const parsedFromText = parseActionableIssuesFromSidebarText(sidebarText);
-        mergedActionable.push(...parsedFromText);
-        for (const issue of parsedFromText) {
-          if (issue.rule === 'casual_sentence' && issue.quotes?.length) {
-            mergedDetails.tone = [
-              ...new Set([...(mergedDetails.tone ?? []), ...issue.quotes]),
-            ].slice(0, 30);
-          }
-          if (issue.rule === 'passive_voice' && issue.quotes?.length) {
-            mergedDetails.readability = [
-              ...new Set([...(mergedDetails.readability ?? []), ...issue.quotes]),
-            ].slice(0, 30);
-          }
-        }
-      }
 
       if (labels[0] === 'SEO') {
         const uncovered = await this.scrapeUncoveredSeoTags(widget);
@@ -1803,14 +1775,35 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
             ...new Set([...domUncoveredSeoKeywords, ...uncovered]),
           ];
         }
+        applySidebarText(
+          await widget.innerText({ timeout: 5_000 }).catch(() => ''),
+        );
+        continue;
       }
 
-      await mergePartial();
+      // 可读性/语气：短轮询等原句列表渲染，再批量展开
+      await pollUntil(
+        async () => {
+          const text = await this.readSidebarWidgetText(widget);
+          return /主动语态|active voice|随意|casual sentence|可读性|Readability|语气|Tone/i.test(
+            text,
+          );
+        },
+        {
+          timeoutMs: SEMRUSH_SIDEBAR_TAB_POLL_MS,
+          intervalMs: SEMRUSH_EXPAND_POLL_MS,
+          label: `SWA ${labels[0]} tab content`,
+        },
+      ).catch(() => undefined);
+
+      await this.expandCurrentTabRows(widget);
+      await sleep(1_200);
+      applySidebarText(
+        await widget.innerText({ timeout: 8_000 }).catch(() => ''),
+      );
     }
 
-    if (!this.hasAnySuggestions(mergedDetails) && mergedActionable.length === 0) {
-      await mergePartial();
-    }
+    await mergePartial();
 
     if (process.env.SEMRUSH_DEBUG_SIDEBAR === '1' && !this.hasAnySuggestions(mergedDetails)) {
       this.logger.info('Semrush DOM extract empty after all frames', {
