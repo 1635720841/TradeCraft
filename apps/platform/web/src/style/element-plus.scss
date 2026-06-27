@@ -25,22 +25,22 @@
   padding: 0 !important;
 }
 
-/* nprogress 适配主题色 — 天青渐变 */
+/* nprogress 适配主题色 */
 #nprogress {
   & .bar {
-    background: linear-gradient(90deg, #0ea5e9, #06b6d4, #22d3ee) !important;
+    background: linear-gradient(90deg, #0f766e, #2563eb) !important;
     height: 3px !important;
   }
 
   & .peg {
     box-shadow:
-      0 0 12px #0ea5e9,
-      0 0 6px #06b6d4 !important;
+      0 0 12px #0f766e,
+      0 0 6px #2563eb !important;
   }
 
   & .spinner-icon {
-    border-top-color: #0ea5e9;
-    border-left-color: #06b6d4;
+    border-top-color: #0f766e;
+    border-left-color: #2563eb;
   }
 }
 

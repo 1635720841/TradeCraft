@@ -1,98 +1,102 @@
-/* 现代化布局外壳 — 浅色渐变 + 毛玻璃，无边框线条 */
+/* SaaS 控制台外壳：深色导航 + 明亮工作区 */
 
 :root {
-  --shell-bg-gradient: linear-gradient(
-    135deg,
-    #f0f9ff 0%,
-    #f8fafc 45%,
-    #f1f5f9 100%
-  );
-  --shell-sidebar-gradient: linear-gradient(
-    180deg,
-    rgb(255 255 255 / 94%) 0%,
-    rgb(240 249 255 / 90%) 55%,
-    rgb(241 245 249 / 88%) 100%
-  );
-  --shell-header-gradient: linear-gradient(
-    90deg,
-    rgb(255 255 255 / 92%) 0%,
-    rgb(240 249 255 / 88%) 50%,
-    rgb(248 250 252 / 90%) 100%
-  );
-  --shell-accent-gradient: linear-gradient(135deg, #0ea5e9 0%, #06b6d4 50%, #22d3ee 100%);
-  --shell-accent-soft: rgb(14 165 233 / 8%);
-  --shell-accent-glow: 0 4px 20px rgb(14 165 233 / 18%);
-  --shell-shadow-soft: 0 8px 32px rgb(14 165 233 / 6%);
-  --shell-shadow-ambient: 0 2px 16px rgb(15 23 42 / 4%);
-  --shell-text-primary: #1e293b;
-  --shell-text-secondary: #64748b;
-  --shell-text-muted: #94a3b8;
-  --shell-radius-sm: 8px;
-  --shell-radius-md: 12px;
+  --shell-bg: #f5f7fb;
+  --shell-bg-soft: #eef3f8;
+  --shell-sidebar: #0f172a;
+  --shell-sidebar-elevated: #111c31;
+  --shell-header: rgb(255 255 255 / 92%);
+  --shell-border: rgb(15 23 42 / 8%);
+  --shell-border-strong: rgb(15 23 42 / 12%);
+  --shell-accent: #0f766e;
+  --shell-accent-hover: #0d9488;
+  --shell-accent-soft: rgb(15 118 110 / 10%);
+  --shell-info: #2563eb;
+  --shell-info-soft: rgb(37 99 235 / 9%);
+  --shell-warning: #d97706;
+  --shell-danger: #dc2626;
+  --shell-accent-gradient: linear-gradient(135deg, #0f766e 0%, #2563eb 100%);
+  --shell-accent-glow: 0 12px 24px rgb(15 118 110 / 22%);
+  --shell-shadow-soft: 0 10px 28px rgb(15 23 42 / 7%);
+  --shell-shadow-panel: 0 1px 2px rgb(15 23 42 / 5%), 0 16px 36px rgb(15 23 42 / 5%);
+  --shell-text-primary: #111827;
+  --shell-text-secondary: #475569;
+  --shell-text-muted: #7c899b;
+  --shell-radius-sm: 6px;
+  --shell-radius-md: 8px;
   --shell-radius-pill: 999px;
-  --shell-blur: blur(20px) saturate(1.4);
+  --shell-blur: none;
+
+  --el-color-primary: #0f766e;
+  --el-color-primary-light-3: #14b8a6;
+  --el-color-primary-light-5: #5eead4;
+  --el-color-primary-light-7: #99f6e4;
+  --el-color-primary-light-8: #ccfbf1;
+  --el-color-primary-light-9: #f0fdfa;
+  --el-color-primary-dark-2: #0f766e;
+  --el-border-radius-base: 6px;
+  --el-border-radius-small: 5px;
+  --el-font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-/* 顶栏 — 毛玻璃渐变 */
 .shell-navbar,
 .shell-header {
   position: relative;
-  background: var(--shell-header-gradient) !important;
-  backdrop-filter: var(--shell-blur);
-  -webkit-backdrop-filter: var(--shell-blur);
-  box-shadow: var(--shell-shadow-ambient) !important;
-  border: none !important;
+  background: var(--shell-header) !important;
+  border-bottom: 1px solid var(--shell-border) !important;
+  box-shadow: 0 1px 0 rgb(255 255 255 / 70%) inset !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
 .shell-navbar {
   height: 52px !important;
 }
 
-/* 顶栏右侧操作区 */
 .shell-action-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: var(--shell-radius-sm);
   transition:
-    background 0.2s ease,
-    transform 0.15s ease;
+    background 0.16s ease,
+    color 0.16s ease;
 
   &:hover {
+    color: var(--shell-accent) !important;
     background: var(--shell-accent-soft) !important;
-    transform: translateY(-1px);
   }
 }
 
-/* 用户头像胶囊 */
 .shell-user-pill {
   display: flex;
   gap: 8px;
   align-items: center;
-  padding: 4px 12px 4px 4px !important;
+  padding: 4px 10px 4px 4px !important;
   margin-right: 4px;
+  border: 1px solid transparent;
   border-radius: var(--shell-radius-pill) !important;
-  transition: background 0.2s ease;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease;
 
   &:hover {
-    background: var(--shell-accent-soft) !important;
+    background: #fff !important;
+    border-color: var(--shell-border);
   }
 
   img {
-    box-shadow: 0 0 0 2px rgb(14 165 233 / 20%);
+    box-shadow: 0 0 0 2px rgb(15 118 110 / 14%);
   }
 
   p {
     font-size: 13px;
-    font-weight: 500;
+    font-weight: 600;
     color: var(--shell-text-primary);
   }
 }
 
-/* Logo 区域渐变标题 */
 .shell-logo-title {
-  background: linear-gradient(135deg, #0ea5e9 0%, #0891b2 50%, #0e7490 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: #f8fafc;
+  letter-spacing: 0;
 }

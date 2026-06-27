@@ -24,7 +24,7 @@ import {
   useResizeObserver
 } from "@pureadmin/utils";
 
-import LayTag from "./components/lay-tag/index.vue";
+// import LayTag from "./components/lay-tag/index.vue"; // 暂时隐藏标签栏
 import LayNavbar from "./components/lay-navbar/index.vue";
 import LayContent from "./components/lay-content/index.vue";
 import LaySetting from "./components/lay-setting/index.vue";
@@ -142,8 +142,8 @@ const LayHeader = defineComponent({
             : null,
           !pureSetting.hiddenSideBar && layout.value.includes("horizontal")
             ? h(NavHorizontal)
-            : null,
-          h(LayTag)
+            : null
+          // h(LayTag) // 暂时隐藏标签栏
         ]
       }
     );

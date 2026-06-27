@@ -5,90 +5,101 @@
   - 不负责：任务详情（JobDetailView）
 -->
 <template>
-  <div class="p-4 space-y-4">
-    <div v-if="sites.length > 1" class="flex flex-wrap items-center gap-2">
-      <span class="text-sm text-gray-500">查看站点</span>
-      <el-select
-        v-model="filterSiteId"
-        clearable
-        placeholder="全部站点"
-        style="width: 200px"
-        @change="onSiteFilterChange"
-      >
-        <el-option
-          v-for="site in sites"
-          :key="site.id"
-          :label="site.domain"
-          :value="site.id"
-        />
-      </el-select>
+  <div class="seo-overview">
+    <div v-if="sites.length > 1" class="seo-overview__toolbar">
+      <div class="site-filter">
+        <span class="site-filter__label">站点视图</span>
+        <el-select
+          v-model="filterSiteId"
+          clearable
+          placeholder="全部站点"
+          style="width: 220px"
+          @change="onSiteFilterChange"
+        >
+          <el-option
+            v-for="site in sites"
+            :key="site.id"
+            :label="site.domain"
+            :value="site.id"
+          />
+        </el-select>
+      </div>
     </div>
 
-    <el-card v-loading="loading" shadow="never">
-      <template #header>
-        <span class="font-medium">今日待办</span>
-      </template>
+    <section class="overview-metrics" aria-label="SEO 内容工厂关键指标">
+      <article
+        v-for="metric in overviewMetrics"
+        :key="metric.label"
+        class="overview-metric"
+      >
+        <div class="overview-metric__label">
+          <span>{{ metric.label }}</span>
+          <IconifyIconOnline :icon="metric.icon" class="overview-metric__icon" />
+        </div>
+        <div class="overview-metric__value">{{ metric.value }}</div>
+        <div class="overview-metric__hint">{{ metric.hint }}</div>
+      </article>
+    </section>
 
-      <el-empty v-if="todoItems.length === 0" description="暂无紧急待办，可新建任务或查看列表" />
-
-      <div v-else class="space-y-3">
-        <div
-          v-for="item in todoItems"
-          :key="item.id"
-          class="flex flex-wrap items-center justify-between gap-2 rounded border border-[var(--el-border-color-light)] px-3 py-2"
-        >
-          <div class="flex items-start gap-2">
-            <el-tag :type="item.tagType" size="small">{{ item.tagLabel }}</el-tag>
-            <span class="text-sm leading-relaxed">{{ item.text }}</span>
+    <div class="overview-layout">
+      <section v-loading="loading" class="overview-panel">
+        <header class="overview-panel__head">
+          <div>
+            <span class="overview-panel__kicker">Priority Queue</span>
+            <h2 class="overview-panel__title">今日待办</h2>
+            <p class="overview-panel__desc">
+              把会阻塞发文、审核和搜索表现的数据放在这里，运营先处理这些。
+            </p>
           </div>
-          <div class="flex flex-wrap gap-2">
-            <el-button
-              v-if="item.secondaryAction"
-              size="small"
-              @click="item.secondaryAction"
-            >
-              {{ item.secondaryActionLabel }}
-            </el-button>
-            <el-button
-              size="small"
-              :type="item.buttonType"
-              :loading="item.loading"
-              @click="item.action"
-            >
-              {{ item.actionLabel }}
-            </el-button>
+          <el-tag size="small" :type="todoItems.length ? 'warning' : 'success'">
+            {{ todoItems.length ? `${todoItems.length} 项待处理` : "产线健康" }}
+          </el-tag>
+        </header>
+        <div class="overview-panel__body">
+          <el-empty
+            v-if="todoItems.length === 0"
+            description="暂无紧急待办，可新建任务或查看列表"
+            :image-size="72"
+          />
+          <div v-else class="todo-list">
+            <div v-for="item in todoItems" :key="item.id" class="todo-item">
+              <div class="todo-item__text">
+                <el-tag :type="item.tagType" size="small">{{ item.tagLabel }}</el-tag>
+                <span>{{ item.text }}</span>
+              </div>
+              <div class="todo-item__actions">
+                <el-button
+                  v-if="item.secondaryAction"
+                  size="small"
+                  @click="item.secondaryAction"
+                >
+                  {{ item.secondaryActionLabel }}
+                </el-button>
+                <el-button
+                  size="small"
+                  :type="item.buttonType"
+                  :loading="item.loading"
+                  @click="item.action"
+                >
+                  {{ item.actionLabel }}
+                </el-button>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-    </el-card>
+      </section>
 
-    <el-card shadow="never">
-      <template #header>
-        <span class="font-medium">内容流水线</span>
-      </template>
-
-      <div class="pipeline-strip">
-        <button
-          v-for="step in pipelineSteps"
-          :key="step.id"
-          type="button"
-          class="pipeline-step"
-          :class="{ 'pipeline-step--active': step.count > 0 }"
-          @click="step.action"
-        >
-          <span class="pipeline-step__count">{{ step.count }}</span>
-          <span class="pipeline-step__label">{{ step.label }}</span>
-        </button>
-      </div>
-    </el-card>
-
-    <el-row :gutter="16">
-      <el-col :xs="24" :lg="14">
-        <el-card shadow="never">
-          <template #header>
-            <span class="font-medium">快速开始</span>
-          </template>
-
+      <section class="overview-panel">
+        <header class="overview-panel__head">
+          <div>
+            <span class="overview-panel__kicker">Next Action</span>
+            <h2 class="overview-panel__title">快速开始</h2>
+            <p class="overview-panel__desc">
+              新项目先配置站点素材，再从关键词或任务入口开始排产。
+            </p>
+          </div>
+        </header>
+        <div class="overview-panel__body">
           <div v-if="stats?.siteCount === 0" class="space-y-3">
             <el-alert
               type="warning"
@@ -97,39 +108,74 @@
               title="第一步：创建站点"
               description="填写域名与公司卖点后，才能提交文章生成任务。CMS 与搜索表现请在「设置」中配置。"
             />
-            <el-button type="primary" @click="goSites">去创建站点</el-button>
+            <el-button type="primary" class="quick-action" @click="goSites">
+              <IconifyIconOnline icon="ri:global-line" class="mr-1" />
+              去创建站点
+            </el-button>
           </div>
-
-          <div v-else class="flex flex-wrap gap-2">
-            <el-button type="primary" @click="goCreate">新建文章任务</el-button>
-            <el-button @click="goJobs">查看任务列表</el-button>
-            <el-button @click="goSites">站点</el-button>
-            <el-button @click="goKeywords">关键词池</el-button>
+          <div v-else class="quick-actions">
+            <el-button type="primary" class="quick-action" @click="goCreate">
+              <IconifyIconOnline icon="ri:add-line" class="mr-1" />
+              新建任务
+            </el-button>
+            <el-button class="quick-action" @click="goJobs">任务列表</el-button>
+            <el-button class="quick-action" @click="goKeywords">关键词池</el-button>
+            <el-button class="quick-action" @click="goSites">站点素材</el-button>
           </div>
-        </el-card>
-      </el-col>
+        </div>
+      </section>
+    </div>
 
-      <el-col :xs="24" :lg="10">
-        <el-card
-          v-if="clusterHighlights.length"
-          v-loading="clustersLoading"
-          shadow="never"
-        >
-          <template #header>
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <span class="font-medium">主题排产</span>
-              <el-button link type="primary" @click="goTopicClusters">全部主题</el-button>
-            </div>
-          </template>
+    <section class="overview-panel">
+      <header class="overview-panel__head">
+        <div>
+          <span class="overview-panel__kicker">Pipeline</span>
+          <h2 class="overview-panel__title">内容流水线</h2>
+          <p class="overview-panel__desc">
+            从大纲确认、生成、审核到发布，把当前产能和阻塞点一眼看清。
+          </p>
+        </div>
+      </header>
+      <div class="overview-panel__body">
+        <div class="pipeline-strip">
+          <button
+            v-for="step in pipelineSteps"
+            :key="step.id"
+            type="button"
+            class="pipeline-step"
+            :class="{ 'pipeline-step--active': step.count > 0 }"
+            @click="step.action"
+          >
+            <span class="pipeline-step__count">{{ step.count }}</span>
+            <span class="pipeline-step__label">{{ step.label }}</span>
+          </button>
+        </div>
+      </div>
+    </section>
 
-          <div class="space-y-3">
+    <div class="overview-layout">
+      <section v-loading="clustersLoading" class="overview-panel">
+        <header class="overview-panel__head">
+          <div>
+            <span class="overview-panel__kicker">Topic Planning</span>
+            <h2 class="overview-panel__title">
+              {{ clusterHighlights.length ? "主题排产" : "词库机会" }}
+            </h2>
+            <p class="overview-panel__desc">
+              以主题集群管理文章矩阵，优先处理待写数量最多的内容资产。
+            </p>
+          </div>
+          <el-button link type="primary" @click="goTopicClusters">全部主题</el-button>
+        </header>
+        <div class="overview-panel__body">
+          <div v-if="clusterHighlights.length" class="cluster-list">
             <div
               v-for="cluster in clusterHighlights"
               :key="cluster.id"
-              class="rounded border border-[var(--el-border-color-light)] px-3 py-2"
+              class="cluster-card"
             >
-              <div class="mb-1 flex items-center justify-between gap-2">
-                <span class="text-sm font-medium">{{ cluster.name }}</span>
+              <div class="cluster-card__head">
+                <span class="cluster-card__name">{{ cluster.name }}</span>
                 <el-tag v-if="(cluster.pendingCount ?? 0) > 0" size="small" type="warning">
                   待写 {{ cluster.pendingCount }}
                 </el-tag>
@@ -137,101 +183,70 @@
               </div>
               <el-progress
                 :percentage="cluster.progressPercent ?? 0"
-                :stroke-width="6"
+                :stroke-width="8"
                 :status="(cluster.progressPercent ?? 0) >= 100 ? 'success' : undefined"
               />
             </div>
           </div>
-        </el-card>
-
-        <el-card
-          v-else-if="stats && stats.keywordQueueableCount > 0"
-          shadow="never"
-        >
-          <template #header>
-            <span class="font-medium">词库</span>
+          <template v-else-if="stats && stats.keywordQueueableCount > 0">
+            <p class="mb-3 text-sm text-gray-600">
+              {{ stats.keywordQueueableCount }} 个关键词可入队，建议先归入主题再批量排产。
+            </p>
+            <el-button type="primary" size="small" @click="goKeywordsQueueable">
+              去入队
+            </el-button>
           </template>
-          <p class="mb-3 text-sm text-gray-600">
-            {{ stats.keywordQueueableCount }} 个关键词可入队
-          </p>
-          <el-button type="primary" size="small" @click="goKeywordsQueueable">
-            去入队
-          </el-button>
-        </el-card>
-      </el-col>
-    </el-row>
+          <el-empty v-else description="暂无主题排产数据" :image-size="72" />
+        </div>
+      </section>
 
-    <el-card shadow="never">
-      <template #header>
-        <span class="font-medium">运营怎么用这个系统？</span>
-      </template>
-
-      <el-collapse v-model="guideExpanded">
-        <el-collapse-item title="一篇文章从创建到上线（推荐顺序）" name="flow">
-          <ol class="list-decimal space-y-2 pl-5 text-sm leading-relaxed text-gray-700">
-            <li>
-              <strong>站点</strong>：填域名、品牌语气、<strong>公司卖点（AI 写作素材）</strong>。
-            </li>
-            <li>
-              <strong>词库</strong>：把相关词归到同一主题，按组排产、看完成进度。
-            </li>
-            <li>
-              <strong>新建任务</strong>：选站点与关键词，可选<strong>搜索意图</strong>。
-            </li>
-            <li>
-              <strong>大纲待确认</strong>（站点开启时）：核对 AI 大纲，确认后再生成正文。
-            </li>
-            <li>
-              <strong>等待生成</strong>：系统自动分析搜索结果并生成正文；可在任务详情看进度。
-            </li>
-            <li>
-              <strong>敏感内容审核</strong>（YMYL）：人工放行后才能导出 / 推送。
-            </li>
-            <li>
-              <strong>编辑（可选）</strong>：在线改正文；改完后若提示「需重新检查」，请在任务详情按提示操作。
-            </li>
-            <li>
-              <strong>发布</strong>：推送到 CMS 或批量导出 zip。
-            </li>
-            <li>
-              <strong>搜索表现（可选）</strong>：管理员在「设置」连接 Google 搜索控制台，查看点击与排名。
-            </li>
-          </ol>
-        </el-collapse-item>
-        <el-collapse-item title="名词解释" name="glossary">
-          <dl class="space-y-3 text-sm leading-relaxed text-gray-700">
-            <div>
-              <dt class="font-medium">大纲（Brief）</dt>
-              <dd class="text-gray-600">生成正文前的写作方案，可人工确认后再写稿。</dd>
-            </div>
-            <div>
-              <dt class="font-medium">搜索意图</dt>
-              <dd class="text-gray-600">用户搜这个词想干什么，影响文章结构和 CTA。</dd>
-            </div>
-            <div>
-              <dt class="font-medium">公司卖点 / CTA</dt>
-              <dd class="text-gray-600">在站点里填一次，每篇文章自动带上行业、资质与文末询盘引导。</dd>
-            </div>
-            <div>
-              <dt class="font-medium">YMYL</dt>
-              <dd class="text-gray-600">涉及健康/金融等敏感话题，需人工审核后才能发布。</dd>
-            </div>
-            <div>
-              <dt class="font-medium">CMS 推送</dt>
-              <dd class="text-gray-600">把已完成文章推到 WordPress 或 Shopify，默认多为草稿。</dd>
-            </div>
-            <div>
-              <dt class="font-medium">主题集群</dt>
-              <dd class="text-gray-600">把一组相关关键词归在一起，方便按主题排产。</dd>
-            </div>
-            <div>
-              <dt class="font-medium">Google 搜索表现</dt>
-              <dd class="text-gray-600">查看站点在 Google 上的点击、展示与排名。</dd>
-            </div>
-          </dl>
-        </el-collapse-item>
-      </el-collapse>
-    </el-card>
+      <section class="overview-panel overview-guide">
+        <header class="overview-panel__head">
+          <div>
+            <span class="overview-panel__kicker">Operating Model</span>
+            <h2 class="overview-panel__title">运营流程</h2>
+            <p class="overview-panel__desc">
+              推荐用法是先统一站点素材，再按主题排产，最后用搜索表现反哺改稿。
+            </p>
+          </div>
+        </header>
+        <div class="overview-panel__body">
+          <el-collapse v-model="guideExpanded">
+            <el-collapse-item title="一篇文章从创建到上线" name="flow">
+              <ol class="list-decimal space-y-2 pl-5 text-sm leading-relaxed text-gray-700">
+                <li><strong>站点</strong>：填域名、品牌语气、<strong>公司卖点（AI 写作素材）</strong>。</li>
+                <li><strong>词库</strong>：把相关词归到同一主题，按组排产、看完成进度。</li>
+                <li><strong>新建任务</strong>：选站点与关键词，可选<strong>搜索意图</strong>。</li>
+                <li><strong>大纲待确认</strong>：核对 AI 大纲，确认后再生成正文。</li>
+                <li><strong>等待生成</strong>：系统自动分析搜索结果并生成正文，可在任务详情看进度。</li>
+                <li><strong>审核与编辑</strong>：敏感内容人工放行，必要时在线改稿并重新检查。</li>
+                <li><strong>发布与复盘</strong>：推送 CMS 或导出，再用 Google 搜索表现反哺优化。</li>
+              </ol>
+            </el-collapse-item>
+            <el-collapse-item title="核心名词" name="glossary">
+              <dl class="space-y-3 text-sm leading-relaxed text-gray-700">
+                <div>
+                  <dt class="font-medium">大纲（Brief）</dt>
+                  <dd class="text-gray-600">生成正文前的写作方案，可人工确认后再写稿。</dd>
+                </div>
+                <div>
+                  <dt class="font-medium">公司卖点 / CTA</dt>
+                  <dd class="text-gray-600">在站点里填一次，每篇文章自动带上行业、资质与文末询盘引导。</dd>
+                </div>
+                <div>
+                  <dt class="font-medium">主题集群</dt>
+                  <dd class="text-gray-600">把一组相关关键词归在一起，方便按主题排产。</dd>
+                </div>
+                <div>
+                  <dt class="font-medium">Google 搜索表现</dt>
+                  <dd class="text-gray-600">查看站点在 Google 上的点击、展示与排名。</dd>
+                </div>
+              </dl>
+            </el-collapse-item>
+          </el-collapse>
+        </div>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -272,6 +287,40 @@ const clusterHighlights = computed(() => {
     return (b.keywordCount ?? 0) - (a.keywordCount ?? 0);
   });
   return sorted.filter((item) => (item.keywordCount ?? 0) > 0).slice(0, 3);
+});
+
+const overviewMetrics = computed(() => {
+  const s = stats.value;
+  const completed = s?.completedJobs ?? 0;
+  const total = s?.totalJobs ?? 0;
+  const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+  return [
+    {
+      label: "总任务",
+      value: total,
+      hint: `已完成 ${completed} 篇，完成率 ${completionRate}%`,
+      icon: "ri:file-list-3-line"
+    },
+    {
+      label: "进行中",
+      value: s?.activeJobs ?? 0,
+      hint: `队列 ${s?.queuedJobs ?? 0} · 优化中 ${s?.optimizingJobs ?? 0}`,
+      icon: "ri:loader-4-line"
+    },
+    {
+      label: "关键词资产",
+      value: s?.keywordTotalCount ?? 0,
+      hint: `可入队 ${s?.keywordQueueableCount ?? 0} · 未分组 ${s?.keywordUnclusteredCount ?? 0}`,
+      icon: "ri:search-eye-line"
+    },
+    {
+      label: "站点",
+      value: s?.siteCount ?? 0,
+      hint: `${s?.sitesMissingProfileCount ?? 0} 个站点待补充卖点`,
+      icon: "ri:global-line"
+    }
+  ];
 });
 
 interface PipelineStep {
@@ -709,47 +758,3 @@ onMounted(() => {
   void loadClusters();
 });
 </script>
-
-<style scoped>
-.pipeline-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.pipeline-step {
-  flex: 1 1 120px;
-  min-width: 100px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 12px 8px;
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 8px;
-  background: var(--el-bg-color);
-  cursor: pointer;
-  transition: border-color 0.2s;
-}
-
-.pipeline-step:hover {
-  border-color: var(--el-color-primary);
-}
-
-.pipeline-step--active .pipeline-step__count {
-  color: var(--el-color-primary);
-}
-
-.pipeline-step__count {
-  font-size: 1.5rem;
-  font-weight: 600;
-  line-height: 1;
-  color: var(--el-text-color-secondary);
-}
-
-.pipeline-step__label {
-  font-size: 0.75rem;
-  color: var(--el-text-color-regular);
-  text-align: center;
-}
-</style>

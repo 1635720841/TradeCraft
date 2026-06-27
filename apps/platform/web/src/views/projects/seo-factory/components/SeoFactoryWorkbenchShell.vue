@@ -1,42 +1,57 @@
 <!--
-  SEO 工厂工作台壳：项目上下文 + 左侧导航 + 内容区。
+  SEO 工厂工作台壳：项目上下文 + 模块导航 + 内容区。
 
   边界：
   - 不负责：各子页面数据加载
 -->
 <template>
   <div class="seo-factory-workbench">
-    <div
-      class="workbench-header mb-4 rounded-lg border border-[var(--el-border-color-light)] bg-[var(--el-bg-color)] px-4 py-3"
-    >
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div class="flex flex-wrap items-center gap-2">
-            <el-button link type="primary" @click="goProjects">← 返回首页</el-button>
-            <span class="text-gray-300">|</span>
-            <span class="font-medium">{{ projectName || "SEO 内容工厂" }}</span>
+    <section class="workbench-header">
+      <div class="workbench-header__main">
+        <el-button
+          link
+          type="primary"
+          class="workbench-header__back"
+          title="返回项目首页"
+          @click="goProjects"
+        >
+          <IconifyIconOnline icon="ri:arrow-left-line" />
+        </el-button>
+        <div class="workbench-header__title-wrap">
+          <div class="workbench-header__title-row">
+            <h1>{{ projectName || "SEO 内容工厂" }}</h1>
+            <span class="workbench-header__badge">外贸获客内容产线</span>
           </div>
-          <p v-if="projectName" class="mt-1 text-sm text-gray-500">
-            创建文章 → 确认大纲 → 审核 → 发布到网站
-          </p>
         </div>
+      </div>
+
+      <div class="workbench-header__aside">
+        <span class="workbench-header__stat">
+          站点 <strong>{{ siteCount }}</strong>
+        </span>
         <el-tooltip
           :disabled="siteCount > 0"
           content="请先在「站点」创建站点"
           placement="bottom"
         >
-          <el-button type="primary" :disabled="siteCount === 0" @click="goCreateJob">
+          <el-button
+            type="primary"
+            size="small"
+            :disabled="siteCount === 0"
+            @click="goCreateJob"
+          >
+            <IconifyIconOnline icon="ri:add-line" class="mr-1" />
             新建任务
           </el-button>
         </el-tooltip>
       </div>
-    </div>
+    </section>
 
-    <div class="workbench-body flex gap-4">
+    <div class="workbench-body">
       <SeoFactoryWorkbenchNav />
-      <div class="workbench-content min-w-0 flex-1">
+      <main class="workbench-content">
         <slot />
-      </div>
+      </main>
     </div>
   </div>
 </template>

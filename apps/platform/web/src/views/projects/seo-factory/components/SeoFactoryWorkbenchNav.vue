@@ -1,24 +1,30 @@
 <!--
-  SEO 工作台左侧导航：概览 / 任务 / 词库 / 站点 / 设置。
+  SEO 工作台模块导航：概览 / 任务 / 词库 / 站点 / 设置。
 
   边界：
   - 不负责：各页面业务逻辑
 -->
 <template>
-  <nav class="workbench-nav">
-    <el-menu
-      :default-active="activeNav"
-      class="workbench-nav__menu"
-      @select="onNavSelect"
-    >
-      <el-menu-item
+  <nav class="workbench-nav" aria-label="SEO 内容工厂导航">
+    <div class="workbench-nav__label">Modules</div>
+    <div class="workbench-nav__list">
+      <button
         v-for="item in visibleNavItems"
         :key="item.key"
-        :index="item.key"
+        type="button"
+        class="workbench-nav__item"
+        :class="{ 'is-active': activeNav === item.key }"
+        @click="onNavSelect(item.key)"
       >
-        {{ item.label }}
-      </el-menu-item>
-    </el-menu>
+        <span class="workbench-nav__icon" aria-hidden="true">
+          <IconifyIconOnline :icon="item.icon" />
+        </span>
+        <span class="workbench-nav__text">
+          <strong>{{ item.label }}</strong>
+          <small>{{ item.description }}</small>
+        </span>
+      </button>
+    </div>
   </nav>
 </template>
 
@@ -34,14 +40,51 @@ type NavKey = "overview" | "jobs" | "keywords" | "sites" | "settings";
 const NAV_ITEMS: Array<{
   key: NavKey;
   label: string;
+  description: string;
+  icon: string;
   route: string;
   roles: string[];
 }> = [
-  { key: "overview", label: "概览", route: "SeoFactoryOverview", roles: ["admin", "common"] },
-  { key: "jobs", label: "任务", route: "SeoFactoryJobs", roles: ["admin", "common"] },
-  { key: "keywords", label: "词库", route: "SeoFactoryKeywords", roles: ["admin", "common"] },
-  { key: "sites", label: "站点", route: "SeoFactorySites", roles: ["admin", "common"] },
-  { key: "settings", label: "设置", route: "SeoFactorySettings", roles: ["admin"] }
+  {
+    key: "overview",
+    label: "概览",
+    description: "产线状态",
+    icon: "ri:dashboard-3-line",
+    route: "SeoFactoryOverview",
+    roles: ["admin", "common"]
+  },
+  {
+    key: "jobs",
+    label: "文章任务",
+    description: "生成与发布",
+    icon: "ri:article-line",
+    route: "SeoFactoryJobs",
+    roles: ["admin", "common"]
+  },
+  {
+    key: "keywords",
+    label: "关键词池",
+    description: "选题与排产",
+    icon: "ri:search-2-line",
+    route: "SeoFactoryKeywords",
+    roles: ["admin", "common"]
+  },
+  {
+    key: "sites",
+    label: "站点",
+    description: "品牌素材",
+    icon: "ri:global-line",
+    route: "SeoFactorySites",
+    roles: ["admin", "common"]
+  },
+  {
+    key: "settings",
+    label: "设置",
+    description: "集成与实验",
+    icon: "ri:settings-3-line",
+    route: "SeoFactorySettings",
+    roles: ["admin"]
+  }
 ];
 
 const JOBS_ROUTE_NAMES = new Set([
@@ -78,34 +121,9 @@ const activeNav = computed((): NavKey => {
   return "overview";
 });
 
-function onNavSelect(key: string) {
+function onNavSelect(key: NavKey) {
   const item = NAV_ITEMS.find((nav) => nav.key === key);
   if (!item || activeNav.value === item.key) return;
   router.push({ name: item.route, params: { projectId: projectId.value } });
 }
 </script>
-
-<style scoped>
-.workbench-nav {
-  width: 132px;
-  flex-shrink: 0;
-}
-
-.workbench-nav__menu {
-  border-right: none;
-  background: transparent;
-}
-
-.workbench-nav__menu :deep(.el-menu-item) {
-  height: 40px;
-  line-height: 40px;
-  margin-bottom: 2px;
-  border-radius: 6px;
-}
-
-.workbench-nav__menu :deep(.el-menu-item.is-active) {
-  background: var(--el-color-primary-light-9);
-  color: var(--el-color-primary);
-  font-weight: 500;
-}
-</style>

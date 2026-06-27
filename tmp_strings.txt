@@ -5,315 +5,259 @@
   - 不负责：工作流控制（仅展示状态）
 -->
 <template>
-  <div v-loading="loading && !job" class="job-detail">
-    <template v-if="job">
-      <header class="job-detail-top">
-        <div class="job-detail-top__head">
-          <div class="job-detail-top__main">
-            <el-button
-              link
-              type="primary"
-              class="job-detail-top__back"
-              title="返回任务列表"
-              @click="goBack"
-            >
-              <IconifyIconOnline icon="ri:arrow-left-line" />
-            </el-button>
-            <div class="job-detail-top__title-wrap">
-              <div class="job-detail-top__title-row">
-                <h1>{{ job.targetKeyword }}</h1>
-                <el-tag :type="dictTagType(jobStatusDict, job.status)" size="small">
-                  {{ dictLabel(jobStatusDict, job.status) }}
-                </el-tag>
-                <el-tag
-                  v-if="job.searchIntent"
-                  size="small"
-                  :type="dictTagType(keywordIntentDict, job.searchIntent)"
-                >
-                  {{ dictLabel(keywordIntentDict, job.searchIntent) }}
-                </el-tag>
-                <el-tag v-if="polling" type="info" size="small">刷新中</el-tag>
-              </div>
-              <div class="job-detail-top__meta">
-                {{ formatTime(job.createdAt) }}
-                <span v-if="job.updatedAt"> · 更新 {{ formatTime(job.updatedAt) }}</span>
-              </div>
-            </div>
-          </div>
-          <div class="job-detail-top__actions">
+  <div class="p-4 space-y-4">
+    <el-card v-loading="loading && !job" shadow="never">
+      <template #header>
+        <div class="flex items-center justify-between">
+          <span class="font-medium">任务详情</span>
+          <div class="flex items-center gap-2">
+            <el-tag v-if="polling" type="info" size="small">自动刷新中</el-tag>
             <el-button
               v-if="canRetry"
               type="primary"
-              size="small"
               :loading="retrying"
               @click="handleRetry"
             >
               重新生成
             </el-button>
-            <el-button
-              v-if="job.outputUrl && !exportStale"
-              type="success"
+            <el-button type="danger" :loading="deleting" @click="handleDelete">删除任务</el-button>
+            <el-button @click="goBack">返回列表</el-button>
+          </div>
+        </div>
+      </template>
+
+      <template v-if="job">
+        <el-alert
+          v-if="nextStep"
+          class="mb-4"
+          :type="nextStep.alertType"
+          :closable="false"
+          show-icon
+          :title="nextStep.title"
+          :description="nextStep.description"
+        >
+          <template #default>
+            <el-button :type="nextStep.buttonType" @click="nextStep.handler">
+              {{ nextStep.label }}
+            </el-button>
+          </template>
+        </el-alert>
+
+        <el-alert
+          v-if="gscUnderperformHint"
+          class="mb-4"
+          type="warning"
+          :closable="false"
+          show-icon
+          title="搜索表现偏弱"
+          description="该文章在 Google 搜索中展示多但点击或排名不佳。可先改稿，或一键重新跑优化评分（自动改写 + 重算分数）。"
+        >
+          <template #default>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <el-button
+                type="primary"
+                size="small"
+                :loading="rerunningOptimization"
+                :disabled="!canRerunOptimization"
+                @click="handleRerunOptimization('gsc_underperform')"
+              >
+                重新优化评分
+              </el-button>
+              <el-button size="small" @click="activeTab = 'draft'">去改稿</el-button>
+              <el-button size="small" @click="activeTab = 'research'">查看竞品分析</el-button>
+            </div>
+          </template>
+        </el-alert>
+
+        <el-descriptions :column="1" border>
+          <el-descriptions-item label="目标关键词">
+            {{ job.targetKeyword }}
+          </el-descriptions-item>
+          <el-descriptions-item label="搜索意图">
+            <el-tag
+              v-if="job.searchIntent"
               size="small"
-              :loading="exportDownloading === 'html'"
-              @click="handleDownloadExport('html')"
+              :type="dictTagType(keywordIntentDict, job.searchIntent)"
             >
-              下载 HTML
-            </el-button>
-            <el-button
-              v-if="cmsUiEnabled && canPublishToCms"
-              type="success"
-              size="small"
-              plain
-              :loading="cmsPublishing"
-              @click="handlePublishToCms"
+              {{ dictLabel(keywordIntentDict, job.searchIntent) }}
+            </el-tag>
+            <span v-else class="text-gray-500">未记录（默认信息型）</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="状态">
+            <el-tag :type="dictTagType(jobStatusDict, job.status)">
+              {{ dictLabel(jobStatusDict, job.status) }}
+            </el-tag>
+            <p
+              v-if="optimizingProgressMessage"
+              class="mt-2 text-sm text-gray-600"
             >
-              {{ cmsPublishButtonLabel }}
-            </el-button>
-            <el-button type="danger" size="small" plain :loading="deleting" @click="handleDelete">
-              删除
-            </el-button>
-          </div>
-        </div>
-
-        <div class="job-detail-top__stats" aria-label="任务关键指标">
-          <div class="job-detail-stat">
-            <span class="job-detail-stat__label">本地 SEO</span>
-            <strong class="job-detail-stat__value" :class="localScoreMetricClass">
-              {{ localScoreDisplay }}
-            </strong>
-          </div>
-          <div class="job-detail-stat">
-            <span class="job-detail-stat__label">Semrush</span>
-            <strong class="job-detail-stat__value" :class="semrushScoreMetricClass">
-              {{ semrushScoreDisplay }}
-            </strong>
-          </div>
-          <div class="job-detail-stat">
-            <span class="job-detail-stat__label">内链</span>
-            <strong class="job-detail-stat__value">
-              {{ job.draftData?.internalLinksApplied ? internalLinkCount : "—" }}
-            </strong>
-          </div>
-          <div class="job-detail-stat">
-            <span class="job-detail-stat__label">配图</span>
-            <strong class="job-detail-stat__value">
-              {{ job.draftData?.imagesApplied ? articleImageCount : "—" }}
-            </strong>
-          </div>
-        </div>
-      </header>
-
-      <section
-        v-if="nextStep"
-        class="job-detail-callout job-detail-callout--compact"
-        :class="`job-detail-callout--${nextStep.alertType}`"
-      >
-        <IconifyIconOnline :icon="calloutIcon(nextStep.alertType)" class="job-detail-callout__icon" />
-        <div class="job-detail-callout__body">
-          <strong>{{ nextStep.title }}</strong>
-          <span v-if="nextStep.description">{{ nextStep.description }}</span>
-        </div>
-        <el-button size="small" :type="nextStep.buttonType" @click="nextStep.handler">
-          {{ nextStep.label }}
-        </el-button>
-      </section>
-
-      <section
-        v-if="gscUnderperformHint"
-        class="job-detail-callout job-detail-callout--compact job-detail-callout--warning"
-      >
-        <IconifyIconOnline icon="ri:line-chart-line" class="job-detail-callout__icon" />
-        <div class="job-detail-callout__body">
-          <strong>搜索表现偏弱</strong>
-          <span>展示多但点击或排名不佳，可改稿或重新优化评分。</span>
-        </div>
-        <div class="job-detail-callout__actions">
-          <el-button
-            type="primary"
-            size="small"
-            :loading="rerunningOptimization"
-            :disabled="!canRerunOptimization"
-            @click="handleRerunOptimization('gsc_underperform')"
-          >
-            重新优化
-          </el-button>
-          <el-button size="small" @click="activeTab = 'draft'">改稿</el-button>
-        </div>
-      </section>
-
-      <section
-        v-if="optimizingProgressMessage || isOptimizingStale"
-        class="job-detail-callout job-detail-callout--compact job-detail-callout--info"
-      >
-        <IconifyIconOnline icon="ri:loader-4-line" class="job-detail-callout__icon" />
-        <div class="job-detail-callout__body">
-          <strong>进行中</strong>
-          <span>
-            {{ optimizingProgressMessage }}
-            <template v-if="isOptimizingStale">
-              · 超时无进展，请到 SEO 评分取消或重试
-            </template>
-          </span>
-        </div>
-      </section>
-
-      <div class="job-detail-layout">
-        <aside class="job-detail-sidebar">
-          <div class="job-detail-panel job-detail-progress">
-            <div class="job-detail-panel__head">工作流进度</div>
-            <div class="job-detail-panel__body">
-              <ArticleJobProgressStepper :job="job" direction="vertical" />
+              {{ optimizingProgressMessage }}
+            </p>
+            <p
+              v-if="isOptimizingStale"
+              class="mt-1 text-sm text-amber-600"
+            >
+              超过预期时间仍无进展，可能 API 已中断；请到「SEO 评分」点「取消检测」或「重新生成」
+            </p>
+          </el-descriptions-item>
+          <el-descriptions-item label="YMYL 审查">
+            <el-tag v-if="ymylReviewCompleted" :type="requiresHumanReview ? 'warning' : 'success'">
+              {{ requiresHumanReview ? "需人工审核" : "已通过" }}
+            </el-tag>
+            <span v-else class="text-gray-500">未完成</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="内链">
+            <span v-if="job.draftData?.internalLinksApplied">
+              已植入 {{ internalLinkCount }} 条
+            </span>
+            <span v-else class="text-gray-500">未完成</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="配图">
+            <span v-if="job.draftData?.imagesApplied">
+              已植入 {{ articleImageCount }} 张
+            </span>
+            <span v-else class="text-gray-500">未完成</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="导出">
+            <div v-if="exportStale" class="text-amber-600 text-sm">
+              稿件已编辑，导出物已失效。
+              <el-button type="primary" link @click="handleResolveDraftStale('regenerate_export')">
+                重新生成
+              </el-button>
             </div>
-          </div>
-
-          <div class="job-detail-panel">
-            <div class="job-detail-panel__head">任务概况</div>
-            <div class="job-detail-panel__body">
-              <ul class="job-detail-meta-list">
-                <li class="job-detail-meta-list__item">
-                  <span class="job-detail-meta-list__label">YMYL</span>
-                  <span class="job-detail-meta-list__value">
-                    <el-tag
-                      v-if="ymylReviewCompleted"
-                      size="small"
-                      :type="requiresHumanReview ? 'warning' : 'success'"
-                    >
-                      {{ requiresHumanReview ? "需人工审核" : "已通过" }}
-                    </el-tag>
-                    <span v-else class="text-gray-500">未完成</span>
-                  </span>
-                </li>
-                <li v-if="displayErrorMessage" class="job-detail-meta-list__item">
-                  <span class="job-detail-meta-list__label">错误</span>
-                  <span class="job-detail-meta-list__value text-red-500">
-                    {{ displayErrorMessage }}
-                    <span
-                      v-if="resumeStepLabel"
-                      class="mt-1 block text-sm text-gray-600"
-                    >
-                      将从「{{ resumeStepLabel }}」继续
-                    </span>
-                  </span>
-                </li>
-                <li v-if="requiresHumanReview" class="job-detail-meta-list__item">
-                  <span class="job-detail-meta-list__label">审核说明</span>
-                  <span class="job-detail-meta-list__value text-amber-700">
-                    {{ ymylReviewDescription }}
-                  </span>
-                </li>
-              </ul>
+            <div v-else-if="job.outputUrl" class="flex flex-wrap items-center gap-2">
+              <el-button
+                type="primary"
+                link
+                :loading="exportDownloading === 'package'"
+                @click="handleDownloadExport('package')"
+              >
+                下载资产包
+              </el-button>
+              <el-button
+                type="primary"
+                link
+                :loading="exportDownloading === 'html'"
+                @click="handleDownloadExport('html')"
+              >
+                下载 HTML
+              </el-button>
+              <el-button
+                type="primary"
+                link
+                :loading="exportDownloading === 'jsonld'"
+                @click="handleDownloadExport('jsonld')"
+              >
+                下载 JSON-LD
+              </el-button>
+              <el-button
+                v-if="cmsUiEnabled && canPublishToCms"
+                type="success"
+                :link="!prePublishReady"
+                :loading="cmsPublishing"
+                @click="handlePublishToCms"
+              >
+                {{ cmsPublishButtonLabel }}
+              </el-button>
+              <el-link
+                v-if="cmsUiEnabled && cmsPublishResult?.postUrl"
+                :href="cmsPublishResult.postUrl"
+                target="_blank"
+                type="primary"
+              >
+                查看 CMS 文章
+              </el-link>
             </div>
-          </div>
+            <span v-else-if="requiresHumanReview" class="text-amber-600">
+              YMYL 需人工审核，未生成可发布 HTML
+            </span>
+            <span v-else>-</span>
+          </el-descriptions-item>
+          <el-descriptions-item v-if="displayErrorMessage" label="错误信息">
+            <span class="text-red-500">{{ displayErrorMessage }}</span>
+            <p
+              v-if="resumeStepLabel"
+              class="mt-1 text-sm text-gray-600"
+            >
+              将从「{{ resumeStepLabel }}」步骤继续，不会重头生成。
+            </p>
+          </el-descriptions-item>
+          <el-descriptions-item label="创建时间">
+            {{ formatTime(job.createdAt) }}
+          </el-descriptions-item>
+          <el-descriptions-item v-if="job.updatedAt" label="更新时间">
+            {{ formatTime(job.updatedAt) }}
+          </el-descriptions-item>
+        </el-descriptions>
 
-          <div class="job-detail-panel">
-            <div class="job-detail-panel__head">导出与发布</div>
-            <div class="job-detail-panel__body">
-              <div v-if="exportStale" class="mb-3 text-sm text-amber-600">
-                稿件已编辑，导出物已失效。
-                <el-button
-                  type="primary"
-                  link
-                  @click="handleResolveDraftStale('regenerate_export')"
+        <el-collapse v-if="job" class="mt-4">
+          <el-collapse-item title="高级信息" name="advanced">
+            <el-descriptions :column="1" border size="small" class="mb-4">
+              <el-descriptions-item label="任务 ID">{{ job.id }}</el-descriptions-item>
+              <el-descriptions-item label="Trace ID">{{ job.traceId }}</el-descriptions-item>
+              <el-descriptions-item v-if="job.serpData?.fingerprint" label="搜索缓存指纹">
+                {{ job.serpData.fingerprint }}
+              </el-descriptions-item>
+              <el-descriptions-item label="Semrush 终检">
+                {{ job.semrushScore ?? "-" }} / 10
+              </el-descriptions-item>
+              <el-descriptions-item label="本地预检">
+                <el-tag
+                  v-if="effectiveLocalSeoScore != null"
+                  :type="effectiveLocalSeoScore >= localPassThreshold ? 'success' : 'warning'"
+                  size="small"
                 >
-                  重新生成
-                </el-button>
-              </div>
-              <div v-else-if="job.outputUrl" class="job-detail-export-actions">
-                <div class="job-detail-export-actions__downloads">
-                  <el-button
-                    :loading="exportDownloading === 'package'"
-                    @click="handleDownloadExport('package')"
-                  >
-                    <IconifyIconOnline icon="ri:folder-zip-line" />
-                    资产包
-                  </el-button>
-                  <el-button
-                    :loading="exportDownloading === 'html'"
-                    @click="handleDownloadExport('html')"
-                  >
-                    <IconifyIconOnline icon="ri:file-code-line" />
-                    HTML
-                  </el-button>
-                  <el-button
-                    :loading="exportDownloading === 'jsonld'"
-                    @click="handleDownloadExport('jsonld')"
-                  >
-                    <IconifyIconOnline icon="ri:braces-line" />
-                    JSON-LD
-                  </el-button>
-                </div>
-                <el-button
-                  v-if="cmsUiEnabled && canPublishToCms"
-                  type="success"
-                  :loading="cmsPublishing"
-                  @click="handlePublishToCms"
-                >
-                  <IconifyIconOnline icon="ri:send-plane-line" class="mr-1" />
-                  {{ cmsPublishButtonLabel }}
-                </el-button>
-                <el-link
-                  v-if="cmsUiEnabled && cmsPublishResult?.postUrl"
-                  :href="cmsPublishResult.postUrl"
-                  target="_blank"
-                  type="primary"
-                  class="job-detail-export-actions__link"
-                >
-                  查看 CMS 文章 →
-                </el-link>
-              </div>
-              <span v-else-if="requiresHumanReview" class="text-sm text-amber-600">
-                YMYL 需人工审核，未生成可发布 HTML
-              </span>
-              <span v-else class="text-sm text-gray-500">任务完成后可导出</span>
-            </div>
-          </div>
+                  {{ effectiveLocalSeoScore }} / 100
+                </el-tag>
+                <span v-else>- / 100</span>
+              </el-descriptions-item>
+            </el-descriptions>
+          </el-collapse-item>
+        </el-collapse>
 
-          <ArticleJobDraftPublishChecklist
-            v-if="prePublishChecklistItems.length && activeTab !== 'draft'"
-            variant="pre-publish"
-            :items="prePublishChecklistItems"
-            @action="handlePrePublishChecklistAction"
-            @go-ymyl="activeTab = 'ymyl'"
-            @go-edit="activeTab = 'draft'"
-            @go-tab="handleChecklistGoTab"
-            @go-sites="goSiteManage"
-          />
+        <ArticleJobProgressStepper v-if="job" class="mt-4" :job="job" />
 
-          <ArticleJobDraftPublishChecklist
-            v-if="publishChecklistItems.length && activeTab !== 'draft'"
-            :items="publishChecklistItems"
-            @action="handleChecklistAction"
-            @go-ymyl="activeTab = 'ymyl'"
-            @go-edit="activeTab = 'draft'"
-          />
+        <ArticleJobDraftPublishChecklist
+          v-if="prePublishChecklistItems.length && activeTab !== 'draft'"
+          class="mt-4"
+          variant="pre-publish"
+          :items="prePublishChecklistItems"
+          @action="handlePrePublishChecklistAction"
+          @go-ymyl="activeTab = 'ymyl'"
+          @go-edit="activeTab = 'draft'"
+          @go-tab="handleChecklistGoTab"
+          @go-sites="goSiteManage"
+        />
 
-          <div class="job-detail-panel">
-            <el-collapse>
-              <el-collapse-item title="高级信息" name="advanced">
-                <ul class="job-detail-meta-list">
-                  <li class="job-detail-meta-list__item">
-                    <span class="job-detail-meta-list__label">任务 ID</span>
-                    <span class="job-detail-meta-list__value text-xs">{{ job.id }}</span>
-                  </li>
-                  <li class="job-detail-meta-list__item">
-                    <span class="job-detail-meta-list__label">Trace</span>
-                    <span class="job-detail-meta-list__value text-xs">{{ job.traceId }}</span>
-                  </li>
-                  <li v-if="job.serpData?.fingerprint" class="job-detail-meta-list__item">
-                    <span class="job-detail-meta-list__label">SERP 指纹</span>
-                    <span class="job-detail-meta-list__value text-xs">
-                      {{ job.serpData.fingerprint }}
-                    </span>
-                  </li>
-                </ul>
-              </el-collapse-item>
-            </el-collapse>
-          </div>
-        </aside>
+        <ArticleJobDraftPublishChecklist
+          v-if="publishChecklistItems.length && activeTab !== 'draft'"
+          class="mt-4"
+          :items="publishChecklistItems"
+          @action="handleChecklistAction"
+          @go-ymyl="activeTab = 'ymyl'"
+          @go-edit="activeTab = 'draft'"
+        />
 
-        <main class="job-detail-main">
-          <div class="job-detail-tabs-panel job-detail-tabs-panel--seo">
-            <el-tabs v-model="activeTab">
+        <el-alert
+          v-if="requiresHumanReview"
+          class="mt-4"
+          type="warning"
+          :closable="false"
+          show-icon
+          title="需人工审核（YMYL）"
+          :description="ymylReviewDescription"
+        />
+      </template>
+
+      <el-empty v-else-if="!loading" description="任务不存在" />
+    </el-card>
+
+    <el-card v-if="job" shadow="never">
+      <template #header>
+        <span class="font-medium">生成结果</span>
+      </template>
+
+      <el-tabs v-model="activeTab">
         <el-tab-pane label="SEO 评分" name="seo">
           <ArticleJobRewriteResult
             v-if="rewriteCandidate"
@@ -464,17 +408,8 @@
             @refresh="handleRefreshSerp"
           />
         </el-tab-pane>
-            </el-tabs>
-          </div>
-        </main>
-      </div>
-    </template>
-
-    <div v-else-if="!loading" class="job-detail-empty">
-      <el-empty description="任务不存在">
-        <el-button type="primary" @click="goBack">返回任务列表</el-button>
-      </el-empty>
-    </div>
+      </el-tabs>
+    </el-card>
 
     <ArticleJobRewriteDrawer
       v-model="rewriteDrawerOpen"
@@ -815,40 +750,6 @@ const pendingYmylReReview = computed(() => {
 
 const internalLinkCount = computed(() => job.value?.draftData?.internalLinks?.length ?? 0);
 const articleImageCount = computed(() => job.value?.draftData?.articleImages?.length ?? 0);
-
-const localScoreDisplay = computed(() => {
-  if (effectiveLocalSeoScore.value == null) return "—";
-  return `${effectiveLocalSeoScore.value}`;
-});
-
-const semrushScoreDisplay = computed(() => {
-  if (job.value?.semrushScore == null) return "—";
-  return `${job.value.semrushScore}`;
-});
-
-const localScoreMetricClass = computed(() => {
-  if (effectiveLocalSeoScore.value == null) return "";
-  return effectiveLocalSeoScore.value >= localPassThreshold.value
-    ? "job-detail-metric__value--pass"
-    : "job-detail-metric__value--warn";
-});
-
-const semrushScoreMetricClass = computed(() => {
-  if (job.value?.semrushScore == null) return "";
-  return job.value.semrushScore >= semrushPassThreshold.value
-    ? "job-detail-metric__value--pass"
-    : "job-detail-metric__value--warn";
-});
-
-function calloutIcon(type: "success" | "warning" | "info" | "error") {
-  const icons = {
-    success: "ri:checkbox-circle-line",
-    warning: "ri:alert-line",
-    info: "ri:information-line",
-    error: "ri:error-warning-line"
-  };
-  return icons[type];
-}
 
 const ymylReviewDescription = computed(() => {
   if (!requiresHumanReview.value) return "";

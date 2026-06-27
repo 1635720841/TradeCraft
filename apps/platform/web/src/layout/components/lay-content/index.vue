@@ -27,7 +27,8 @@ const transitions = computed(() => {
 });
 
 const hideTabs = computed(() => {
-  return $storage?.configure.hideTabs;
+  // 标签栏已在 layout/index.vue 中整体隐藏，这里恒为 true 以去掉顶部预留的标签栏高度
+  return true;
 });
 
 const hideFooter = computed(() => {

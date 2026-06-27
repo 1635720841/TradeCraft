@@ -49,7 +49,7 @@
     min-height: 100%;
     margin-left: $sideBarWidth;
     overflow: hidden;
-    background: var(--shell-bg-gradient);
+    background: var(--shell-bg);
 
     /* main-content 属性动画 */
     transition: margin-left var(--pure-transition-duration);
@@ -93,43 +93,10 @@
     height: 100%;
     overflow: visible;
     font-size: 0;
-    background: var(--shell-sidebar-gradient) !important;
+    background: var(--shell-sidebar) !important;
     backdrop-filter: var(--shell-blur);
     -webkit-backdrop-filter: var(--shell-blur);
     box-shadow: var(--shell-shadow-soft);
-
-    /* 装饰性光晕 */
-    &::before {
-      position: absolute;
-      top: 60px;
-      left: -40px;
-      z-index: -1;
-      width: 140px;
-      height: 140px;
-      pointer-events: none;
-      content: "";
-      background: radial-gradient(
-        circle,
-        rgb(14 165 233 / 12%) 0%,
-        transparent 70%
-      );
-    }
-
-    &::after {
-      position: absolute;
-      right: -20px;
-      bottom: 80px;
-      z-index: -1;
-      width: 100px;
-      height: 100px;
-      pointer-events: none;
-      content: "";
-      background: radial-gradient(
-        circle,
-        rgb(6 182 212 / 10%) 0%,
-        transparent 70%
-      );
-    }
 
     /* 展开动画 */
     transition: width var(--pure-transition-duration);
@@ -465,7 +432,7 @@
     justify-content: space-around;
     width: 100%;
     height: 52px;
-    background: var(--shell-header-gradient) !important;
+    background: var(--shell-header) !important;
     backdrop-filter: var(--shell-blur);
     -webkit-backdrop-filter: var(--shell-blur);
     box-shadow: var(--shell-shadow-ambient);
@@ -494,10 +461,7 @@
         font-size: 18px;
         font-weight: 700;
         line-height: 32px;
-        background: linear-gradient(135deg, #0ea5e9 0%, #0891b2 50%, #0e7490 100%);
-        -webkit-background-clip: text;
-        background-clip: text;
-        -webkit-text-fill-color: transparent;
+        color: var(--shell-accent);
         white-space: nowrap;
       }
     }
@@ -795,4 +759,30 @@ body[layout="mix"] {
       }
     }
   }
+}
+
+/* SaaS shell overrides */
+.sidebar-container {
+  border-right: 1px solid rgb(255 255 255 / 6%);
+
+  &::before,
+  &::after {
+    display: none !important;
+  }
+
+  .el-menu-item,
+  .el-sub-menu__title {
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+
+  .el-menu-item.is-active.nest-menu::before,
+  .is-active.submenu-title-noDropdown.outer-most::before {
+    background: linear-gradient(135deg, #0f766e 0%, #2563eb 100%) !important;
+    box-shadow: 0 12px 24px rgb(15 118 110 / 22%);
+  }
+}
+
+.horizontal-header {
+  border-bottom: 1px solid var(--shell-border);
 }

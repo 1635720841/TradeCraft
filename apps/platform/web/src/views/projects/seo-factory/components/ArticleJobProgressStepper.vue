@@ -13,7 +13,7 @@
       </el-tag>
     </div>
 
-    <el-steps v-else :active="activeIndex" finish-status="success" align-center>
+    <el-steps v-else :active="activeIndex" :direction="direction" finish-status="success" :align-center="direction === 'horizontal'">
       <el-step
         v-for="step in steps"
         :key="step.key"
@@ -40,8 +40,9 @@ const props = withDefaults(
   defineProps<{
     job: ArticleJobItem;
     compact?: boolean;
+    direction?: "horizontal" | "vertical";
   }>(),
-  { compact: false }
+  { compact: false, direction: "horizontal" }
 );
 
 const steps = computed(() => buildJobProgressSteps(props.job));
