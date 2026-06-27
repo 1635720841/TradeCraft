@@ -51,6 +51,7 @@ import {
   formatLocalScoreBreakdown,
   collectProtectedSeoPhrases,
   countSemrushMissingKeywords,
+  resolveFrozenLocalScoreFields,
 } from './seo-checker-scoring.util';
 import { mergeRecommendedKeywordsForWriting, resolvePersistedSubmittedKeywords } from './seo-checker-keywords.util';
 import {
@@ -316,6 +317,7 @@ export class SeoCheckerLifecycleService {
     };
 
     let currentContent = reconciledContent;
+    const frozenLocalAtSemrushEntry = localResult;
     await this.rpaService.assertSemrushWorkNotCancelled(ctx);
     let semrushResult = await this.rpaService.runSemrushCheck(
       {
@@ -418,36 +420,43 @@ export class SeoCheckerLifecycleService {
         semrushResult,
       },
     );
+    const manualFrozenLocal = resolveFrozenLocalScoreFields(
+      prevCheck.local,
+      frozenLocalAtSemrushEntry,
+    );
     const manualPersistedLocalFields = buildLocalGatePersistedFields({
       gate: localGate,
-      localScore: localResult.score,
+      localScore: manualFrozenLocal.score,
       prediction: manualPersistedLocalGate.prediction,
     });
+
+    const manualContentScoreSnapshot = buildPipelineContentScoreSnapshot({
+      ctx,
+      content: currentContent,
+      localResult,
+      semrushResult,
+      calibrationRuntime,
+      targetWordCount,
+      submittedKeywords: manualSubmittedKeywords,
+      missingKeywordCount: countSemrushMissingKeywords(
+        currentContent,
+        ctx.targetKeyword,
+        semrushResult,
+        recommendedKeywords,
+        manualSubmittedKeywords,
+      ),
+    });
+    manualContentScoreSnapshot.localScore = manualFrozenLocal.score;
 
     const seoCheckBase = {
       ...prevCheck,
       scoreThresholds: buildScoreThresholdsSnapshot(scoreConfig),
-      contentScore: buildPipelineContentScoreSnapshot({
-        ctx,
-        content: currentContent,
-        localResult,
-        semrushResult,
-        calibrationRuntime,
-        targetWordCount,
-        submittedKeywords: manualSubmittedKeywords,
-        missingKeywordCount: countSemrushMissingKeywords(
-          currentContent,
-          ctx.targetKeyword,
-          semrushResult,
-          recommendedKeywords,
-          manualSubmittedKeywords,
-        ),
-      }),
+      contentScore: manualContentScoreSnapshot,
       local: {
-        score: localResult.score,
-        breakdown: localResult.breakdown,
-        suggestions: localResult.suggestions,
-        metrics: localResult.metrics,
+        score: manualFrozenLocal.score,
+        breakdown: manualFrozenLocal.breakdown,
+        suggestions: manualFrozenLocal.suggestions,
+        metrics: manualFrozenLocal.metrics,
         ...manualPersistedLocalFields,
         refreshedAt: new Date().toISOString(),
       },
@@ -524,7 +533,7 @@ export class SeoCheckerLifecycleService {
       data: {
         status: 'COMPLETED',
         errorMessage: null,
-        localSeoScore: localResult.score,
+        localSeoScore: manualFrozenLocal.score,
         semrushScore: semrushResult.overall,
         seoCheckData: seoCheckData as object,
         draftData: { ...latestDraft, content: currentContent } as object,

@@ -145,38 +145,86 @@
           <el-tabs v-model="detailTab" class="seo-score-detail-tabs">
             <el-tab-pane :label="`问题定位${issueItems.length ? ` (${issueItems.length})` : ''}`" name="issues">
               <div class="seo-score-scroll">
-                <template v-if="issueItems.length">
+                <template v-if="issueGroups.length">
                   <div
-                    v-for="(issue, i) in issueItems"
-                    :key="i"
-                    class="seo-score-issue"
-                    :class="`seo-score-issue--${issue.severity}`"
+                    v-for="group in issueGroups"
+                    :key="group.kind"
+                    class="seo-issue-group"
+                    :class="`is-${group.severity}`"
                   >
-                    <span class="seo-score-issue__kind">{{ issue.kind }}</span>
-                    <span>{{ issue.detail }}</span>
+                    <div class="seo-issue-group__head">
+                      <IconifyIconOnline :icon="severityIcon(group.severity)" />
+                      <span class="seo-issue-group__kind">{{ group.kind }}</span>
+                      <span class="seo-issue-group__count">{{ group.items.length }}</span>
+                      <span v-if="group.hint" class="seo-issue-group__hint">{{ group.hint }}</span>
+                    </div>
+                    <ul class="seo-issue-group__list">
+                      <li v-for="(issue, i) in group.items" :key="i" class="seo-issue-line">
+                        <span v-if="issue.meta" class="seo-issue-line__meta">{{ issue.meta }}</span>
+                        <span class="seo-issue-line__text">{{ issue.text }}</span>
+                      </li>
+                    </ul>
                   </div>
                 </template>
-                <div v-else class="seo-score-panel__empty-hint">暂无待修复项</div>
+                <div v-else class="seo-score-panel__empty-hint">
+                  <IconifyIconOnline icon="ri:checkbox-circle-line" />
+                  <span>暂无待修复项</span>
+                </div>
               </div>
             </el-tab-pane>
             <el-tab-pane :label="`优化建议${suggestionCount ? ` (${suggestionCount})` : ''}`" name="suggestions">
               <div class="seo-score-scroll">
-                <template v-if="semrushSuggestionSections.length">
+                <template v-if="suggestionGroups.length">
                   <div
-                    v-for="section in semrushSuggestionSections"
+                    v-for="section in suggestionGroups"
                     :key="section.key"
-                    class="mb-3 last:mb-0"
+                    class="seo-suggest-section"
                   >
-                    <div class="text-xs font-bold text-gray-500 mb-1">{{ section.label }}</div>
-                    <ul class="seo-score-suggest-list">
-                      <li v-for="(s, i) in section.items" :key="i">{{ s }}</li>
-                    </ul>
+                    <div class="seo-suggest-section__head">
+                      <IconifyIconOnline :icon="suggestionIcon(section.key)" />
+                      <span>{{ section.label }}</span>
+                      <span class="seo-suggest-section__count">{{ section.count }}</span>
+                    </div>
+                    <template v-for="(block, bi) in section.blocks" :key="bi">
+                      <ul
+                        v-if="block.kind === 'directives'"
+                        class="seo-score-suggest-list"
+                      >
+                        <li v-for="(t, i) in block.texts" :key="i">{{ t }}</li>
+                      </ul>
+                      <div v-else-if="block.kind === 'quotes'" class="seo-suggest-subblock">
+                        <div class="seo-suggest-sub">{{ block.title }}</div>
+                        <ul class="seo-quote-list">
+                          <li v-for="(t, i) in block.texts" :key="i">{{ t }}</li>
+                        </ul>
+                      </div>
+                      <div v-else class="seo-suggest-subblock">
+                        <div class="seo-suggest-sub">{{ block.title }}</div>
+                        <div class="seo-kw-chips">
+                          <span
+                            v-for="(c, ci) in block.chips"
+                            :key="ci"
+                            class="seo-kw-chip"
+                            :class="c.level != null ? `freq-${c.level}` : ''"
+                          >
+                            {{ c.text }}
+                            <em v-if="c.freqLabel">{{ c.freqLabel }}</em>
+                          </span>
+                          <span v-if="block.more" class="seo-kw-chip is-more">
+                            {{ block.more }}
+                          </span>
+                        </div>
+                      </div>
+                    </template>
                   </div>
                 </template>
                 <ul v-else-if="allSuggestions.length" class="seo-score-suggest-list">
                   <li v-for="(s, i) in allSuggestions" :key="i">{{ s }}</li>
                 </ul>
-                <div v-else class="seo-score-panel__empty-hint">暂无评分建议</div>
+                <div v-else class="seo-score-panel__empty-hint">
+                  <IconifyIconOnline icon="ri:checkbox-circle-line" />
+                  <span>暂无评分建议</span>
+                </div>
               </div>
             </el-tab-pane>
           </el-tabs>
@@ -644,6 +692,152 @@ const semrushSuggestionSections = computed(() => {
   return sections.filter((s) => s.items.length > 0);
 });
 
+/* —— 优化建议：纯前端解析重排（不改后端数据/评分） —— */
+const FREQ_LINE_RE = /^(目标关键词|推荐关键词)「(.+?)」\s*Semrush\s*建议频次[:：]\s*(.+)$/;
+const KEYWORD_LIST_RE = /^(.+?关键词[^:：]*)[:：]\s*(.+)$/;
+const FREQ_META: Record<string, { level: number; label: string }> = {
+  high: { level: 3, label: "高频" },
+  medium: { level: 2, label: "中频" },
+  low: { level: 1, label: "低频" },
+  "very low": { level: 0, label: "极低频" }
+};
+
+function resolveFreq(freq: string): { level: number; label: string } {
+  return FREQ_META[freq.trim().toLowerCase()] ?? { level: 1, label: freq.trim() };
+}
+
+function hasCjk(text: string): boolean {
+  return /[\u4e00-\u9fa5]/.test(text);
+}
+
+function parseKeywordList(listStr: string): { keywords: string[]; more?: string } {
+  const keywords: string[] = [];
+  let more: string | undefined;
+  for (let kw of listStr.split(/[,，、]/).map((s) => s.trim()).filter(Boolean)) {
+    const dengMatch = kw.match(/^(.*?)\s*等\s*(\d+)\s*个$/);
+    if (dengMatch) {
+      if (dengMatch[1].trim()) keywords.push(dengMatch[1].trim());
+      more = `等 ${dengMatch[2]} 个`;
+      continue;
+    }
+    if (kw === "…" || kw === "...") {
+      more = more ?? "更多";
+      continue;
+    }
+    if (kw.endsWith("…")) {
+      kw = kw.slice(0, -1).trim();
+      if (kw) keywords.push(kw);
+      more = more ?? "更多…";
+      continue;
+    }
+    keywords.push(kw);
+  }
+  return { keywords, more };
+}
+
+interface SuggestChip {
+  text: string;
+  level?: number;
+  freqLabel?: string;
+}
+
+interface SuggestBlock {
+  kind: "directives" | "keywords" | "freq" | "quotes";
+  title?: string;
+  texts?: string[];
+  chips?: SuggestChip[];
+  more?: string;
+}
+
+interface SuggestionGroup {
+  key: string;
+  label: string;
+  count: number;
+  blocks: SuggestBlock[];
+}
+
+const suggestionGroups = computed((): SuggestionGroup[] =>
+  semrushSuggestionSections.value
+    .map((section): SuggestionGroup => {
+      const directives: string[] = [];
+      const quotes: string[] = [];
+      const seenDirective = new Set<string>();
+      const seenQuote = new Set<string>();
+      const keywordListMap = new Map<string, { keywords: string[]; more?: string }>();
+      const freqMap = new Map<string, SuggestChip & { scope: string }>();
+
+      for (const raw of section.items) {
+        const item = raw.trim();
+        if (!item) continue;
+
+        const fm = FREQ_LINE_RE.exec(item);
+        if (fm) {
+          const scope = fm[1];
+          const keyword = fm[2];
+          const { level, label } = resolveFreq(fm[3]);
+          const k = `${scope}|${keyword}`;
+          if (!freqMap.has(k)) {
+            freqMap.set(k, { scope, text: keyword, level, freqLabel: label });
+          }
+          continue;
+        }
+
+        const km = KEYWORD_LIST_RE.exec(item);
+        if (km && /关键词/.test(km[1])) {
+          const label = km[1].trim();
+          const parsed = parseKeywordList(km[2]);
+          const existing = keywordListMap.get(label);
+          if (!existing || parsed.keywords.length > existing.keywords.length) {
+            keywordListMap.set(label, parsed);
+          }
+          continue;
+        }
+
+        if (hasCjk(item)) {
+          if (!seenDirective.has(item)) {
+            seenDirective.add(item);
+            directives.push(item);
+          }
+        } else if (!seenQuote.has(item)) {
+          seenQuote.add(item);
+          quotes.push(item);
+        }
+      }
+
+      const blocks: SuggestBlock[] = [];
+      if (directives.length) blocks.push({ kind: "directives", texts: directives });
+
+      for (const [label, kl] of keywordListMap) {
+        blocks.push({
+          kind: "keywords",
+          title: label,
+          chips: kl.keywords.map((text) => ({ text })),
+          more: kl.more
+        });
+      }
+
+      const freqByScope = new Map<string, SuggestChip[]>();
+      for (const f of freqMap.values()) {
+        const arr = freqByScope.get(f.scope) ?? [];
+        arr.push({ text: f.text, level: f.level, freqLabel: f.freqLabel });
+        freqByScope.set(f.scope, arr);
+      }
+      for (const [scope, chips] of freqByScope) {
+        chips.sort((a, b) => (b.level ?? 0) - (a.level ?? 0));
+        blocks.push({ kind: "freq", title: `${scope}使用频次`, chips });
+      }
+
+      if (quotes.length) {
+        blocks.push({ kind: "quotes", title: `相关示例句（${quotes.length}）`, texts: quotes });
+      }
+
+      const count =
+        directives.length + keywordListMap.size + freqMap.size + quotes.length;
+      return { key: section.key, label: section.label, count, blocks };
+    })
+    .filter((g) => g.blocks.length > 0)
+);
+
 function mergeOptimizeHistory(
   fromSeo: ArticleJobOptimizeRound[] | null | undefined,
   fromDraft: ArticleJobOptimizeRound[] | null | undefined,
@@ -850,51 +1044,91 @@ const statusHintWarn = computed(
     (checking.value && checkStale.value)
 );
 
+type IssueSeverity = "error" | "warning";
+
 interface IssueItem {
   kind: string;
-  detail: string;
-  severity: "error" | "warning";
+  /** 简短量化信息，如「28 词」「口语化」，作为标签展示 */
+  meta?: string;
+  /** 命中的正文片段或「术语 → 建议」 */
+  text: string;
+  severity: IssueSeverity;
 }
+
+interface IssueGroup {
+  kind: string;
+  severity: IssueSeverity;
+  hint: string;
+  items: IssueItem[];
+}
+
+const ISSUE_HINTS: Record<string, string> = {
+  超长段: "拆分为更短段落（建议每段 ≤ 65 词）",
+  超长句: "拆成短句（建议 ≤ 22 词）",
+  难读句: "简化句式、减少从句与复杂词",
+  随意句: "改为更正式、书面的表达",
+  复杂词: "替换为更易读的同义词"
+};
 
 const issueItems = computed((): IssueItem[] => {
   const items: IssueItem[] = [];
   for (const sample of longParagraphSamples.value) {
-    items.push({
-      kind: "超长段",
-      detail: `${sample.wordCount} 词 · ${sample.text}`,
-      severity: "error"
-    });
+    items.push({ kind: "超长段", meta: `${sample.wordCount} 词`, text: sample.text, severity: "error" });
   }
   for (const sample of longSentenceSamples.value) {
-    items.push({
-      kind: "超长句",
-      detail: `${sample.wordCount} 词 · ${sample.text}`,
-      severity: "warning"
-    });
+    items.push({ kind: "超长句", meta: `${sample.wordCount} 词`, text: sample.text, severity: "warning" });
   }
   for (const sample of hardToReadSentenceSamples.value) {
-    items.push({
-      kind: "难读句",
-      detail: `${sample.wordCount} 词 · ${sample.text}`,
-      severity: "error"
-    });
+    items.push({ kind: "难读句", meta: `${sample.wordCount} 词`, text: sample.text, severity: "error" });
   }
   for (const sample of casualSentenceSamples.value) {
-    items.push({
-      kind: "随意句",
-      detail: `(${sample.reason}) ${sample.text}`,
-      severity: "warning"
-    });
+    items.push({ kind: "随意句", meta: sample.reason, text: sample.text, severity: "warning" });
   }
   for (const sample of semrushComplexWordSamples.value) {
     items.push({
       kind: "复杂词",
-      detail: `${sample.term} → ${sample.suggestion}`,
+      text: `${sample.term} → ${sample.suggestion}`,
       severity: "warning"
     });
   }
   return items;
 });
+
+const issueGroups = computed((): IssueGroup[] => {
+  const map = new Map<string, IssueGroup>();
+  for (const item of issueItems.value) {
+    let group = map.get(item.kind);
+    if (!group) {
+      group = {
+        kind: item.kind,
+        severity: item.severity,
+        hint: ISSUE_HINTS[item.kind] ?? "",
+        items: []
+      };
+      map.set(item.kind, group);
+    }
+    if (item.severity === "error") group.severity = "error";
+    group.items.push(item);
+  }
+  // error 组排前面
+  return [...map.values()].sort(
+    (a, b) => (a.severity === "error" ? 0 : 1) - (b.severity === "error" ? 0 : 1)
+  );
+});
+
+function severityIcon(severity: IssueSeverity) {
+  return severity === "error" ? "ri:error-warning-line" : "ri:alert-line";
+}
+
+function suggestionIcon(key: string) {
+  const icons: Record<string, string> = {
+    readability: "ri:book-open-line",
+    seo: "ri:search-eye-line",
+    tone: "ri:chat-voice-line",
+    originality: "ri:fingerprint-line"
+  };
+  return icons[key] ?? "ri:lightbulb-flash-line";
+}
 
 type MetricStatus = "pass" | "warn" | "fail" | "info";
 
@@ -1079,8 +1313,8 @@ const allSuggestions = computed(() =>
 );
 
 const suggestionCount = computed(() => {
-  if (semrushSuggestionSections.value.length) {
-    return semrushSuggestionSections.value.reduce((sum, s) => sum + s.items.length, 0);
+  if (suggestionGroups.value.length) {
+    return suggestionGroups.value.reduce((sum, g) => sum + g.count, 0);
   }
   return allSuggestions.value.length;
 });

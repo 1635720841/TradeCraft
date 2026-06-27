@@ -31,19 +31,62 @@ function countWords(text: string): number {
   return text.split(/\s+/).filter((w) => w.trim().length > 0).length;
 }
 
-/** 与 scoreReadability 一致：按 [.!?] 切句并统计 >22 词 */
+/** 去除行内 Markdown 标记与图片占位，避免污染句子词数统计 */
+function stripInlineMarkdownForSentence(text: string): string {
+  return text
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ') // ![alt](url) 图片
+    .replace(/\[image:[^\]]*\]/gi, ' ') // [Image: ...] 占位
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1') // [text](url) 链接保留文字
+    .replace(/[`*_~]+/g, ' ') // 强调 / 行内代码标记
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * 将 Markdown 正文拆为「面向句子统计」的纯文本行：
+ * - 跳过标题 / 图片 / 表格 / 代码围栏
+ * - 列表项按行各自独立（不与引导句 `...are:` 合并）
+ * - 清理行内图片 / 链接标记
+ *
+ * 修复点：原先直接对整段 Markdown 用 [.!?] 切句，会把
+ * 「引导句: - 项 - 项 [Image: ...] 下一句.」误判成一整句超长句。
+ */
+function extractProseLinesForSentences(content: string): string[] {
+  const lines: string[] = [];
+  let inCodeFence = false;
+  for (const rawLine of content.split('\n')) {
+    const line = rawLine.trim();
+    if (/^```/.test(line)) {
+      inCodeFence = !inCodeFence;
+      continue;
+    }
+    if (inCodeFence || !line) continue;
+    if (line.startsWith('#')) continue; // 标题
+    if (line.startsWith('![')) continue; // 图片
+    if (/^\[image:/i.test(line)) continue; // 图片占位行
+    if (/^\|/.test(line)) continue; // 表格行
+    let body = line.replace(/^>\s?/, ''); // 去引用标记
+    const listMatch = MARKDOWN_LIST_ITEM_RE.exec(body);
+    if (listMatch) body = listMatch[2];
+    const cleaned = stripInlineMarkdownForSentence(body);
+    if (cleaned) lines.push(cleaned);
+  }
+  return lines;
+}
+
+/** 与 scoreReadability 一致：Markdown 感知地按行 + [.!?] 切句并统计 >22 词 */
 export function extractLongSentences(
   content: string,
   maxWords = LONG_SENTENCE_MAX_WORDS,
 ): LongSentenceSample[] {
   const samples: LongSentenceSample[] = [];
-  const re = /([^.!?]+)([.!?]+)/g;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(content)) !== null) {
-    const text = match[1].trim();
-    const words = countWords(text);
-    if (words >= MIN_SENTENCE_WORDS && words > maxWords) {
-      samples.push({ text, wordCount: words });
+  for (const line of extractProseLinesForSentences(content)) {
+    for (const piece of line.split(/[.!?]+/)) {
+      const text = piece.trim();
+      const words = countWords(text);
+      if (words >= MIN_SENTENCE_WORDS && words > maxWords) {
+        samples.push({ text, wordCount: words });
+      }
     }
   }
   return samples;

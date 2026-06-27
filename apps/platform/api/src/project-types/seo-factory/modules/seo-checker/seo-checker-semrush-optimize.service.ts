@@ -118,6 +118,8 @@ export class SeoCheckerSemrushOptimizeService {
   }> {
     let currentContent = input.initialContent;
     let localResult = input.initialLocalResult;
+    const frozenLocalResult = input.initialLocalResult;
+    const frozenLocalScore = frozenLocalResult.score;
     let semrushResult = input.initialSemrushResult;
     const calibrationShadowLog = [...(input.calibrationShadowLog ?? [])];
     let usedCalibrationProxy = semrushResult.calibrationProxy === true;
@@ -301,7 +303,7 @@ export class SeoCheckerSemrushOptimizeService {
         phase: 'semrush',
         round: semrushOptimizeRounds,
         maxRounds: semrushRoundCap,
-        localScore: localResult.score,
+        localScore: frozenLocalScore,
         semrushScore: semrushResult.overall,
         message: roundMessage,
       });
@@ -368,7 +370,7 @@ export class SeoCheckerSemrushOptimizeService {
             phase: 'semrush',
             round: semrushOptimizeRounds,
             maxRounds: semrushRoundCap,
-            localScore: localResult.score,
+            localScore: frozenLocalScore,
             semrushScore: semrushResult.overall,
             message: roundMessage,
           });
@@ -381,7 +383,7 @@ export class SeoCheckerSemrushOptimizeService {
               round: semrushOptimizeRounds,
               semrushEvaluationRoute: semrushResult.semrushEvaluationRoute,
               scoreBefore: semrushResult.overall,
-              localScore: localResult.score,
+              localScore: frozenLocalScore,
             },
           );
         } else {
@@ -420,7 +422,7 @@ export class SeoCheckerSemrushOptimizeService {
             round: semrushOptimizeRounds,
             content: currentContent,
             semrushResult,
-            localResult,
+            localResult: frozenLocalResult,
             semrushOptCtx: semrushOptCtxForRound,
             protectedSeoPhrases,
             scoreConfig,
@@ -561,7 +563,7 @@ export class SeoCheckerSemrushOptimizeService {
         phase: 'semrush-check',
         round: semrushOptimizeRounds,
         maxRounds: semrushRoundCap,
-        localScore: candidateLocal.score,
+        localScore: frozenLocalScore,
         semrushScore: semrushResult.overall,
         message: `第 ${semrushOptimizeRounds} 轮正文已更新，重新 Semrush 终检中…`,
       });
@@ -811,7 +813,7 @@ export class SeoCheckerSemrushOptimizeService {
           { phase: 'semrush', round: semrushOptimizeRounds },
           {
             scoreAfter: semrushResult.overall,
-            localScoreAfter: localResult.score,
+            localScoreAfter: frozenLocalScore,
           },
         );
       } else {
@@ -852,7 +854,7 @@ export class SeoCheckerSemrushOptimizeService {
           { phase: 'semrush', round: semrushOptimizeRounds },
           {
             scoreAfter: bestSemrushScore,
-            localScoreAfter: bestLocalAtSemrush.score,
+            localScoreAfter: frozenLocalScore,
             rolledBack: true,
             candidateScoreAfter: candidateSemrush.overall,
             candidateLocalScoreAfter: candidateLocal.score,
@@ -883,11 +885,12 @@ export class SeoCheckerSemrushOptimizeService {
       );
       const persistedRoundLocalFields = buildLocalGatePersistedFields({
         gate: input.localGate,
-        localScore: bestLocalAtSemrush.score,
+        localScore: frozenLocalScore,
         prediction: persistedRoundGate.prediction,
       });
       await this.progressService.persistSemrushProgress(ctx, {
         localResult: bestLocalAtSemrush,
+        frozenLocalResult,
         semrushResult: bestSemrushResult,
         localOptimizeRounds,
         semrushOptimizeRounds,

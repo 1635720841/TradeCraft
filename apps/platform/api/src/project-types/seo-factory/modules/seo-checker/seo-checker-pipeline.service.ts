@@ -64,6 +64,7 @@ import {
   countSemrushMissingKeywords,
   flowCtx,
   restoreSemrushResult,
+  resolveFrozenLocalScoreFields,
 } from './seo-checker-scoring.util';
 import { mergeRecommendedKeywordsForWriting, resolvePersistedSubmittedKeywords } from './seo-checker-keywords.util';
 import {
@@ -1083,36 +1084,39 @@ export class SeoCheckerPipelineService {
       submittedKeywords: submittedKeywordsFinal,
       semrushResult,
     });
+    const frozenLocal = resolveFrozenLocalScoreFields(prevCheck.local, localResult);
     const persistedLocalFields = buildLocalGatePersistedFields({
       gate: localGate,
-      localScore: localResult.score,
+      localScore: frozenLocal.score,
       prediction: persistedLocalGate.prediction,
     });
+    const contentScoreSnapshot = buildPipelineContentScoreSnapshot({
+      ctx,
+      content: currentContent,
+      localResult,
+      semrushResult,
+      calibrationRuntime,
+      targetWordCount,
+      submittedKeywords: submittedKeywordsFinal,
+      missingKeywordCount: countSemrushMissingKeywords(
+        currentContent,
+        ctx.targetKeyword,
+        semrushResult,
+        recommendedKeywords,
+        submittedKeywordsFinal,
+      ),
+    });
+    contentScoreSnapshot.localScore = frozenLocal.score;
 
     const seoCheckBase = {
       ...prevCheck,
       workflowProgress: null,
-      contentScore: buildPipelineContentScoreSnapshot({
-        ctx,
-        content: currentContent,
-        localResult,
-        semrushResult,
-        calibrationRuntime,
-        targetWordCount,
-        submittedKeywords: submittedKeywordsFinal,
-        missingKeywordCount: countSemrushMissingKeywords(
-          currentContent,
-          ctx.targetKeyword,
-          semrushResult,
-          recommendedKeywords,
-          submittedKeywordsFinal,
-        ),
-      }),
+      contentScore: contentScoreSnapshot,
       local: {
-        score: localResult.score,
-        breakdown: localResult.breakdown,
-        suggestions: localResult.suggestions,
-        metrics: localResult.metrics,
+        score: frozenLocal.score,
+        breakdown: frozenLocal.breakdown,
+        suggestions: frozenLocal.suggestions,
+        metrics: frozenLocal.metrics,
         optimizeRounds,
         ...persistedLocalFields,
         passedAt: new Date().toISOString(),
@@ -1166,7 +1170,7 @@ export class SeoCheckerPipelineService {
     await this.prisma.articleJob.update({
       where: { id: ctx.jobId },
       data: {
-        localSeoScore: localResult.score,
+        localSeoScore: frozenLocal.score,
         seoCheckData: seoCheckData as object,
         semrushScore: semrushResult.skipped ? null : semrushResult.overall,
         draftData: { ...latestDraft, content: currentContent } as object,
@@ -1184,13 +1188,13 @@ export class SeoCheckerPipelineService {
       traceId: ctx.traceId,
       jobId: ctx.jobId,
       action: 'seo_checker.completed',
-      localScore: localResult.score,
+      localScore: frozenLocal.score,
       semrushScore: semrushResult.skipped ? null : semrushResult.overall,
       optimizeRounds,
       semrushOptimizeRounds,
     });
     logSeoPipelineFlow(this.logger, flowCtx(ctx), 'pipeline.completed', {
-      localScore: localResult.score,
+      localScore: frozenLocal.score,
       semrushScore: semrushResult.skipped ? null : semrushResult.overall,
       localOptimizeRounds: optimizeRounds,
       semrushOptimizeRounds,

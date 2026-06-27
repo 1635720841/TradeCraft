@@ -43,6 +43,33 @@ export function evaluateLocal(
     });
   }
 
+/**
+ * 进入 Semrush 阶段后冻结本地评分明细。
+ * 本地预检通过后，Semrush 优化轮会持续改写正文；为避免用户看到的本地评分
+ * 随之跳动，持久化时优先沿用本地预检快照（prevLocal），无快照时回退到当前重算值。
+ * 注意：仅冻结展示性的本地评分结论，不影响校准训练快照与 Semrush 预测。
+ */
+export function resolveFrozenLocalScoreFields(
+    prevLocal: unknown,
+    fallback: LocalSeoScoreResult,
+  ): Pick<LocalSeoScoreResult, 'score' | 'breakdown' | 'suggestions' | 'metrics'> {
+    const snapshot = (prevLocal ?? {}) as Partial<LocalSeoScoreResult>;
+    if (typeof snapshot.score === 'number') {
+      return {
+        score: snapshot.score,
+        breakdown: snapshot.breakdown ?? fallback.breakdown,
+        suggestions: snapshot.suggestions ?? fallback.suggestions,
+        metrics: snapshot.metrics ?? fallback.metrics,
+      };
+    }
+    return {
+      score: fallback.score,
+      breakdown: fallback.breakdown,
+      suggestions: fallback.suggestions,
+      metrics: fallback.metrics,
+    };
+  }
+
 export function formatLocalScoreBreakdown(result: LocalSeoScoreResult): string {
     const b = result.breakdown;
     const lines = [

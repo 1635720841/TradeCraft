@@ -240,13 +240,13 @@ function scoreKeywordCoverage(keyword: string, content: string): { score: number
     score += 2;
   } else if (keywordWordCount === 3 && (keywordHits >= 1 || density >= 0.003)) {
     score += 2;
-  } else if (density >= 0.005 && density <= 0.025) {
+  } else if (density >= 0.008 && density <= 0.025) {
     score += 2;
-  } else if (density >= 0.0025 && density <= 0.035) {
+  } else if (density >= 0.004 && density <= 0.035) {
     score += 1;
-    suggestions.push('调整关键词密度至约 0.5%–2.5% 可更接近 Semrush');
-  } else if (density < 0.0025) {
-    suggestions.push('长文可适当再自然提及 1 次目标词（Semrush 密度建议 0.5%–2.5%）');
+    suggestions.push('调整关键词密度至约 0.8%–2.5% 可更接近 Semrush');
+  } else if (density < 0.004) {
+    suggestions.push('长文可适当再自然提及 1 次目标词（Semrush 密度建议 0.8%–2.5%）');
   } else {
     suggestions.push('关键词密度偏高，请调整至约 0.8%–2.5%');
   }
@@ -510,11 +510,8 @@ function scoreReadability(
     LOCAL_PARAGRAPH_MAX_WORDS,
   ).length;
 
-  const sentences = content.split(/[.!?]+/).filter((s) => countWords(s) >= 4);
-  let longSentencesOver22 = 0;
-  for (const sentence of sentences) {
-    if (countWords(sentence) > 22) longSentencesOver22 += 1;
-  }
+  // 与样本一致：Markdown 感知切句，避免列表/图片占位被误判为整句超长句
+  const longSentencesOver22 = extractLongSentences(content).length;
 
   const passiveMatches = content.match(/\b(is|are|was|were|been|being)\s+\w+ed\b/gi) ?? [];
   const passiveVoiceHits = passiveMatches.length;
@@ -693,19 +690,22 @@ export function buildLocalScoreGapPlan(
   }
 
   const m = result.metrics;
-  lines.push('', 'Scorer-aligned readability counters (must match after edit):');
   lines.push(
-    `- Sentences **>22 words**: ${m.longSentencesOver22} (max **2** allowed — each excess blocks +6 readability pts)`,
+    '',
+    'Scorer-aligned readability gate (clear ALL items to unlock readability 17–20; any unresolved item caps readability at 16, and >1 long paragraph caps it at 15):',
   );
   lines.push(
-    `- Paragraphs **>${LOCAL_PARAGRAPH_MAX_WORDS} words**: ${m.longParagraphsOver65} (max **1** allowed — excess blocks readability pts)`,
+    `- Sentences **>22 words**: ${m.longSentencesOver22} (must be **≤2**)`,
   );
   lines.push(
-    `- Passive voice hits: ${m.passiveVoiceHits} (max **6** allowed — excess blocks readability pts)`,
+    `- Paragraphs **>${LOCAL_PARAGRAPH_MAX_WORDS} words**: ${m.longParagraphsOver65} (must be **≤1**)`,
+  );
+  lines.push(
+    `- Passive voice hits: ${m.passiveVoiceHits} (keep **≤6**)`,
   );
   if (typeof m.fleschReadingEase === 'number') {
     lines.push(
-      `- Flesch readability: **${m.fleschReadingEase}** (Semrush target **${m.fleschTarget ?? SEMRUSH_FLESCH_TARGET_DEFAULT}**, ±${SEMRUSH_FLESCH_TOLERANCE})`,
+      `- Flesch readability: **${m.fleschReadingEase}** (align to Semrush target **${m.fleschTarget ?? SEMRUSH_FLESCH_TARGET_DEFAULT}** within ±${SEMRUSH_FLESCH_TOLERANCE} to pass the gate)`,
     );
   }
   if (typeof m.casualSentenceHits === 'number') {
@@ -715,7 +715,7 @@ export function buildLocalScoreGapPlan(
   }
   if (typeof m.semrushComplexWordHits === 'number' && m.semrushComplexWordHits > 0) {
     lines.push(
-      `- Semrush complex words: **${m.semrushComplexWordHits}** (each costs 1–4 readability pts — replace with simpler terms)`,
+      `- Semrush complex words: **${m.semrushComplexWordHits}** (must be **0** to pass the readability gate — replace with simpler terms)`,
     );
   }
   if (typeof m.hardToReadSentenceHits === 'number' && m.hardToReadSentenceHits > 0) {
@@ -726,7 +726,7 @@ export function buildLocalScoreGapPlan(
   if (result.breakdown.keywordCoverage < DIMENSION_MAX.keywordCoverage) {
     if (typeof m.keywordDensity === 'number') {
       lines.push(
-        `- Keyword density: **${m.keywordDensity}%** (full band **0.8%–2.5%** → +10 pts; secondary **0.4%–3.5%** → +6 only)`,
+        `- Keyword density: **${m.keywordDensity}%** (full band **0.8%–2.5%** → +2 pts; secondary **0.4%–3.5%** → +1 only)`,
       );
     }
     if (result.breakdown.serpTermAlignment >= DIMENSION_MAX.serpTermAlignment) {
@@ -745,7 +745,7 @@ export function buildLocalScoreGapPlan(
   } else if (gap <= 2 && result.breakdown.keywordCoverage < DIMENSION_MAX.keywordCoverage) {
     lines.push(
       '',
-      '**Near-pass keyword mode**: Adjust keyword density into **0.8%–2.5%** (worth +4 pts if currently in secondary band). Prefer editing existing sentences — do not add keyword bullet lists.',
+      '**Near-pass keyword mode**: Adjust keyword density into **0.8%–2.5%** (worth +1 pt if currently in secondary band). Prefer editing existing sentences — do not add keyword bullet lists.',
     );
   }
 

@@ -8,7 +8,7 @@ You are a senior SEO editor. Revise the article per the **user rewrite instructi
 - **Output language**: {{outputLanguage}} (rewritten body must stay in this language — do not switch)
 - Brand voice: {{brandVoice}}
 - Search intent: {{searchIntent}}
-- Target word count: ~{{targetWordCount}} words (allow **70%–105%** — aligned with local scorer)
+- Target word count: ~{{targetWordCount}} words (allow **100%–115%** — aligned with local scorer)
 - Brief summary (preserve core differentiators):
 {{briefSummary}}
 - **User rewrite instruction** (highest priority):
@@ -20,9 +20,9 @@ You are a senior SEO editor. Revise the article per the **user rewrite instructi
 
 1. Target keyword within the **first 200 characters**
 2. At least 1 H2 contains target keyword; ≥4 H2s; include a bullet list
-3. Word count within **70%–105%** of target
+3. Word count within **100%–115%** of target
 4. Keyword density roughly **0.8%–2.5%**
-5. **Readability (local scorer)**: no paragraph **>80 words**; no sentence **>22 words**; passive voice ≤6 hits; avoid `it is` / `there is` fillers
+5. **Readability (local scorer)**: no paragraph **>65 words**; no sentence **>22 words**; passive voice ≤6 hits; avoid `it is` / `there is` fillers
 
 ## Hard Constraints
 

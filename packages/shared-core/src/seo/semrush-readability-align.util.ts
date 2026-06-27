@@ -52,21 +52,49 @@ function countWords(text: string): number {
   return text.split(/\s+/).filter((w) => w.trim().length > 0).length;
 }
 
-function splitBodySentences(content: string): string[] {
-  const plain = content
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/^#+\s+/gm, ' ')
-    .replace(/^[-*]\s+/gm, ' ')
+/** 去除行内 Markdown 标记与图片占位 */
+function stripInlineMarkup(text: string): string {
+  return text
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ') // ![alt](url) 图片
+    .replace(/\[image:[^\]]*\]/gi, ' ') // [Image: ...] 占位
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1') // [text](url) 链接保留文字
+    .replace(/<[^>]+>/g, ' ') // HTML 标签
+    .replace(/[`*_~]+/g, ' ') // 强调 / 行内代码
     .replace(/\s+/g, ' ')
     .trim();
+}
 
+/**
+ * Markdown 感知地逐行切句：
+ * - 跳过标题 / 图片 / 表格 / 代码围栏
+ * - 列表项各自独立，换行视为句子硬边界（避免标题并入正文、列表并入引导句）
+ * - 清理行内图片 / 链接标记
+ */
+function splitBodySentences(content: string): string[] {
   const sentences: string[] = [];
-  const re = /([^.!?]+[.!?]+)/g;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(plain)) !== null) {
-    const sent = match[1].trim();
-    if (sent.length >= 12) sentences.push(sent);
+  let inCodeFence = false;
+  for (const rawLine of content.split('\n')) {
+    const line = rawLine.trim();
+    if (/^```/.test(line)) {
+      inCodeFence = !inCodeFence;
+      continue;
+    }
+    if (inCodeFence || !line) continue;
+    if (line.startsWith('#')) continue; // 标题
+    if (line.startsWith('![')) continue; // 图片
+    if (/^\[image:/i.test(line)) continue; // 图片占位行
+    if (/^\|/.test(line)) continue; // 表格行
+    let body = line.replace(/^>\s?/, ''); // 去引用标记
+    body = body.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, ''); // 去列表标记
+    const plain = stripInlineMarkup(body);
+    if (!plain) continue;
+
+    const re = /([^.!?]+[.!?]+)/g;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(plain)) !== null) {
+      const sent = match[1].trim();
+      if (sent.length >= 12) sentences.push(sent);
+    }
   }
   return sentences;
 }

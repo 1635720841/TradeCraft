@@ -24,7 +24,10 @@ import type { LocalSeoScoreResult } from '@wm/shared-core';
 import type { SeoScore } from '@wm/provider-interfaces';
 import type { ResolvedSiteSeoScoreConfig } from '../../constants/site-seo-score-settings';
 import type { WorkflowProgress, PersistedSeoCheckData } from './seo-checker.types';
-import { countSemrushMissingKeywords } from './seo-checker-scoring.util';
+import {
+  countSemrushMissingKeywords,
+  resolveFrozenLocalScoreFields,
+} from './seo-checker-scoring.util';
 import { resolvePersistedSubmittedKeywords } from './seo-checker-keywords.util';
 import { LlmService } from '../llm/llm.service';
 
@@ -174,6 +177,8 @@ export class SeoCheckerProgressService {
     ctx: LlmJobContext,
     input: {
       localResult: LocalSeoScoreResult;
+      /** 进入 Semrush 阶段时的本地评分快照；持久化展示分不再随正文改写变化 */
+      frozenLocalResult?: LocalSeoScoreResult;
       semrushResult: SeoScore;
       localOptimizeRounds: number;
       semrushOptimizeRounds: number;
@@ -201,20 +206,28 @@ export class SeoCheckerProgressService {
     const draft = (job?.draftData ?? {}) as { optimizeHistory?: unknown[] };
     const prevCheck = (job?.seoCheckData ?? input.existingSeoCheck ?? {}) as Record<string, unknown>;
     const prevSemrush = (prevCheck.semrush ?? {}) as Record<string, unknown>;
+    const frozenLocal = input.frozenLocalResult
+      ? {
+          score: input.frozenLocalResult.score,
+          breakdown: input.frozenLocalResult.breakdown,
+          suggestions: input.frozenLocalResult.suggestions,
+          metrics: input.frozenLocalResult.metrics,
+        }
+      : resolveFrozenLocalScoreFields(prevCheck.local, input.localResult);
 
     const seoCheckBase = {
       ...prevCheck,
       workflowProgress: prevCheck.workflowProgress ?? null,
       scoreThresholds: buildScoreThresholdsSnapshot(input.scoreConfig),
       local: {
-        score: input.localResult.score,
-        breakdown: input.localResult.breakdown,
-        suggestions: input.localResult.suggestions,
-        metrics: input.localResult.metrics,
+        score: frozenLocal.score,
+        breakdown: frozenLocal.breakdown,
+        suggestions: frozenLocal.suggestions,
+        metrics: frozenLocal.metrics,
         optimizeRounds: input.localOptimizeRounds,
         passed:
           input.localGatePassed ??
-          input.localResult.score >= input.scoreConfig.localPassThreshold,
+          frozenLocal.score >= input.scoreConfig.localPassThreshold,
         ...(input.predictedSemrush !== undefined
           ? { predictedSemrush: input.predictedSemrush }
           : {}),
@@ -272,7 +285,7 @@ export class SeoCheckerProgressService {
     await this.prisma.articleJob.update({
       where: { id: ctx.jobId },
       data: {
-        localSeoScore: input.localResult.score,
+        localSeoScore: frozenLocal.score,
         semrushScore: input.semrushResult.skipped ? null : input.semrushResult.overall,
         draftData: { ...draft, content: input.content } as object,
         seoCheckData: seoCheckData as object,
