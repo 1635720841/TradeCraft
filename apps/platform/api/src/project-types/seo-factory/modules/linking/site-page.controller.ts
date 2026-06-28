@@ -57,7 +57,7 @@ export class SitePageController {
 
   ) {
 
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
 
     const pages = await this.sitePageService.listForSite(ctx.organizationId, projectId, siteId);
 
@@ -81,7 +81,7 @@ export class SitePageController {
 
   ) {
 
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
 
     const result = await this.sitePageService.syncFromSitemap(
 
@@ -105,7 +105,7 @@ export class SitePageController {
     @Param('pageId') pageId: string,
     @Body() dto: PatchSitePageDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const page = await this.sitePageService.patchPage(
       ctx.organizationId,
       projectId,

@@ -11,15 +11,157 @@ datasource db {
 
 // ── 平台层 ──
 
+enum OrganizationType {
+  CUSTOMER
+  PLATFORM
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  DISABLED
+}
+
 model Organization {
-  id                   String        @id @default(uuid())
+  id                   String             @id @default(uuid())
+  type                 OrganizationType   @default(CUSTOMER)
+  status               OrganizationStatus @default(ACTIVE)
   name                 String
-  planName             String        @default("trial")
-  monthlyArticleQuota  Int           @default(100)
+  planId               String?
+  plan                 SubscriptionPlan?  @relation(fields: [planId], references: [id])
+  planName             String             @default("trial")
+  monthlyArticleQuota  Int                @default(100)
+  articleQuotaBonus    Int                @default(0)
+  subscriptionStatus   SubscriptionStatus @default(TRIAL)
+  billingCycle         BillingCycle       @default(MONTHLY)
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
   users                User[]
   projects             Project[]
   usageLogs            CreditUsage[]
-  createdAt            DateTime      @default(now())
+  auditLogs            AuditLog[]
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([type, status])
+}
+
+model SubscriptionPlan {
+  id                  String         @id /// trial | standard | enterprise
+  name                String
+  monthlyArticleQuota Int
+  billingCycle        BillingCycle   @default(MONTHLY)
+  isActive            Boolean        @default(true)
+  sortOrder           Int            @default(0)
+  organizations       Organization[]
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+}
+
+/// 平台权限目录
+model Permission {
+  id          String           @id /// 如 org:member:list
+  name        String
+  module      String
+  description String?          @db.VarChar(200)
+  sortOrder   Int              @default(0)
+  grants      UserPermission[]
+  createdAt   DateTime         @default(now())
+
+  @@index([module, sortOrder])
+}
+
+/// 用户额外授权（在角色默认权限之上叠加）
+model UserPermission {
+  id           String     @id @default(uuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  grantedById  String?
+  createdAt    DateTime   @default(now())
+
+  @@unique([userId, permissionId])
+  @@index([userId])
+}
+
+/// 侧栏菜单目录
+model PlatformMenu {
+  id           String          @id /// 如 org:members
+  title        String
+  routePath    String
+  permissionId String?
+  targetRoles  String[]
+  sortOrder    Int             @default(0)
+  grants       RoleMenuGrant[]
+  userGrants   UserMenuGrant[]
+  createdAt    DateTime        @default(now())
+
+  @@index([sortOrder])
+}
+
+/// 角色菜单可见策略
+model RoleMenuGrant {
+  id        String       @id @default(uuid())
+  role      Role
+  menuId    String
+  menu      PlatformMenu @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  enabled   Boolean      @default(true)
+  updatedAt DateTime     @updatedAt
+
+  @@unique([role, menuId])
+  @@index([role, enabled])
+}
+
+/// 用户菜单可见策略（超管按账号配置侧栏）
+model UserMenuGrant {
+  id          String       @id @default(uuid())
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  menuId      String
+  menu        PlatformMenu @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  enabled     Boolean      @default(true)
+  grantedById String?
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([userId, menuId])
+  @@index([userId, enabled])
+}
+
+/// 操作审计
+model AuditLog {
+  id             String        @id @default(uuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  actorUserId    String
+  action         String
+  targetType     String?
+  targetId       String?
+  metadata       Json?
+  traceId        String?
+  createdAt      DateTime      @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
 }
 
 /// Prompt 模板版本库（M12）：平台全局，seo-factory LLM 热更新
@@ -45,36 +187,83 @@ model PromptRuntimeBinding {
 }
 
 model User {
-  id             String       @id @default(uuid())
-  email          String       @unique
+  id             String           @id @default(uuid())
+  email          String           @unique
   name           String?
   passwordHash   String? /// 开发/自建 Auth；Logto 接入后可空
-  authSubject    String?      @unique /// 外部 IdP sub（Logto/Supabase）
+  authSubject    String?          @unique /// 外部 IdP sub（Logto/Supabase）
   organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  role           Role         @default(MEMBER)
-  createdAt      DateTime     @default(now())
-
-  @@index([organizationId])
-}
-
-model Project {
-  id             String        @id @default(uuid())
-  organizationId String
-  organization   Organization  @relation(fields: [organizationId], references: [id])
-  name           String
-  projectType    String // 'seo-factory' | future types
-  config         Json?
-  status         ProjectStatus @default(ACTIVE)
-  sites          Site[]
-  jobs           ArticleJob[]
-  keywords       KeywordEntry[]
-  keywordClusters KeywordCluster[]
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  organization   Organization     @relation(fields: [organizationId], references: [id])
+  role           Role             @default(MEMBER)
+  status         UserStatus       @default(ACTIVE)
+  lastLoginAt    DateTime?
+  grants         UserPermission[]
+  menuGrants     UserMenuGrant[]
+  projectMembers ProjectMember[]
+  createdAt      DateTime         @default(now())
 
   @@index([organizationId])
   @@index([organizationId, status])
+}
+
+model Project {
+  id              String           @id @default(uuid())
+  organizationId  String
+  organization    Organization     @relation(fields: [organizationId], references: [id])
+  name            String
+  projectType     String // 'seo-factory' | future types
+  config          Json?
+  status          ProjectStatus    @default(ACTIVE)
+  accessStart     DateTime?
+  accessEnd       DateTime?
+  sites           Site[]
+  jobs            ArticleJob[]
+  keywords        KeywordEntry[]
+  keywordClusters KeywordCluster[]
+  members         ProjectMember[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+}
+
+enum ProjectMemberRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+/// 项目成员：按项目开放访问与权限
+model ProjectMember {
+  id          String                    @id @default(uuid())
+  projectId   String
+  project     Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        ProjectMemberRole         @default(VIEWER)
+  accessStart DateTime?
+  accessEnd   DateTime?
+  grantedById String?
+  permissions ProjectMemberPermission[]
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+
+  @@unique([projectId, userId])
+  @@index([userId])
+  @@index([projectId])
+}
+
+/// 项目成员额外权限（在角色默认之上叠加）
+model ProjectMemberPermission {
+  id           String        @id @default(uuid())
+  memberId     String
+  member       ProjectMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  permissionId String
+  createdAt    DateTime      @default(now())
+
+  @@unique([memberId, permissionId])
+  @@index([memberId])
 }
 
 model CreditUsage {
@@ -94,6 +283,8 @@ model CreditUsage {
 }
 
 enum Role {
+  SUPER_ADMIN
+  PLATFORM_OPERATOR
   ADMIN
   MEMBER
 }

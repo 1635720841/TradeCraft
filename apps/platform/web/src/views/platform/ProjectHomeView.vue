@@ -2,7 +2,7 @@
   企业项目首页：展示当前企业下的内容生产项目，作为进入工作台的入口。
   边界：
   - 不负责：项目内部业务（由 project-type 插件页面处理）
-  - 不负责：企业成员与配额管理（见 OrganizationSettingsView）
+  - 不负责：企业成员与配额管理（见 /org 企业管理）
 -->
 <template>
   <div class="mw-home">
@@ -60,6 +60,12 @@
         <p class="mw-home__quota-note">
           已占用 {{ profile.quota.reservedTotal }} 篇（{{ quotaPercent }}%）
         </p>
+        <p v-if="profile.currentPeriodEnd" class="mw-home__quota-note">
+          企业有效至 {{ formatPeriodEnd(profile.currentPeriodEnd) }}
+          <template v-if="profile.quota.daysRemaining != null">
+            （剩余 {{ profile.quota.daysRemaining }} 天）
+          </template>
+        </p>
         <div class="mw-home__mini-stats">
           <div class="mw-home__mini">
             <b>{{ profile.projectCount }}</b>
@@ -116,27 +122,55 @@
               <span class="mw-home__section-sub">/ Project Workspace</span>
             </h2>
             <p>
-              按品牌、市场或站点拆分项目，便于团队独立推进关键词池、内容排期和发布质量。
+              展示企业内全部项目，未开放或未加入的也会列出，便于了解还有哪些能力尚未开通。
             </p>
           </div>
-          <button
-            type="button"
-            class="mw-home__btn mw-home__btn--primary"
-            @click="openCreateDialog"
+          <div class="mw-home__workspace-actions">
+            <button
+              v-if="isAdmin"
+              type="button"
+              class="mw-home__btn"
+              @click="goProjectManage"
+            >
+              <HomeIcon name="settings" :size="16" />
+              项目管理
+            </button>
+            <button
+              type="button"
+              class="mw-home__btn mw-home__btn--primary"
+              @click="openCreateDialog"
+            >
+              <HomeIcon name="plus" :size="16" />
+              新建企业项目
+            </button>
+          </div>
+        </div>
+
+        <div v-if="displayProjects.length" class="mb-4 flex flex-wrap gap-2">
+          <span class="mw-home__summary-tag mw-home__summary-tag--success">
+            可使用 {{ projectSummary.usable }}
+          </span>
+          <span class="mw-home__summary-tag mw-home__summary-tag--warning">
+            未开放 {{ projectSummary.notOpen }}
+          </span>
+          <span class="mw-home__summary-tag">未加入 {{ projectSummary.notMember }}</span>
+          <span
+            v-if="projectSummary.archived"
+            class="mw-home__summary-tag mw-home__summary-tag--muted"
           >
-            <HomeIcon name="plus" :size="16" />
-            新建企业项目
-          </button>
+            已归档 {{ projectSummary.archived }}
+          </span>
         </div>
 
         <div v-loading="loading" class="mw-home__project-list">
-          <template v-if="activeProjects.length">
+          <template v-if="displayProjects.length">
             <article
-              v-for="project in activeProjects"
+              v-for="project in displayProjects"
               :key="project.id"
               class="mw-home__project-item"
               :class="{
-                'mw-home__project-item--clickable': canEnter(project)
+                'mw-home__project-item--clickable': canEnter(project),
+                'mw-home__project-item--muted': !canEnter(project)
               }"
               @click="canEnter(project) ? enterProject(project) : undefined"
             >
@@ -153,18 +187,27 @@
                     <span class="mw-home__status">{{
                       dictLabel(projectStatusDict, project.status)
                     }}</span>
+                    <span
+                      v-if="project.myAccessStatus"
+                      class="mw-home__status"
+                      :class="{
+                        'mw-home__status--archived': project.myAccessStatus !== 'usable'
+                      }"
+                    >
+                      {{ dictLabel(projectMyAccessStatusDict, project.myAccessStatus) }}
+                    </span>
                   </div>
                 </div>
               </div>
               <p class="mw-home__project-desc">
                 {{ projectTypeHint(project.projectType) }}
               </p>
-              <div v-if="profile?.memberCount" class="mw-home__members">
+              <div v-if="project.memberCount" class="mw-home__members">
                 <span class="mw-home__member" />
                 <span class="mw-home__member" />
                 <span class="mw-home__member" />
                 <span class="mw-home__member" />
-                <span>{{ profile.memberCount }} 位成员</span>
+                <span>{{ project.memberCount }} 位成员</span>
               </div>
               <div class="mw-home__project-foot">
                 <div class="mw-home__p-date">
@@ -184,6 +227,9 @@
                   >
                     进入工作台
                   </button>
+                  <span v-else class="mw-home__access-hint">
+                    {{ accessHint(project) }}
+                  </span>
                 </div>
               </div>
             </article>
@@ -204,50 +250,9 @@
           </button>
         </div>
 
-        <el-collapse
-          v-if="archivedProjects.length"
-          v-model="archivedExpanded"
-          class="mw-home__archived"
-        >
-          <el-collapse-item
-            :title="`已归档项目（${archivedProjects.length}）`"
-            name="archived"
-          >
-            <div class="mw-home__project-list">
-              <article
-                v-for="project in archivedProjects"
-                :key="project.id"
-                class="mw-home__project-item"
-              >
-                <div class="mw-home__project-top">
-                  <span class="mw-home__project-logo" aria-hidden="true">
-                    <HomeIcon name="seo" :size="22" />
-                  </span>
-                  <div class="mw-home__project-heading">
-                    <h3>{{ project.name }}</h3>
-                    <div class="mw-home__project-meta">
-                      <span class="mw-home__project-link">{{
-                        projectTypeLabel(project.projectType)
-                      }}</span>
-                      <span class="mw-home__status mw-home__status--archived">{{
-                        dictLabel(projectStatusDict, project.status)
-                      }}</span>
-                    </div>
-                  </div>
-                </div>
-                <div class="mw-home__p-progress">
-                  <button
-                    type="button"
-                    class="mw-home__enter"
-                    @click="goDetail(project.id)"
-                  >
-                    查看详情
-                  </button>
-                </div>
-              </article>
-            </div>
-          </el-collapse-item>
-        </el-collapse>
+        <p v-if="!loading && displayProjects.length === 0" class="mw-home__empty">
+          暂无项目，可先创建企业项目或联系管理员开通。
+        </p>
       </article>
     </section>
 
@@ -296,16 +301,17 @@ import type { FormInstance, FormRules } from "element-plus";
 import {
   getOrganizationProfile,
   type OrganizationProfile
-} from "@/api/platform/organization";
+} from "@/api/org/organization";
 import {
   createProject,
   listProjects,
   type ProjectItem
 } from "@/api/platform/project";
-import { projectStatusDict } from "@/constants/dicts/platform";
+import { projectMyAccessStatusDict, projectStatusDict } from "@/constants/dicts/platform";
 import { useUserStoreHook } from "@/store/modules/user";
 import { dictLabel } from "@/utils/dict";
 import { message } from "@/utils/message";
+import { formatPeriodEnd } from "@/utils/period";
 import HomeIcon from "./components/home/HomeIcon.vue";
 import heroIllustration from "@/assets/img/0982809c-735d-484a-9681-f6e39a0140da.png";
 import "./styles/merwise-home.css";
@@ -322,7 +328,14 @@ const createVisible = ref(false);
 const createFormRef = ref<FormInstance>();
 const projects = ref<ProjectItem[]>([]);
 const profile = ref<OrganizationProfile | null>(null);
-const archivedExpanded = ref<string[]>([]);
+
+const PROJECT_SORT_ORDER: Record<string, number> = {
+  usable: 0,
+  not_open: 1,
+  not_member: 2,
+  member_expired: 3,
+  archived: 4
+};
 
 const createForm = reactive({
   name: "",
@@ -387,9 +400,32 @@ const activeProjects = computed(() =>
   projects.value.filter(item => item.status === "ACTIVE")
 );
 
-const archivedProjects = computed(() =>
-  projects.value.filter(item => item.status !== "ACTIVE")
+const displayProjects = computed(() =>
+  [...projects.value].sort((a, b) => {
+    const aOrder = PROJECT_SORT_ORDER[a.myAccessStatus ?? "not_member"] ?? 9;
+    const bOrder = PROJECT_SORT_ORDER[b.myAccessStatus ?? "not_member"] ?? 9;
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    return (b.createdAt ?? "").localeCompare(a.createdAt ?? "");
+  })
 );
+
+const projectSummary = computed(() => {
+  const summary = {
+    usable: 0,
+    notOpen: 0,
+    notMember: 0,
+    archived: 0
+  };
+  for (const item of projects.value) {
+    if (item.myAccessStatus === "usable") summary.usable += 1;
+    else if (item.myAccessStatus === "not_open") summary.notOpen += 1;
+    else if (item.myAccessStatus === "not_member") summary.notMember += 1;
+    else if (item.myAccessStatus === "archived" || item.status === "ARCHIVED") {
+      summary.archived += 1;
+    }
+  }
+  return summary;
+});
 
 function projectTypeLabel(type: string) {
   if (type === "seo-factory") return "SEO 内容工厂";
@@ -408,7 +444,18 @@ function formatDate(iso: string) {
 }
 
 function canEnter(project: ProjectItem) {
-  return project.projectType === "seo-factory" && project.status === "ACTIVE";
+  return project.canEnter === true;
+}
+
+function accessHint(project: ProjectItem) {
+  if (project.myAccessStatus === "archived" || project.status === "ARCHIVED") {
+    return "项目已归档";
+  }
+  if (project.myAccessStatus === "not_open") return "项目未开放";
+  if (project.myAccessStatus === "not_member") return "未加入该项目";
+  if (project.myAccessStatus === "member_expired") return "访问已过期";
+  if (project.status !== "ACTIVE") return "项目不可用";
+  return "暂不可进入";
 }
 
 async function loadProfile() {
@@ -425,8 +472,19 @@ async function loadProfile() {
 async function fetchProjects() {
   loading.value = true;
   try {
-    const result = await listProjects(1, 50);
-    projects.value = result.items;
+    const all: ProjectItem[] = [];
+    let page = 1;
+    const limit = 100;
+    while (true) {
+      const result = await listProjects(page, limit);
+      all.push(...result.items);
+      const total = result.pagination.total ?? all.length;
+      if (all.length >= total || result.items.length < limit) {
+        break;
+      }
+      page += 1;
+    }
+    projects.value = all;
   } finally {
     loading.value = false;
   }
@@ -461,12 +519,12 @@ async function submitCreate() {
   });
 }
 
-function goDetail(id: string) {
-  router.push({ name: "PlatformProjectDetail", params: { projectId: id } });
+function goOrganization() {
+  router.push({ name: "OrgProfile" });
 }
 
-function goOrganization() {
-  router.push({ name: "PlatformOrganization" });
+function goProjectManage() {
+  router.push({ name: "OrgProjects" });
 }
 
 function goBilling() {

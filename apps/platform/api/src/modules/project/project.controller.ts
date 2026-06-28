@@ -1,16 +1,11 @@
 /**
  * 项目 HTTP 入口。
- *
- * 边界：
- * - 不负责：业务逻辑、数据库操作
- *
- * 入口：
- * - ProjectController
  */
 
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import type { RequestContext } from '@wm/shared-core';
 import { ReqCtx } from '../../core/decorators/request-context.decorator';
+import { Permissions } from '../../core/decorators/permissions.decorator';
 import { Roles } from '../../core/decorators/roles.decorator';
 import { Role } from '@wm/shared-core';
 import { CreateProjectDto } from './dto/create-project.dto';
@@ -21,6 +16,7 @@ export class ProjectController {
   constructor(private readonly projectService: ProjectService) {}
 
   @Get()
+  @Permissions('project:read')
   async list(
     @ReqCtx() ctx: RequestContext,
     @Query('page') page?: string,
@@ -30,6 +26,7 @@ export class ProjectController {
       ctx.organizationId,
       page ? Number(page) : 1,
       limit ? Number(limit) : 20,
+      ctx,
     );
     return {
       data: result.items,
@@ -42,21 +39,40 @@ export class ProjectController {
 
   @Post()
   @Roles(Role.ADMIN)
+  @Permissions('project:create')
   async create(@ReqCtx() ctx: RequestContext, @Body() dto: CreateProjectDto) {
-    const project = await this.projectService.create(ctx.organizationId, dto);
+    const project = await this.projectService.create(
+      ctx.organizationId,
+      dto,
+      ctx.userId,
+      ctx.traceId,
+    );
     return { data: project, meta: { traceId: ctx.traceId } };
   }
 
   @Get(':id')
+  @Permissions('project:read')
   async getOne(@ReqCtx() ctx: RequestContext, @Param('id') id: string) {
-    const project = await this.projectService.findOne(ctx.organizationId, id);
+    const project = await this.projectService.findOne(ctx.organizationId, id, ctx);
     return { data: project, meta: { traceId: ctx.traceId } };
   }
 
   @Patch(':id/archive')
   @Roles(Role.ADMIN)
+  @Permissions('project:update')
   async archive(@ReqCtx() ctx: RequestContext, @Param('id') id: string) {
-    const project = await this.projectService.archive(ctx.organizationId, id);
+    const project = await this.projectService.archive(ctx.organizationId, id, ctx);
     return { data: project, meta: { traceId: ctx.traceId } };
+  }
+
+  @Delete(':id')
+  @Roles(Role.ADMIN)
+  @Permissions('project:update')
+  async remove(@ReqCtx() ctx: RequestContext, @Param('id') id: string) {
+    const data = await this.projectService.remove(ctx.organizationId, id, {
+      userId: ctx.userId,
+      traceId: ctx.traceId,
+    });
+    return { data, meta: { traceId: ctx.traceId } };
   }
 }

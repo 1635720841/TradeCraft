@@ -17,7 +17,7 @@ export default {
       component: () => import("@/views/platform/ProjectHomeView.vue"),
       meta: {
         title: "项目列表",
-        roles: ["admin", "common"],
+        roles: ["admin", "common", "super_admin"],
         showLink: false
       }
     },
@@ -27,36 +27,24 @@ export default {
       component: () => import("@/views/platform/ProjectDetailView.vue"),
       meta: {
         title: "项目详情",
-        roles: ["admin", "common"],
+        roles: ["admin", "common", "super_admin"],
         showLink: false
       }
     },
     {
       path: "/platform/billing",
-      name: "PlatformBilling",
-      component: () => import("@/views/platform/BillingUsageView.vue"),
-      meta: {
-        title: "用量统计",
-        roles: ["admin", "common"]
-      }
+      redirect: "/org/billing",
+      meta: { title: "用量统计", showLink: false }
     },
     {
       path: "/platform/organization",
-      name: "PlatformOrganization",
-      component: () => import("@/views/platform/OrganizationSettingsView.vue"),
-      meta: {
-        title: "企业设置",
-        roles: ["admin", "common"]
-      }
+      redirect: "/org/profile",
+      meta: { title: "企业设置", showLink: false }
     },
     {
       path: "/platform/prompts",
-      name: "PlatformPrompts",
-      component: () => import("@/views/platform/PromptManageView.vue"),
-      meta: {
-        title: "Prompt 运营台",
-        roles: ["admin"]
-      }
+      redirect: "/console/prompts",
+      meta: { title: "Prompt 运营台", showLink: false }
     }
   ]
 } satisfies RouteConfigsTable;

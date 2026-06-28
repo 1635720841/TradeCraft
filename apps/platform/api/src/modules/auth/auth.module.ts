@@ -9,6 +9,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { AuthGuard } from '../../core/guards/auth.guard';
 import { RateLimitGuard } from '../../core/guards/rate-limit.guard';
+import { AccessModule } from '../access/access.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { AuthTokenService } from './auth-token.service';
@@ -16,6 +17,7 @@ import { JwtTokenService } from './jwt-token.service';
 import { LogtoAuthService } from './logto/logto-auth.service';
 
 @Module({
+  imports: [AccessModule],
   controllers: [AuthController],
   providers: [
     AuthService,

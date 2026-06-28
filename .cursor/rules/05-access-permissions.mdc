@@ -1,0 +1,59 @@
+---
+description: 平台权限与准入规则（角色、企业级、项目级、平台账号隔离）
+globs: "apps/**/api/**/access/**,apps/**/api/**/organization/**,apps/**/api/**/project/**,apps/**/api/**/console/**,apps/**/web/**/org/**,apps/**/web/**/console/**,apps/**/web/**/router/**,apps/**/web/**/constants/**"
+alwaysApply: false
+---
+
+# 权限与准入（简版）
+
+> 字典：`permission.constants.ts` / `constants/dicts/platform.ts`（`memberRoleDict`）
+
+## 角色命名（UI 必须用字典，禁止写「管理员」统称）
+
+| 代码 | 展示名 | 范围 |
+|------|--------|------|
+| `SUPER_ADMIN` | 超级管理员 | 全平台 |
+| `PLATFORM_OPERATOR` | 平台管理员 | 平台运营 console |
+| `ADMIN` | **企业管理员** | 本企业 |
+| `MEMBER` | **企业成员** | 本企业 |
+
+## 两层权限
+
+| 层 | 管什么 | 入口 | 关键权限 |
+|----|--------|------|----------|
+| **企业级** | 账号、企业功能、能否看到菜单 | `/org/members` | `org:*`、`project:*`、`seo:*` |
+| **项目级** | 谁能进项目、项目内能力 | `/org/projects` | `ProjectMember` + `ProjectMemberPermission` |
+
+**不要混用**：企业级 `seo:*` 不等于已加入项目；进工作台以项目成员 + 访问期为准。
+
+## 项目准入（硬规则）
+
+- **看列表**：有 `project:read` 即可，展示企业内全部项目 + `canEnter` / `myAccessStatus`
+- **进项目 / 调项目 API**：必须是 `ProjectMember` 且项目与个人访问期有效
+- **企业有效时间**：`currentPeriodStart/End`；过期后客户企业 API 返回 `ORG_SUBSCRIPTION_EXPIRED`（超管/平台运营除外）
+- **例外**：仅 `SUPER_ADMIN` 可绕过成员校验
+- **企业 `ADMIN`**：可 `canManage`（改成员、访问期），**不自动** `canEnter`
+- **前端**：`canEnter === true` 才可点进入；SEO 工厂路由走 `ensureProjectEnterable`
+
+## 平台账号隔离（企业侧不可见）
+
+`SUPER_ADMIN`、`PLATFORM_OPERATOR` 对企业管理员 **隐藏且不可操作**：
+
+- 企业成员列表 `listMembers`：非超管过滤
+- 项目成员列表 / 成员数：非超管过滤
+- 添加进项目、改权限、移除：拒绝或返回「不存在」
+
+超管自己看列表时不过滤。
+
+## 谁能授什么权
+
+- **企业管理员**：`TENANT_GRANTABLE_PERMISSION_IDS`（无 `console:*`）
+- **超级管理员**：可授 `console:*` 给平台管理员
+- **项目**：`listGrantablePermissionsForProjectType(projectType)`
+
+## 改代码时检查
+
+- 新页面：`meta.menuKey` + `meta.permission` 与 `menu.constants.ts` 对齐
+- 新 API：`@Permissions(...)`；项目内业务先 `assertAccessible(..., ctx)`
+- 企业/项目成员数：非超管统计时排除平台账号（`tenant-member-visibility.ts`）
+- 角色文案：走 `memberRoleDict`，顶栏用 `dictLabel`

@@ -52,7 +52,7 @@ export class KeywordPoolController {
     @Query('unclustered') unclustered?: string,
     @Query('queueable') queueable?: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const result = await this.keywordPoolService.findMany(ctx.organizationId, projectId, {
       page: page ? Number(page) : 1,
       limit: limit ? Number(limit) : 20,
@@ -83,7 +83,7 @@ export class KeywordPoolController {
     @Param('projectId') projectId: string,
     @Body() dto: CreateKeywordDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const data = await this.keywordPoolService.create(ctx.organizationId, projectId, dto);
     return { data, meta: { traceId: ctx.traceId } };
   }
@@ -95,7 +95,7 @@ export class KeywordPoolController {
     @Param('projectId') projectId: string,
     @Body() dto: ImportKeywordsDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const data = await this.keywordPoolService.importMany(
       ctx.organizationId,
       projectId,
@@ -111,7 +111,7 @@ export class KeywordPoolController {
     @Param('projectId') projectId: string,
     @Body() dto: GenerateKeywordSeedsDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const data = await this.keywordPoolService.generateSeeds(
       ctx.organizationId,
       projectId,
@@ -127,7 +127,7 @@ export class KeywordPoolController {
     @Param('projectId') projectId: string,
     @Body() dto: EnrichKeywordMetricsDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const data = await this.keywordPoolService.enrichMetrics(ctx.organizationId, projectId, {
       ids: dto.ids,
       allMissing: dto.allMissing ?? !dto.ids?.length,
@@ -142,7 +142,7 @@ export class KeywordPoolController {
     @Param('projectId') projectId: string,
     @Body() dto: CreateJobsFromKeywordsDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const data = await this.keywordPoolService.createJobsFromKeywords(
       ctx.organizationId,
       projectId,
@@ -160,7 +160,7 @@ export class KeywordPoolController {
     @Param('id') id: string,
     @Body() dto: UpdateKeywordDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const data = await this.keywordPoolService.update(ctx.organizationId, projectId, id, dto);
     return { data, meta: { traceId: ctx.traceId } };
   }
@@ -173,7 +173,7 @@ export class KeywordPoolController {
     @Param('id') id: string,
     @Body() dto: CreateJobFromKeywordDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const data = await this.keywordPoolService.createJobFromKeyword(
       ctx.organizationId,
       projectId,

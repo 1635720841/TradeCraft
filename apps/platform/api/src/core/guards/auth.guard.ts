@@ -1,33 +1,38 @@
 /**
- * 全局鉴权 Guard：校验 Bearer JWT，注入 RequestContext，校验 RBAC。
- *
- * 边界：
- * - 不负责：登录签发（AuthService）
- *
- * 入口：
- * - AuthGuard
+ * 全局鉴权 Guard：校验 Bearer JWT，注入 RequestContext，校验 RBAC 与 permissions。
  */
 
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { Role, type RequestContext } from '@wm/shared-core';
+import {
+  Role,
+  hasAnyPermission,
+  type OrganizationType,
+  type RequestContext,
+} from '@wm/shared-core';
 import { attachRequestContext } from '../context/request-context.store';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import { ForbiddenException, UnauthorizedException } from '../exceptions/auth.exception';
 import { ErrorCodes } from '../exceptions/error-codes';
+import { PrismaService } from '../database/prisma.service';
 import { AuthTokenService } from '../../modules/auth/auth-token.service';
+import { PermissionService } from '../../modules/access/permission.service';
+import { isSubscriptionActive } from '../../modules/billing/subscription.util';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly authTokenService: AuthTokenService,
+    private readonly permissionService: PermissionService,
+    private readonly prisma: PrismaService,
   ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -44,22 +49,70 @@ export class AuthGuard implements CanActivate {
 
     const claims = this.authTokenService.verifyAccessToken(token);
     const traceId = this.resolveTraceId(request);
+    const role = claims.role as Role;
+
+    const org = await this.prisma.organization.findFirst({
+      where: { id: claims.org },
+      select: {
+        type: true,
+        status: true,
+        subscriptionStatus: true,
+        currentPeriodEnd: true,
+      },
+    });
+    if (!org) {
+      throw new UnauthorizedException(ErrorCodes.UNAUTHORIZED, '企业不存在或已被移除');
+    }
+
+    const organizationType: OrganizationType =
+      org.type === 'PLATFORM' ? 'PLATFORM' : 'CUSTOMER';
+    const permissions = await this.permissionService.resolveUserPermissions(claims.sub, role);
 
     const reqCtx: RequestContext = {
       traceId,
       userId: claims.sub,
       organizationId: claims.org,
-      role: claims.role as Role,
+      organizationType,
+      role,
+      permissions,
     };
 
     attachRequestContext(request as unknown as Record<string, unknown>, reqCtx);
 
-    const requiredRoles = this.reflector.getAllAndOverride<Role[]>(ROLES_KEY, [
+    if (
+      role !== Role.SUPER_ADMIN &&
+      role !== Role.PLATFORM_OPERATOR &&
+      org.type === 'CUSTOMER'
+    ) {
+      if (org.status === 'SUSPENDED' || org.status === 'CLOSED') {
+        throw new ForbiddenException(ErrorCodes.ORG_SUSPENDED, '企业已被暂停或关闭');
+      }
+      if (!isSubscriptionActive(org.subscriptionStatus, org.currentPeriodEnd)) {
+        throw new ForbiddenException(
+          ErrorCodes.ORG_SUBSCRIPTION_EXPIRED,
+          '企业有效期已过，请联系平台续期',
+        );
+      }
+    }
+
+    if (role !== Role.SUPER_ADMIN) {
+      const requiredRoles = this.reflector.getAllAndOverride<Role[]>(ROLES_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ]);
+      if (requiredRoles?.length && !requiredRoles.includes(reqCtx.role)) {
+        throw new ForbiddenException(ErrorCodes.FORBIDDEN, '无权执行此操作');
+      }
+    }
+
+    const requiredPermissions = this.reflector.getAllAndOverride<string[]>(PERMISSIONS_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
-    if (requiredRoles?.length && !requiredRoles.includes(reqCtx.role)) {
-      throw new ForbiddenException(ErrorCodes.FORBIDDEN, '无权执行此操作');
+    if (requiredPermissions?.length && role !== Role.SUPER_ADMIN) {
+      if (!hasAnyPermission(permissions, requiredPermissions)) {
+        throw new ForbiddenException(ErrorCodes.FORBIDDEN, '缺少所需权限');
+      }
     }
 
     return true;

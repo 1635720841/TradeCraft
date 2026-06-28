@@ -26,7 +26,7 @@ export class ArticleScoreTrialController {
     @Param('projectId') projectId: string,
     @Body() dto: ScoreArticleContentTrialDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const data = await this.articleScoreService.scoreTrialContent(
       ctx.organizationId,
       projectId,

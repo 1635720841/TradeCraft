@@ -13,6 +13,15 @@ export interface ProjectItem {
   name: string;
   projectType: string;
   status: string;
+  accessStart?: string | null;
+  accessEnd?: string | null;
+  accessActive?: boolean;
+  isMember?: boolean;
+  memberAccessActive?: boolean;
+  myAccessStatus?: "usable" | "not_open" | "not_member" | "member_expired" | "archived";
+  canEnter?: boolean;
+  canManage?: boolean;
+  memberCount?: number;
   createdAt?: string;
 }
 
@@ -73,6 +82,15 @@ export async function archiveProject(projectId: string): Promise<ProjectItem> {
   const res = await http.request<WmApiResponse<ProjectItem>>(
     "patch",
     `/api/v1/platform/projects/${projectId}/archive`
+  );
+  return res.data;
+}
+
+/** 永久删除项目（不可恢复） */
+export async function deleteProject(projectId: string): Promise<{ id: string; name: string }> {
+  const res = await http.request<WmApiResponse<{ id: string; name: string }>>(
+    "delete",
+    `/api/v1/platform/projects/${projectId}`
   );
   return res.data;
 }

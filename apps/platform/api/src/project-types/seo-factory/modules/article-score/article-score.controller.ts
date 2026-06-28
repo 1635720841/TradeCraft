@@ -30,7 +30,7 @@ export class ArticleScoreController {
     @Param('jobId') jobId: string,
     @Body() dto: ScoreArticleContentDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const data = await this.articleScoreService.scoreJobContent(
       ctx.organizationId,
       projectId,

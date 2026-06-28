@@ -27,11 +27,12 @@
           <span class="font-medium">本月配额</span>
         </template>
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-4 mb-3">
-          <el-statistic title="套餐">
-            <template #default>
+          <div>
+            <div class="text-sm text-gray-500">套餐</div>
+            <div class="text-2xl font-medium">
               {{ dictLabel(planNameDict, quota.planName) }}
-            </template>
-          </el-statistic>
+            </div>
+          </div>
           <el-statistic title="月配额" :value="quota.monthlyQuota" suffix="篇" />
           <el-statistic title="已占用" :value="quota.reservedTotal" suffix="篇" />
           <el-statistic title="剩余" :value="quota.remaining" suffix="篇" />

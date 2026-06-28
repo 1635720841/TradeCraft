@@ -1,14 +1,15 @@
 /**
- * M11 计费模块。
+ * 计费模块。
  */
 
 import { Module } from '@nestjs/common';
-import { BillingController } from './billing.controller';
+import { OrgBillingController, LegacyBillingController } from './org-billing.controller';
 import { BillingService } from './billing.service';
+import { SubscriptionPlanService } from './subscription-plan.service';
 
 @Module({
-  controllers: [BillingController],
-  providers: [BillingService],
-  exports: [BillingService],
+  controllers: [OrgBillingController, LegacyBillingController],
+  providers: [BillingService, SubscriptionPlanService],
+  exports: [BillingService, SubscriptionPlanService],
 })
 export class BillingModule {}

@@ -30,7 +30,7 @@ export class GscController {
     @Param('projectId') projectId: string,
     @Param('siteId') siteId: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const data = await this.gscService.getStatus(ctx.organizationId, projectId, siteId);
     return { data, meta: { traceId: ctx.traceId } };
   }
@@ -41,7 +41,7 @@ export class GscController {
     @Param('projectId') projectId: string,
     @Param('siteId') siteId: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const data = await this.gscService.createConnectUrl(
       ctx.organizationId,
       projectId,
@@ -56,7 +56,7 @@ export class GscController {
     @Param('projectId') projectId: string,
     @Param('siteId') siteId: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const data = await this.gscService.sync(ctx.organizationId, projectId, siteId);
     return { data, meta: { traceId: ctx.traceId } };
   }
@@ -67,7 +67,7 @@ export class GscController {
     @Param('projectId') projectId: string,
     @Param('siteId') siteId: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const data = await this.gscService.disconnect(ctx.organizationId, projectId, siteId);
     return { data, meta: { traceId: ctx.traceId } };
   }
@@ -82,7 +82,7 @@ export class GscProjectController {
 
   @Get('overview')
   async overview(@ReqCtx() ctx: RequestContext, @Param('projectId') projectId: string) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const data = await this.gscService.getProjectOverview(ctx.organizationId, projectId);
     return { data, meta: { traceId: ctx.traceId } };
   }

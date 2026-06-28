@@ -49,7 +49,11 @@ export interface AuthProfile {
   email: string;
   name: string | null;
   organizationId: string;
+  organizationType: "CUSTOMER" | "PLATFORM";
   role: string;
+  permissions: string[];
+  grants: string[];
+  visibleMenuKeys: string[];
 }
 
 export type AuthProfileResult = {

@@ -7,7 +7,9 @@ import LaySearch from "../lay-search/index.vue";
 import LayNotice from "../lay-notice/index.vue";
 import { useNav } from "@/layout/hooks/useNav";
 import { useUserStoreHook } from "@/store/modules/user";
-import { getOrganizationProfile } from "@/api/platform/organization";
+import { getOrganizationProfile } from "@/api/org/organization";
+import { memberRoleDict } from "@/constants/dicts/platform";
+import { dictLabel } from "@/utils/dict";
 import LogoutCircleRLine from "~icons/ri/logout-circle-r-line";
 
 const { t } = useI18n();
@@ -17,9 +19,18 @@ const userStore = useUserStoreHook();
 
 const orgName = ref("我的企业");
 
-const roleLabel = computed(() =>
-  userStore.roles.includes("admin") ? "管理员" : "成员"
-);
+const roleLabel = computed(() => {
+  if (userStore.roles.includes("super_admin")) {
+    return dictLabel(memberRoleDict, "SUPER_ADMIN");
+  }
+  if (userStore.roles.includes("platform_operator")) {
+    return dictLabel(memberRoleDict, "PLATFORM_OPERATOR");
+  }
+  if (userStore.roles.includes("admin")) {
+    return dictLabel(memberRoleDict, "ADMIN");
+  }
+  return dictLabel(memberRoleDict, "MEMBER");
+});
 
 onMounted(async () => {
   try {
@@ -31,7 +42,7 @@ onMounted(async () => {
 });
 
 function goOrganization() {
-  router.push("/platform/organization");
+  router.push("/org/profile");
 }
 </script>
 

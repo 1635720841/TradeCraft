@@ -19,6 +19,8 @@ export interface DataInfo<T> {
   roles?: Array<string>;
   /** 当前登录用户的按钮级别权限 */
   permissions?: Array<string>;
+  /** 后端下发的可见菜单 key（与 router meta.menuKey 对齐） */
+  visibleMenuKeys?: Array<string>;
 }
 
 export const userKey = "user-info";
@@ -68,12 +70,13 @@ export function setToken(data: DataInfo<Date>) {
       : {}
   );
 
-  function setUserKey({ avatar, username, nickname, roles, permissions }) {
+  function setUserKey({ avatar, username, nickname, roles, permissions, visibleMenuKeys }) {
     useUserStoreHook().SET_AVATAR(avatar);
     useUserStoreHook().SET_USERNAME(username);
     useUserStoreHook().SET_NICKNAME(nickname);
     useUserStoreHook().SET_ROLES(roles);
     useUserStoreHook().SET_PERMS(permissions);
+    useUserStoreHook().SET_VISIBLE_MENU_KEYS(visibleMenuKeys ?? []);
     storageLocal().setItem(userKey, {
       refreshToken,
       expires,
@@ -81,7 +84,8 @@ export function setToken(data: DataInfo<Date>) {
       username,
       nickname,
       roles,
-      permissions
+      permissions,
+      visibleMenuKeys: visibleMenuKeys ?? []
     });
   }
 
@@ -92,25 +96,18 @@ export function setToken(data: DataInfo<Date>) {
       username,
       nickname: data?.nickname ?? "",
       roles,
-      permissions: data?.permissions ?? []
+      permissions: data?.permissions ?? [],
+      visibleMenuKeys: data?.visibleMenuKeys ?? []
     });
   } else {
-    const avatar =
-      storageLocal().getItem<DataInfo<number>>(userKey)?.avatar ?? "";
-    const username =
-      storageLocal().getItem<DataInfo<number>>(userKey)?.username ?? "";
-    const nickname =
-      storageLocal().getItem<DataInfo<number>>(userKey)?.nickname ?? "";
-    const roles =
-      storageLocal().getItem<DataInfo<number>>(userKey)?.roles ?? [];
-    const permissions =
-      storageLocal().getItem<DataInfo<number>>(userKey)?.permissions ?? [];
+    const cached = storageLocal().getItem<DataInfo<number>>(userKey);
     setUserKey({
-      avatar,
-      username,
-      nickname,
-      roles,
-      permissions
+      avatar: cached?.avatar ?? "",
+      username: cached?.username ?? "",
+      nickname: cached?.nickname ?? "",
+      roles: cached?.roles ?? [],
+      permissions: cached?.permissions ?? [],
+      visibleMenuKeys: cached?.visibleMenuKeys ?? []
     });
   }
 }

@@ -287,7 +287,7 @@ import {
   type PromptUsageCategory
 } from "@/constants/prompt-usage";
 import { message } from "@/utils/message";
-import PromptRuntimeBoard from "./components/PromptRuntimeBoard.vue";
+import PromptRuntimeBoard from "@/views/platform/components/PromptRuntimeBoard.vue";
 
 defineOptions({ name: "PromptManageView" });
 

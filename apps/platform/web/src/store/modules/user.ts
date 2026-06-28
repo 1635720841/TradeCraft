@@ -15,7 +15,21 @@ import {
   refreshTokenApi
 } from "@/api/user";
 import { useMultiTagsStoreHook } from "./multiTags";
+import { usePermissionStoreHook } from "./permission";
 import { type DataInfo, setToken, removeToken, userKey } from "@/utils/auth";
+
+function mapApiRole(role: string): string {
+  if (role === "SUPER_ADMIN") return "super_admin";
+  if (role === "PLATFORM_OPERATOR") return "platform_operator";
+  if (role === "ADMIN") return "admin";
+  if (role === "MEMBER") return "common";
+  return role.toLowerCase();
+}
+
+function normalizePermissions(permissions: string[]): string[] {
+  if (permissions.includes("*:*:*")) return ["*:*:*"];
+  return permissions;
+}
 
 export const useUserStore = defineStore("pure-user", {
   state: (): userType => ({
@@ -30,6 +44,8 @@ export const useUserStore = defineStore("pure-user", {
     // 按钮级别权限
     permissions:
       storageLocal().getItem<DataInfo<number>>(userKey)?.permissions ?? [],
+    visibleMenuKeys:
+      storageLocal().getItem<DataInfo<number>>(userKey)?.visibleMenuKeys ?? [],
     // 是否勾选了登录页的免登录
     isRemembered: false,
     // 登录页的免登录存储几天，默认7天
@@ -55,6 +71,10 @@ export const useUserStore = defineStore("pure-user", {
     /** 存储按钮级别权限 */
     SET_PERMS(permissions: Array<string>) {
       this.permissions = permissions;
+    },
+    /** 存储可见菜单 key */
+    SET_VISIBLE_MENU_KEYS(keys: Array<string>) {
+      this.visibleMenuKeys = keys;
     },
     /** 存储是否勾选了登录页的免登录 */
     SET_ISREMEMBERED(bool: boolean) {
@@ -91,10 +111,28 @@ export const useUserStore = defineStore("pure-user", {
         const res = await getAuthProfile();
         const profile = res.data;
         if (!profile) return;
+
+        const role = mapApiRole(profile.role);
+        const permissions = normalizePermissions(profile.permissions ?? []);
+        const visibleMenuKeys = profile.visibleMenuKeys ?? [];
+
         this.SET_USERNAME(profile.email);
         this.SET_NICKNAME(profile.name ?? profile.email);
-        this.SET_ROLES([profile.role.toLowerCase()]);
-        this.SET_PERMS(profile.role === "ADMIN" ? ["*:*:*"] : []);
+        this.SET_ROLES([role]);
+        this.SET_PERMS(permissions);
+        this.SET_VISIBLE_MENU_KEYS(visibleMenuKeys);
+
+        const cached = storageLocal().getItem<DataInfo<number>>(userKey) ?? {};
+        storageLocal().setItem(userKey, {
+          ...cached,
+          username: profile.email,
+          nickname: profile.name ?? profile.email,
+          roles: [role],
+          permissions,
+          visibleMenuKeys
+        });
+
+        usePermissionStoreHook().handleWholeMenus([]);
       } catch {
         // 未登录或 token 失效时由 HTTP 拦截器处理
       }
@@ -104,6 +142,7 @@ export const useUserStore = defineStore("pure-user", {
       this.username = "";
       this.roles = [];
       this.permissions = [];
+      this.visibleMenuKeys = [];
       removeToken();
       useMultiTagsStoreHook().handleTags("equal", [...routerArrays]);
       resetRouter();

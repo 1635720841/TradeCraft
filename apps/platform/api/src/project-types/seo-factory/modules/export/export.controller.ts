@@ -24,7 +24,7 @@ export class ExportController {
     @Param('id') id: string,
     @Res() res: Response,
   ): Promise<void> {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const file = await this.exportService.getFreshExportHtml(
       ctx.organizationId,
       projectId,
@@ -42,7 +42,7 @@ export class ExportController {
     @Param('id') id: string,
     @Res() res: Response,
   ): Promise<void> {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const file = await this.exportService.getExportObject(
       ctx.organizationId,
       projectId,
@@ -61,7 +61,7 @@ export class ExportController {
     @Param('id') id: string,
     @Res() res: Response,
   ): Promise<void> {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const pack = await this.exportService.buildExportPackage(
       ctx.organizationId,
       projectId,

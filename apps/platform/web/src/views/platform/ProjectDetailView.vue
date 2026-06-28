@@ -74,27 +74,19 @@ import {
 import { projectStatusDict } from "@/constants/dicts/platform";
 import { dictLabel, dictTagType } from "@/utils/dict";
 import { message } from "@/utils/message";
-import { useUserStoreHook } from "@/store/modules/user";
-
 defineOptions({ name: "ProjectDetailView" });
 
 const route = useRoute();
 const router = useRouter();
-const userStore = useUserStoreHook();
 
 const projectId = computed(() => route.params.projectId as string);
 const loading = ref(false);
 const archiving = ref(false);
 const project = ref<ProjectDetail | null>(null);
 
-const isAdmin = computed(() => userStore.roles.includes("admin"));
-const canEnter = computed(
-  () =>
-    project.value?.status === "ACTIVE" &&
-    project.value?.projectType === "seo-factory"
-);
+const canEnter = computed(() => project.value?.canEnter === true);
 const canArchive = computed(
-  () => isAdmin.value && project.value?.status === "ACTIVE"
+  () => project.value?.canManage === true && project.value?.status === "ACTIVE"
 );
 
 function formatTime(iso: string) {

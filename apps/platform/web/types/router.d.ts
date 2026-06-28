@@ -24,6 +24,8 @@ declare global {
     showParent?: boolean;
     /** 页面级别权限设置 `可选` */
     roles?: Array<string>;
+    /** 后端菜单目录 key（与 MENU_CATALOG id 对齐）`可选` */
+    menuKey?: string;
     /** 按钮级别权限设置 `可选` */
     auths?: Array<string>;
     /** 路由组件缓存（开启 `true`、关闭 `false`）`可选` */
@@ -102,6 +104,8 @@ declare global {
       showLink?: boolean;
       /** 菜单升序排序，值越高排的越后（只针对顶级路由）`可选` */
       rank?: number;
+      /** 页面级别权限设置 `可选` */
+      roles?: Array<string>;
     };
     /** 子路由配置项 */
     children?: Array<RouteChildrenConfigsTable>;

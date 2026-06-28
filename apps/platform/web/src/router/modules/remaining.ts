@@ -1,4 +1,6 @@
 import { $t } from "@/plugins/i18n";
+import { ensureProjectEnterable } from "../guards/project-access";
+
 const Layout = () => import("@/layout/index.vue");
 
 export default [
@@ -60,6 +62,12 @@ export default [
     meta: {
       title: "SEO 工厂",
       showLink: false
+    },
+    beforeEnter: async (to) => {
+      const allowed = await ensureProjectEnterable(to.params.projectId);
+      if (!allowed) {
+        return { path: "/access-denied" };
+      }
     },
     children: [
       {

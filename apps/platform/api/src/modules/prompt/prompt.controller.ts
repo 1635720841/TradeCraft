@@ -6,38 +6,52 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestj
 import type { RequestContext } from '@wm/shared-core';
 import { Role } from '@wm/shared-core';
 import { ReqCtx } from '../../core/decorators/request-context.decorator';
+import { Permissions } from '../../core/decorators/permissions.decorator';
 import { Roles } from '../../core/decorators/roles.decorator';
 import { CreatePromptTemplateDto } from './dto/create-prompt-template.dto';
 import { UpdatePromptBindingDto } from './dto/update-prompt-binding.dto';
 import { UpdatePromptTemplateDto } from './dto/update-prompt-template.dto';
+import { AuditService } from '../access/audit.service';
 import { PromptBindingService } from './prompt-binding.service';
 import { PromptService } from './prompt.service';
 
-@Controller('api/v1/platform/prompts')
+@Controller('api/v1/console/prompts')
+@Roles(Role.SUPER_ADMIN, Role.PLATFORM_OPERATOR)
 export class PromptController {
   constructor(
     private readonly promptService: PromptService,
     private readonly promptBindingService: PromptBindingService,
+    private readonly auditService: AuditService,
   ) {}
 
   @Get('runtime-bindings')
+  @Permissions('console:prompt:read')
   async runtimeBindings(@ReqCtx() ctx: RequestContext) {
     const data = await this.promptBindingService.listRuntimeBindings();
     return { data, meta: { traceId: ctx.traceId } };
   }
 
   @Patch('runtime-bindings/:slotId')
-  @Roles(Role.ADMIN)
+  @Permissions('console:prompt:manage')
   async updateRuntimeBinding(
     @ReqCtx() ctx: RequestContext,
     @Param('slotId') slotId: string,
     @Body() dto: UpdatePromptBindingDto,
   ) {
     const data = await this.promptBindingService.updateBinding(slotId, dto.activeVersion);
+    await this.auditService.log({
+      actorUserId: ctx.userId,
+      action: 'console.prompt.update',
+      targetType: 'PromptBinding',
+      targetId: slotId,
+      metadata: { activeVersion: dto.activeVersion },
+      traceId: ctx.traceId,
+    });
     return { data, meta: { traceId: ctx.traceId } };
   }
 
   @Get()
+  @Permissions('console:prompt:read')
   async list(
     @ReqCtx() ctx: RequestContext,
     @Query('page') page?: string,
@@ -57,38 +71,47 @@ export class PromptController {
   }
 
   @Get(':version')
+  @Permissions('console:prompt:read')
   async getOne(@ReqCtx() ctx: RequestContext, @Param('version') version: string) {
     const row = await this.promptService.findOne(version);
     return { data: row, meta: { traceId: ctx.traceId } };
   }
 
   @Post()
-  @Roles(Role.ADMIN)
+  @Permissions('console:prompt:manage')
   async create(@ReqCtx() ctx: RequestContext, @Body() dto: CreatePromptTemplateDto) {
     const row = await this.promptService.create(dto);
     return { data: row, meta: { traceId: ctx.traceId } };
   }
 
   @Patch(':version')
-  @Roles(Role.ADMIN)
+  @Permissions('console:prompt:manage')
   async update(
     @ReqCtx() ctx: RequestContext,
     @Param('version') version: string,
     @Body() dto: UpdatePromptTemplateDto,
   ) {
     const row = await this.promptService.update(version, dto);
+    await this.auditService.log({
+      actorUserId: ctx.userId,
+      action: 'console.prompt.update',
+      targetType: 'PromptTemplate',
+      targetId: version,
+      metadata: { fields: Object.keys(dto) },
+      traceId: ctx.traceId,
+    });
     return { data: row, meta: { traceId: ctx.traceId } };
   }
 
   @Delete(':version')
-  @Roles(Role.ADMIN)
+  @Permissions('console:prompt:manage')
   async remove(@ReqCtx() ctx: RequestContext, @Param('version') version: string) {
     const data = await this.promptService.remove(version);
     return { data, meta: { traceId: ctx.traceId } };
   }
 
   @Post(':version/cache/clear')
-  @Roles(Role.ADMIN)
+  @Permissions('console:prompt:manage')
   async clearCache(@ReqCtx() ctx: RequestContext, @Param('version') version: string) {
     await this.promptService.findOne(version);
     await this.promptService.invalidateCache(version);

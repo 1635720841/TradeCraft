@@ -60,7 +60,7 @@ export interface UpdatePromptTemplatePayload {
 export async function getPromptRuntimeBindings(): Promise<PromptRuntimeSlot[]> {
   const res = await http.request<WmApiResponse<PromptRuntimeSlot[]>>(
     "get",
-    "/api/v1/platform/prompts/runtime-bindings"
+    "/api/v1/console/prompts/runtime-bindings"
   );
   return res.data ?? [];
 }
@@ -71,7 +71,7 @@ export async function updatePromptRuntimeBinding(
 ): Promise<PromptRuntimeSlot> {
   const res = await http.request<WmApiResponse<PromptRuntimeSlot>>(
     "patch",
-    `/api/v1/platform/prompts/runtime-bindings/${encodeURIComponent(slotId)}`,
+    `/api/v1/console/prompts/runtime-bindings/${encodeURIComponent(slotId)}`,
     { data: { activeVersion } }
   );
   return res.data;
@@ -83,7 +83,7 @@ export async function listPromptTemplates(
 ): Promise<PromptTemplateListResult> {
   const res = await http.request<WmApiResponse<PromptTemplateItem[]>>(
     "get",
-    "/api/v1/platform/prompts",
+    "/api/v1/console/prompts",
     { params: { page, limit } }
   );
   const pagination = res.meta?.pagination ?? {
@@ -97,7 +97,7 @@ export async function listPromptTemplates(
 export async function getPromptTemplate(version: string): Promise<PromptTemplateItem> {
   const res = await http.request<WmApiResponse<PromptTemplateItem>>(
     "get",
-    `/api/v1/platform/prompts/${encodeURIComponent(version)}`
+    `/api/v1/console/prompts/${encodeURIComponent(version)}`
   );
   return res.data;
 }
@@ -107,7 +107,7 @@ export async function createPromptTemplate(
 ): Promise<PromptTemplateItem> {
   const res = await http.request<WmApiResponse<PromptTemplateItem>>(
     "post",
-    "/api/v1/platform/prompts",
+    "/api/v1/console/prompts",
     { data: payload }
   );
   return res.data;
@@ -119,7 +119,7 @@ export async function updatePromptTemplate(
 ): Promise<PromptTemplateItem> {
   const res = await http.request<WmApiResponse<PromptTemplateItem>>(
     "patch",
-    `/api/v1/platform/prompts/${encodeURIComponent(version)}`,
+    `/api/v1/console/prompts/${encodeURIComponent(version)}`,
     { data: payload }
   );
   return res.data;
@@ -130,7 +130,7 @@ export async function deletePromptTemplate(
 ): Promise<{ version: string; deleted: boolean }> {
   const res = await http.request<WmApiResponse<{ version: string; deleted: boolean }>>(
     "delete",
-    `/api/v1/platform/prompts/${encodeURIComponent(version)}`
+    `/api/v1/console/prompts/${encodeURIComponent(version)}`
   );
   return res.data;
 }
@@ -140,7 +140,7 @@ export async function clearPromptTemplateCache(
 ): Promise<{ version: string; cleared: boolean }> {
   const res = await http.request<WmApiResponse<{ version: string; cleared: boolean }>>(
     "post",
-    `/api/v1/platform/prompts/${encodeURIComponent(version)}/cache/clear`
+    `/api/v1/console/prompts/${encodeURIComponent(version)}/cache/clear`
   );
   return res.data;
 }

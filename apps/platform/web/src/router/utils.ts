@@ -72,6 +72,38 @@ function filterChildrenTree(data: RouteComponent[]) {
   return newTree;
 }
 
+/** 企业管理入口：按可见菜单跳转到首个可访问子页 */
+const ORG_MENU_PATH_ORDER: Array<{ menuKey: string; path: string }> = [
+  { menuKey: "org:profile", path: "/org/profile" },
+  { menuKey: "org:projects", path: "/org/projects" },
+  { menuKey: "org:billing", path: "/org/billing" },
+  { menuKey: "org:members", path: "/org/members" }
+];
+
+export function resolveOrgEntryPath(visibleMenuKeys?: string[]): string {
+  const keys = visibleMenuKeys ?? [];
+  for (const item of ORG_MENU_PATH_ORDER) {
+    if (keys.includes(item.menuKey)) {
+      return item.path;
+    }
+  }
+  return "/org/profile";
+}
+
+/** 路由级权限校验（与 hasPerms 一致，读 localStorage） */
+export function hasRoutePermission(
+  userInfo: DataInfo<number> | null | undefined,
+  permission: string | string[] | undefined
+): boolean {
+  if (!permission) return true;
+  const perms = userInfo?.permissions ?? [];
+  if (perms.includes("*:*:*")) return true;
+  if (isString(permission)) {
+    return perms.includes(permission);
+  }
+  return isIncludeAllChildren(permission, perms);
+}
+
 /** 判断两个数组彼此是否存在相同值 */
 function isOneOfArray(a: Array<string>, b: Array<string>) {
   return Array.isArray(a) && Array.isArray(b)
@@ -83,11 +115,16 @@ function isOneOfArray(a: Array<string>, b: Array<string>) {
 
 /** 从localStorage里取出当前登录用户的角色roles，过滤无权限的菜单 */
 function filterNoPermissionTree(data: RouteComponent[]) {
-  const currentRoles =
-    storageLocal().getItem<DataInfo<number>>(userKey)?.roles ?? [];
-  const newTree = cloneDeep(data).filter((v: any) =>
-    isOneOfArray(v.meta?.roles, currentRoles)
-  );
+  const userInfo = storageLocal().getItem<DataInfo<number>>(userKey);
+  const currentRoles = userInfo?.roles ?? [];
+  const visibleMenuKeys = userInfo?.visibleMenuKeys;
+  const newTree = cloneDeep(data).filter((v: any) => {
+    if (!isOneOfArray(v.meta?.roles, currentRoles)) return false;
+    if (visibleMenuKeys?.length && v.meta?.menuKey) {
+      return visibleMenuKeys.includes(v.meta.menuKey);
+    }
+    return true;
+  });
   newTree.forEach(
     (v: any) => v.children && (v.children = filterNoPermissionTree(v.children))
   );

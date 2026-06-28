@@ -39,7 +39,7 @@ export class KeywordClusterController {
 
   @Get()
   async list(@ReqCtx() ctx: RequestContext, @Param('projectId') projectId: string) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const data = await this.keywordClusterService.findMany(ctx.organizationId, projectId);
     return { data, meta: { traceId: ctx.traceId } };
   }
@@ -51,7 +51,7 @@ export class KeywordClusterController {
     @Param('projectId') projectId: string,
     @Body() dto: CreateKeywordClusterDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const data = await this.keywordClusterService.create(ctx.organizationId, projectId, dto);
     return { data, meta: { traceId: ctx.traceId } };
   }
@@ -64,7 +64,7 @@ export class KeywordClusterController {
     @Param('id') id: string,
     @Body() dto: UpdateKeywordClusterDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const data = await this.keywordClusterService.update(
       ctx.organizationId,
       projectId,
@@ -81,7 +81,7 @@ export class KeywordClusterController {
     @Param('projectId') projectId: string,
     @Param('id') id: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const data = await this.keywordClusterService.remove(ctx.organizationId, projectId, id);
     return { data, meta: { traceId: ctx.traceId } };
   }
@@ -94,7 +94,7 @@ export class KeywordClusterController {
     @Param('id') id: string,
     @Body() dto: AssignKeywordsToClusterDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const data = await this.keywordClusterService.assignKeywords(
       ctx.organizationId,
       projectId,
@@ -112,7 +112,7 @@ export class KeywordClusterController {
     @Param('id') id: string,
     @Body() dto: CreateJobsFromClusterDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId);
+    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
     const data = await this.keywordClusterService.createJobsFromCluster(
       ctx.organizationId,
       projectId,
