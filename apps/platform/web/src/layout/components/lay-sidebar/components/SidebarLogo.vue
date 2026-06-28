@@ -19,8 +19,7 @@ const { title, getLogo } = useNav();
         class="sidebar-logo-link"
         :to="getTopMenu()?.path ?? '/'"
       >
-        <img :src="getLogo()" alt="logo" />
-        <span class="sidebar-title shell-logo-title">{{ title }}</span>
+        <img class="brand-logo" :src="getLogo()" alt="MERWISE" />
       </router-link>
       <router-link
         v-else
@@ -29,8 +28,7 @@ const { title, getLogo } = useNav();
         class="sidebar-logo-link"
         :to="getTopMenu()?.path ?? '/'"
       >
-        <img :src="getLogo()" alt="logo" />
-        <span class="sidebar-title shell-logo-title">{{ title }}</span>
+        <img class="brand-logo" :src="getLogo()" alt="MERWISE" />
       </router-link>
     </transition>
   </div>
@@ -40,32 +38,30 @@ const { title, getLogo } = useNav();
 .sidebar-logo-container {
   position: relative;
   width: 100%;
-  height: 52px;
+  height: 76px;
+  padding: 0 10px 18px;
   overflow: hidden;
 
   .sidebar-logo-link {
     display: flex;
-    flex-wrap: nowrap;
     align-items: center;
     height: 100%;
-    padding-left: 10px;
 
-    img {
-      display: inline-block;
-      height: 32px;
+    .brand-logo {
+      display: block;
+      width: auto;
+      max-width: 100%;
+      height: 42px;
+      object-fit: contain;
+      object-position: left center;
+      filter: drop-shadow(0 7px 12px rgb(16 86 193 / 16%));
     }
+  }
 
-    .sidebar-title {
-      display: inline-block;
-      height: 32px;
-      margin: 2px 0 0 12px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      font-size: 18px;
-      font-weight: 700;
-      line-height: 32px;
-      white-space: nowrap;
-    }
+  &.collapses .brand-logo {
+    height: 34px;
+    margin: 0 auto;
+    object-position: center;
   }
 }
 </style>

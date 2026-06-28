@@ -142,6 +142,22 @@ import { dictLabel, dictTagType } from "@/utils/dict";
 
 - 优先 `scoped`；避免 `!important`
 
+## 图标
+
+- **优先** [`@lucide/vue`](https://lucide.dev/icons/)（Lucide），按需引入组件
+- 禁止新代码用字体图标；旧页面 Iconify 可暂不迁
+- 统一 `size`、`stroke-width`（默认约 `1.75`）；可薄封装如 `HomeIcon.vue`
+
+```vue
+<script setup lang="ts">
+import { Globe, Plus } from "@lucide/vue";
+</script>
+
+<template>
+  <Globe :size="20" :stroke-width="1.75" aria-hidden="true" />
+</template>
+```
+
 ## 路由（pure-admin）
 
 - path 以 `/` 开头；懒加载 `() => import('@/views/...')`

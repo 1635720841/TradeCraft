@@ -11,6 +11,7 @@
     "lint": "eslint --cache --max-warnings 0 \"{src,mock,build}/**/*.{vue,js,ts,tsx}\""
   },
   "dependencies": {
+    "@lucide/vue": "^1.21.0",
     "@pureadmin/descriptions": "^1.2.1",
     "@pureadmin/table": "^3.3.0",
     "@pureadmin/utils": "^2.6.2",
@@ -26,6 +27,7 @@
     "@tiptap/vue-3": "^3.26.1",
     "@vueuse/core": "^14.0.0",
     "@vueuse/motion": "^3.0.3",
+    "@wm/shared-core": "workspace:*",
     "animate.css": "^4.1.1",
     "axios": "^1.12.2",
     "dayjs": "^1.11.18",
@@ -47,8 +49,7 @@
     "vue-i18n": "^11.1.12",
     "vue-router": "^4.6.3",
     "vue-tippy": "^6.7.1",
-    "vue-types": "^6.0.0",
-    "@wm/shared-core": "workspace:*"
+    "vue-types": "^6.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.38.0",

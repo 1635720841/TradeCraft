@@ -53,13 +53,13 @@ const getMainWidth = computed(() => {
 
 const getSectionStyle = computed(() => {
   return [
-    hideTabs.value && layout ? "padding-top: 52px;" : "",
+    hideTabs.value && layout ? "padding-top: var(--shell-header-height, 70px);" : "",
     !hideTabs.value && layout
       ? showModel.value == "chrome"
         ? "padding-top: 96px;"
         : "padding-top: 92px;"
       : "",
-    hideTabs.value && !layout.value ? "padding-top: 52px;" : "",
+    hideTabs.value && !layout.value ? "padding-top: var(--shell-header-height, 70px);" : "",
     !hideTabs.value && !layout.value
       ? showModel.value == "chrome"
         ? "padding-top: 96px;"
@@ -69,7 +69,7 @@ const getSectionStyle = computed(() => {
       ? ""
       : `padding-top: 0;${
           hideTabs.value
-            ? "min-height: calc(100vh - 52px);"
+            ? "min-height: calc(100vh - var(--shell-header-height, 70px));"
             : "min-height: calc(100vh - 92px);"
         }`
   ];

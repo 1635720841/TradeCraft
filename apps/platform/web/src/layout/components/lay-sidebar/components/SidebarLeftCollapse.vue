@@ -1,10 +1,6 @@
 <script setup lang="ts">
-import { computed } from "vue";
 import { useI18n } from "vue-i18n";
-import { useGlobal } from "@pureadmin/utils";
 import { useNav } from "@/layout/hooks/useNav";
-
-import MenuFold from "~icons/ri/menu-fold-fill";
 
 interface Props {
   isActive?: boolean;
@@ -17,22 +13,6 @@ withDefaults(defineProps<Props>(), {
 const { t } = useI18n();
 const { tooltipEffect } = useNav();
 
-const iconClass = computed(() => {
-  return [
-    "ml-4",
-    "mb-1",
-    "w-[16px]",
-    "h-[16px]",
-    "inline-block!",
-    "align-middle",
-    "cursor-pointer",
-    "duration-[100ms]"
-  ];
-});
-
-const { $storage } = useGlobal<GlobalPropertiesApi>();
-const themeColor = computed(() => $storage.layout?.themeColor);
-
 const emit = defineEmits<{
   (e: "toggleClick"): void;
 }>();
@@ -43,31 +23,59 @@ const toggleClick = () => {
 </script>
 
 <template>
-  <div class="left-collapse">
-    <IconifyIconOffline
-      v-tippy="{
-        content: isActive
-          ? t('buttons.pureClickCollapse')
-          : t('buttons.pureClickExpand'),
-        theme: tooltipEffect,
-        hideOnClick: 'toggle',
-        placement: 'right'
-      }"
-      :icon="MenuFold"
-      :class="[iconClass, themeColor === 'light' ? '' : 'text-primary']"
-      :style="{ transform: isActive ? 'none' : 'rotateY(180deg)' }"
-      @click="toggleClick"
-    />
-  </div>
+  <button
+    type="button"
+    class="left-collapse"
+    v-tippy="{
+      content: isActive
+        ? t('buttons.pureClickCollapse')
+        : t('buttons.pureClickExpand'),
+      theme: tooltipEffect,
+      hideOnClick: 'toggle',
+      placement: 'right'
+    }"
+    @click="toggleClick"
+  >
+    <span class="collapse-icon" aria-hidden="true">⇇</span>
+    <span class="collapse-label">
+      {{ isActive ? "收起菜单" : "展开菜单" }}
+    </span>
+  </button>
 </template>
 
 <style lang="scss" scoped>
 .left-collapse {
-  position: absolute;
-  bottom: 0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
   width: 100%;
   height: 40px;
-  line-height: 40px;
-  background: linear-gradient(180deg, transparent 0%, rgb(240 249 255 / 60%) 100%);
+  padding: 10px 12px;
+  margin-top: 16px;
+  color: #7a8ba5;
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  transition:
+    color 0.2s ease,
+    background 0.2s ease;
+
+  &:hover {
+    color: var(--shell-accent);
+    background: var(--shell-accent-soft);
+    border-radius: var(--shell-radius-md);
+  }
+
+  .collapse-icon {
+    font-size: 14px;
+    line-height: 1;
+  }
+
+  .collapse-label {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+  }
 }
 </style>

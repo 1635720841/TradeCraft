@@ -33,6 +33,10 @@ web/src/store/
 - template **直接写中文**，不做国际化
 - 同一文案复用 ≥3 次可抽 `constants/`，非必须
 
+## 图标
+
+- 优先 `@lucide/vue`，见 `vue.mdc` §图标
+
 ## 字典 / 枚举（强制）
 
 - **定义**：`src/constants/dicts/<域>.ts`（如 `platform.ts`、`seo-factory.ts`）

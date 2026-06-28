@@ -15,6 +15,7 @@ import { useEpThemeStoreHook } from "@/store/modules/epTheme";
 import { usePermissionStoreHook } from "@/store/modules/permission";
 import ExitFullscreen from "~icons/ri/fullscreen-exit-fill";
 import Fullscreen from "~icons/ri/fullscreen-fill";
+import brandLogo from "@/assets/login/logo.png";
 
 const errorInfo =
   "The current routing configuration is incorrect, please check the configuration";
@@ -140,9 +141,9 @@ export function useNav() {
     return remainingPaths.includes(path);
   }
 
-  /** 获取`logo` */
+  /** 获取品牌 Logo（与登录页一致） */
   function getLogo() {
-    return new URL("/logo.svg", import.meta.url).href;
+    return brandLogo;
   }
 
   return {

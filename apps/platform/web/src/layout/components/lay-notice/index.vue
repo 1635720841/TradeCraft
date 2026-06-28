@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
 import { ref, computed } from "vue";
+import { Bell } from "@lucide/vue";
 import { noticesData } from "./data";
 import NoticeList from "./components/NoticeList.vue";
-import BellIcon from "~icons/ep/bell";
 
 const { t } = useI18n();
 const noticesNum = ref(0);
@@ -20,20 +20,15 @@ const getLabel = computed(
 
 <template>
   <el-dropdown trigger="click" placement="bottom-end">
-    <span
-      :class="[
-        'dropdown-badge',
-        'navbar-bg-hover',
-        'select-none',
-        Number(noticesNum) !== 0 && 'mr-[10px]'
-      ]"
-    >
-      <el-badge :value="Number(noticesNum) === 0 ? '' : noticesNum" :max="99">
-        <span class="header-notice-icon">
-          <IconifyIconOffline :icon="BellIcon" />
-        </span>
+    <button type="button" class="shell-topbar-action shell-topbar-notice">
+      <el-badge
+        :value="Number(noticesNum) === 0 ? '' : noticesNum"
+        :max="99"
+        class="shell-topbar-notice__badge"
+      >
+        <Bell :size="18" :stroke-width="1.75" aria-hidden="true" />
       </el-badge>
-    </span>
+    </button>
     <template #dropdown>
       <el-dropdown-menu>
         <el-tabs
@@ -65,17 +60,16 @@ const getLabel = computed(
 </template>
 
 <style lang="scss" scoped>
-.dropdown-badge {
+.shell-topbar-notice {
+  width: 40px;
+  padding: 0;
+  justify-content: center;
+}
+
+.shell-topbar-notice__badge {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 52px;
-  cursor: pointer;
-
-  .header-notice-icon {
-    font-size: 18px;
-  }
 }
 
 .dropdown-tabs {

@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" fill="none">
   <defs>
     <linearGradient id="wmLogoBg" x1="4" y1="4" x2="44" y2="44" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#0F766E"/>
-      <stop offset="1" stop-color="#2563EB"/>
+      <stop stop-color="#0879FF"/>
+      <stop offset="1" stop-color="#0D3C9D"/>
     </linearGradient>
   </defs>
   <rect x="2" y="2" width="44" height="44" rx="12" fill="url(#wmLogoBg)"/>
