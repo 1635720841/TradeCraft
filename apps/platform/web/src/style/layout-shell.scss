@@ -1,49 +1,4 @@
-/* SaaS 控制台外壳：Merwise 白侧栏 + 蓝色工作区 */
-
-:root {
-  --shell-bg: #f7faff;
-  --shell-bg-soft: #f3f8ff;
-  --shell-sidebar: #fff;
-  --shell-sidebar-elevated: #f7fbff;
-  --shell-header: rgb(255 255 255 / 92%);
-  --shell-border: #e6edf7;
-  --shell-border-strong: #d8e3f2;
-  --shell-accent: #1467f3;
-  --shell-accent-hover: #2f7cff;
-  --shell-accent-soft: #f4f8ff;
-  --shell-accent-soft-strong: #f0f6ff;
-  --shell-info: #1467f3;
-  --shell-info-soft: #eaf2ff;
-  --shell-warning: #ff981f;
-  --shell-danger: #dc2626;
-  --shell-accent-gradient: linear-gradient(120deg, #176ef4 0%, #327fff 100%);
-  --shell-accent-glow: 0 10px 18px rgb(20 103 243 / 20%);
-  --shell-shadow-soft: 0 7px 20px rgb(31 79 160 / 6%);
-  --shell-shadow-ambient: 0 1px 0 rgb(255 255 255 / 72%) inset;
-  --shell-shadow-panel: 0 1px 2px rgb(31 79 160 / 5%), 0 12px 34px rgb(31 79 160 / 9%);
-  --shell-text-primary: #132344;
-  --shell-text-secondary: #566783;
-  --shell-text-muted: #71819b;
-  --shell-menu-text: #566783;
-  --shell-submenu-text: #7a8ba5;
-  --shell-radius-sm: 8px;
-  --shell-radius-md: 10px;
-  --shell-radius-pill: 999px;
-  --shell-blur: blur(12px);
-  --shell-sidebar-width: 236px;
-  --shell-header-height: 70px;
-
-  --el-color-primary: #1467f3;
-  --el-color-primary-light-3: #4a8ef7;
-  --el-color-primary-light-5: #7aaaf9;
-  --el-color-primary-light-7: #b3cffc;
-  --el-color-primary-light-8: #d4e5fd;
-  --el-color-primary-light-9: #f3f8ff;
-  --el-color-primary-dark-2: #1056c9;
-  --el-border-radius-base: 8px;
-  --el-border-radius-small: 6px;
-  --el-font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", Inter, ui-sans-serif, system-ui, sans-serif;
-}
+/* SaaS 控制台外壳：Merwise 白侧栏 + 蓝色工作区（色彩见 merwise-tokens.scss） */
 
 .shell-navbar,
 .shell-header {
@@ -92,9 +47,9 @@
   height: 40px;
   padding: 0 11px;
   font: inherit;
-  color: #8694a8;
+  color: var(--shell-text-weak);
   cursor: pointer;
-  background: #fff;
+  background: var(--mw-bg-card);
   border: 1px solid var(--shell-border);
   border-radius: 12px;
   transition:
@@ -112,7 +67,7 @@
   }
 
   &:hover {
-    border-color: #d4e3f8;
+    border-color: var(--mw-border-input-hover);
     box-shadow: 0 0 0 3px rgb(20 103 243 / 6%);
   }
 }
@@ -123,8 +78,8 @@
   font-size: 11px;
   font-weight: 700;
   line-height: 1;
-  color: #73829a;
-  background: #eef3fb;
+  color: var(--shell-text-muted);
+  background: var(--shell-accent-soft-strong);
   border: 0;
   border-radius: 6px;
 }
@@ -138,10 +93,10 @@
   padding: 0 13px;
   font: inherit;
   font-weight: 700;
-  color: #425370;
+  color: var(--mw-text-btn-secondary);
   cursor: pointer;
-  background: #fff;
-  border: 1px solid var(--shell-border);
+  background: var(--mw-bg-card);
+  border: 1px solid var(--mw-border-input);
   border-radius: 12px;
   transition:
     background 0.16s ease,
@@ -151,7 +106,7 @@
   &:hover {
     color: var(--shell-accent);
     background: var(--shell-accent-soft);
-    border-color: #d4e3f8;
+    border-color: var(--mw-border-input-hover);
   }
 }
 
@@ -184,8 +139,8 @@
   width: 34px;
   height: 34px;
   object-fit: cover;
-  background: linear-gradient(145deg, #2678fa, #6aa4ff);
-  border: 2px solid #fff;
+  background: var(--mw-gradient-avatar);
+  border: 2px solid var(--mw-bg-card);
   border-radius: 50%;
   box-shadow:
     0 0 0 1px rgb(38 120 250 / 14%),
@@ -209,7 +164,7 @@
 .shell-topbar-profile__role {
   font-size: 11px;
   line-height: 1.2;
-  color: #8997aa;
+  color: var(--shell-text-muted);
 }
 
 .shell-topbar-settings {
@@ -281,12 +236,12 @@
     border-color 0.16s ease;
 
   &:hover {
-    background: #fff !important;
+    background: var(--mw-bg-card) !important;
     border-color: var(--shell-border);
   }
 
   img {
-    background: linear-gradient(145deg, #2678fa, #6aa4ff);
+    background: var(--mw-gradient-avatar);
     box-shadow:
       0 0 0 1px rgb(38 120 250 / 14%),
       0 4px 10px rgb(38 120 250 / 22%);
@@ -314,7 +269,7 @@
   letter-spacing: 4px;
 }
 
-/* mix 顶栏：白底导航用语义色，不用侧栏深色 token */
+/* mix 顶栏：白底导航用语义色，主 CTA 可用渐变 */
 body[layout="mix"] {
   .horizontal-header {
     .horizontal-header-menu {

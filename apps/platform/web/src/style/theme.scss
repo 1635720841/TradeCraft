@@ -1,13 +1,13 @@
 /* 亮白色 — Merwise B2B SaaS 控制台主题 */
 html[data-theme="light"] {
   --pure-theme-sub-menu-active-text: #fff;
-  --pure-theme-menu-bg: #fff;
-  --pure-theme-menu-hover: #f4f8ff;
-  --pure-theme-sub-menu-bg: #fff;
-  --pure-theme-menu-text: #566783;
-  --pure-theme-sidebar-logo: #fff;
-  --pure-theme-menu-title-hover: #1467f3;
-  --pure-theme-menu-active-before: #1467f3;
+  --pure-theme-menu-bg: var(--mw-bg-card);
+  --pure-theme-menu-hover: var(--mw-blue-soft);
+  --pure-theme-sub-menu-bg: var(--mw-bg-card);
+  --pure-theme-menu-text: var(--mw-text-secondary);
+  --pure-theme-sidebar-logo: var(--mw-bg-card);
+  --pure-theme-menu-title-hover: var(--mw-blue);
+  --pure-theme-menu-active-before: var(--mw-blue);
 }
 
 /* 道奇蓝 */

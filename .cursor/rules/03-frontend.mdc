@@ -37,6 +37,29 @@ web/src/store/
 
 - 优先 `@lucide/vue`，见 `vue.mdc` §图标
 
+## UI 色彩（MERWISE）
+
+**唯一数据源**：`src/style/merwise-tokens.scss`（经 `index.scss` 全局加载）。改色只改此文件。
+
+**用法**：样式里用 `var(--mw-*)` 或 `var(--shell-*)`，**禁止**页面/组件内写 `#1467f3` 等硬编码 hex。
+
+| 用途 | Token | 色值 |
+|------|-------|------|
+| 主色 / 按钮 / 链接 | `--mw-blue` | `#1467F3` |
+| 标题 / 重点数字 | `--mw-ink` | `#132344` |
+| 正文 | `--mw-text-body` | `#32415C` |
+| 说明文字 | `--mw-text-muted` | `#71819B` |
+| 页面底 | `--mw-bg-page` | `#F7FAFF` |
+| 卡片底 | `--mw-bg-card` | `#FFFFFF` |
+| 成功 / 警告 / 错误 / AI | `--mw-success` 等 | `#20B67A` / `#FF981F` / `#F05262` / `#8B5CF6` |
+
+**硬性约定**：
+
+- 主按钮 hover 用 `--mw-blue-hover`（`#0F5DDB`）；链接/图标 hover 用 `--mw-blue-bright`（`#2F7CFF`）
+- 渐变**仅**用于主按钮、插画、Logo；卡片/表格/侧栏用纯色
+- 侧栏选中：蓝底 `#1467F3` + 白字；橙色 `#FF981F` 只用于增长/营销/提醒，不做普通按钮
+- Element Plus 组件优先 `type="primary|success|warning|danger"`，勿自造状态色
+
 ## 字典 / 枚举（强制）
 
 - **定义**：`src/constants/dicts/<域>.ts`（如 `platform.ts`、`seo-factory.ts`）

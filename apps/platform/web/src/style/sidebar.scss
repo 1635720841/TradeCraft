@@ -288,9 +288,8 @@
       inset: 0;
       clear: both;
       content: "";
-      background: var(--shell-accent-gradient) !important;
+      background: var(--shell-accent) !important;
       border-radius: var(--shell-radius-md);
-      box-shadow: var(--shell-accent-glow);
     }
 
     .el-sub-menu__icon-arrow {
@@ -406,9 +405,8 @@
         position: absolute;
         inset: 4px 0;
         content: "";
-        background: var(--shell-accent-gradient);
+        background: var(--shell-accent);
         border-radius: var(--shell-radius-md);
-        box-shadow: var(--shell-accent-glow);
       }
 
       > * {
@@ -857,8 +855,7 @@ body[layout="mix"] {
   }
 
   .is-active.submenu-title-noDropdown.outer-most:not(.nest-menu)::before {
-    background: var(--shell-accent-gradient) !important;
-    box-shadow: var(--shell-accent-glow);
+    background: var(--shell-accent) !important;
   }
 }
 

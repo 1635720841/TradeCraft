@@ -1,0 +1,122 @@
+/* MERWISE 贸有数 — 全局 Design Tokens（色彩规范唯一数据源） */
+
+:root {
+  /* ── 品牌蓝 ── */
+  --mw-blue: #1467f3;
+  --mw-blue-hover: #0f5ddb;
+  --mw-blue-bright: #2f7cff;
+  --mw-ink: #132344;
+  --mw-blue-soft: #f3f8ff;
+  --mw-blue-ice: #eaf2ff;
+
+  /* ── 中性色 ── */
+  --mw-bg-page: #f7faff;
+  --mw-bg-page-gradient: linear-gradient(135deg, #f7faff 0%, #eef5ff 100%);
+  --mw-bg-card: #fff;
+  --mw-border: #e6edf7;
+  --mw-border-card: #edf2fa;
+  --mw-border-input: #dce7f6;
+  --mw-border-input-hover: #afcbff;
+  --mw-text-body: #32415c;
+  --mw-text-secondary: #566783;
+  --mw-text-muted: #71819b;
+  --mw-text-weak: #9aa8bc;
+  --mw-text-placeholder: #a5b2c3;
+  --mw-text-btn-secondary: #475a76;
+  --mw-icon-menu: #6e7f99;
+
+  /* ── 状态色 ── */
+  --mw-success: #20b67a;
+  --mw-success-soft: #eaf9f3;
+  --mw-warning: #ff981f;
+  --mw-warning-soft: #fff4e7;
+  --mw-danger: #f05262;
+  --mw-danger-soft: #fff0f2;
+  --mw-ai: #8b5cf6;
+  --mw-ai-soft: #f3eeff;
+
+  /* ── 渐变（限定场景使用） ── */
+  --mw-gradient-btn: linear-gradient(120deg, #176ef4 0%, #317dff 100%);
+  --mw-gradient-btn-hover: linear-gradient(120deg, #1a72f5 0%, #3a84ff 100%);
+  --mw-gradient-illustration: linear-gradient(135deg, #eaf2ff 0%, #2f7cff 100%);
+  --mw-gradient-avatar: linear-gradient(145deg, #2678fa 0%, #6aa4ff 100%);
+  --mw-gradient-logo: linear-gradient(145deg, #176ef4 0%, #4a92ff 100%);
+
+  /* ── 阴影 ── */
+  --mw-shadow-card: 0 7px 20px rgb(31 79 160 / 6%);
+  --mw-shadow-btn: 0 10px 18px rgb(20 103 243 / 20%);
+  --mw-shadow-focus: 0 0 0 4px rgb(37 116 233 / 12%);
+
+  /* ── 圆角 ── */
+  --mw-radius-sm: 8px;
+  --mw-radius-md: 10px;
+  --mw-radius-lg: 16px;
+  --mw-radius-pill: 999px;
+
+  /* ── 图表 ── */
+  --mw-chart-primary: #1467f3;
+  --mw-chart-secondary: #b9c7da;
+  --mw-chart-grid: #eaf0f8;
+
+  /* ── Shell 别名（layout / sidebar / 业务 SCSS 沿用） ── */
+  --shell-bg: var(--mw-bg-page);
+  --shell-bg-soft: var(--mw-blue-soft);
+  --shell-sidebar: var(--mw-bg-card);
+  --shell-sidebar-elevated: #f7fbff;
+  --shell-header: rgb(255 255 255 / 92%);
+  --shell-border: var(--mw-border);
+  --shell-border-strong: #d8e3f2;
+  --shell-accent: var(--mw-blue);
+  --shell-accent-hover: var(--mw-blue-bright);
+  --shell-accent-hover-button: var(--mw-blue-hover);
+  --shell-accent-soft: var(--mw-blue-soft);
+  --shell-accent-soft-strong: #f0f6ff;
+  --shell-info: var(--mw-blue);
+  --shell-info-soft: var(--mw-blue-ice);
+  --shell-success: var(--mw-success);
+  --shell-success-soft: var(--mw-success-soft);
+  --shell-warning: var(--mw-warning);
+  --shell-warning-soft: var(--mw-warning-soft);
+  --shell-danger: var(--mw-danger);
+  --shell-danger-soft: var(--mw-danger-soft);
+  --shell-ai: var(--mw-ai);
+  --shell-ai-soft: var(--mw-ai-soft);
+  --shell-accent-gradient: var(--mw-gradient-btn);
+  --shell-accent-glow: var(--mw-shadow-btn);
+  --shell-shadow-soft: var(--mw-shadow-card);
+  --shell-shadow-ambient: 0 1px 0 rgb(255 255 255 / 72%) inset;
+  --shell-shadow-panel: 0 1px 2px rgb(31 79 160 / 5%), 0 12px 34px rgb(31 79 160 / 9%);
+  --shell-text-primary: var(--mw-ink);
+  --shell-text-body: var(--mw-text-body);
+  --shell-text-secondary: var(--mw-text-secondary);
+  --shell-text-muted: var(--mw-text-muted);
+  --shell-text-weak: var(--mw-text-weak);
+  --shell-menu-text: var(--mw-text-secondary);
+  --shell-menu-icon: var(--mw-icon-menu);
+  --shell-submenu-text: #7a8ba5;
+  --shell-radius-sm: var(--mw-radius-sm);
+  --shell-radius-md: var(--mw-radius-md);
+  --shell-radius-lg: var(--mw-radius-lg);
+  --shell-radius-pill: var(--mw-radius-pill);
+  --shell-blur: blur(12px);
+  --shell-sidebar-width: 236px;
+  --shell-header-height: 70px;
+
+  /* ── Element Plus 主题覆盖 ── */
+  --el-color-primary: var(--mw-blue);
+  --el-color-primary-light-3: #4a8ef7;
+  --el-color-primary-light-5: #7aaaf9;
+  --el-color-primary-light-7: #b3cffc;
+  --el-color-primary-light-8: #d4e5fd;
+  --el-color-primary-light-9: var(--mw-blue-soft);
+  --el-color-primary-dark-2: var(--mw-blue-hover);
+  --el-color-success: var(--mw-success);
+  --el-color-success-light-9: var(--mw-success-soft);
+  --el-color-warning: var(--mw-warning);
+  --el-color-warning-light-9: var(--mw-warning-soft);
+  --el-color-danger: var(--mw-danger);
+  --el-color-danger-light-9: var(--mw-danger-soft);
+  --el-border-radius-base: var(--mw-radius-sm);
+  --el-border-radius-small: 6px;
+  --el-font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", Inter, ui-sans-serif, system-ui, sans-serif;
+}

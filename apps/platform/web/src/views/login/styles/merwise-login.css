@@ -1,18 +1,8 @@
+/* 登录页局部变量（品牌色见 merwise-tokens.scss） */
 :root {
-  --mw-blue-950: #062a73;
-  --mw-blue-900: #08398f;
-  --mw-blue-800: #0a4fc7;
-  --mw-blue-700: #1468e8;
-  --mw-blue-600: #2f7cff;
-  --mw-blue-100: #eaf4ff;
-  --mw-ink: #112b56;
-  --mw-muted: #6f819d;
-  --mw-line: #dce7f6;
-  --mw-orange: #ff8a00;
-  --mw-white: #fff;
-  --mw-shadow: 0 30px 80px rgb(13 67 160 / 18%);
-  --mw-card-shadow: 0 15px 44px rgb(17 75 167 / 12%);
-  --mw-soft-shadow: 0 14px 35px rgb(15 80 171 / 8%);
+  --mw-login-shadow: 0 30px 80px rgb(13 67 160 / 18%);
+  --mw-login-card-shadow: 0 15px 44px rgb(17 75 167 / 12%);
+  --mw-login-soft-shadow: 0 14px 35px rgb(15 80 171 / 8%);
 }
 
 html.mw-login-active,
@@ -36,7 +26,7 @@ html.mw-login-active #app {
   box-sizing: border-box;
   color: var(--mw-ink);
   font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", Arial, sans-serif;
-  background-color: #f3f8ff;
+  background-color: var(--mw-blue-soft);
   background-image:
     linear-gradient(90deg, rgb(244 249 255 / 20%), rgb(246 250 255 / 4%)),
     var(--mw-page-bg);
@@ -120,13 +110,13 @@ html.mw-login-active #app {
 
 .mw-hero-copy h1 em {
   font-style: normal;
-  color: var(--mw-blue-700);
+  color: var(--mw-blue);
 }
 
 .mw-hero-copy p {
   margin: clamp(8px, 1.2vh, 14px) 0 0;
   max-width: 590px;
-  color: #5f7597;
+  color: var(--mw-text-muted);
   font-size: clamp(13px, 1.2vw, 17px);
   line-height: 1.65;
   display: -webkit-box;
@@ -154,7 +144,7 @@ html.mw-login-active #app {
   border-radius: 18px;
   background: rgb(255 255 255 / 84%);
   border: 1px solid rgb(255 255 255 / 92%);
-  box-shadow: var(--mw-card-shadow);
+  box-shadow: var(--mw-login-card-shadow);
   backdrop-filter: blur(14px);
 }
 
@@ -167,11 +157,11 @@ html.mw-login-active #app {
   place-items: center;
   color: #fff;
   box-shadow: 0 12px 24px rgb(35 110 231 / 20%);
-  background: linear-gradient(135deg, #62a0ff 0%, #1767e8 100%);
+  background: var(--mw-gradient-btn);
 }
 
 .mw-float-card.mw-orange .mw-icon {
-  background: linear-gradient(135deg, #ffb14d 0%, #ff8a00 100%);
+  background: linear-gradient(135deg, #ffb14d 0%, var(--mw-warning) 100%);
 }
 
 .mw-float-card .mw-icon svg {
@@ -183,12 +173,12 @@ html.mw-login-active #app {
   display: block;
   font-size: 16px;
   line-height: 1.2;
-  color: #223f6a;
+  color: var(--mw-text-body);
 }
 
 .mw-float-card p {
   margin: 8px 0 0;
-  color: #8091a8;
+  color: var(--mw-text-muted);
   font-size: 12px;
   line-height: 1.65;
 }
@@ -224,7 +214,7 @@ html.mw-login-active #app {
   border-radius: 22px;
   border: 1px solid rgb(255 255 255 / 95%);
   background: rgb(255 255 255 / 68%);
-  box-shadow: var(--mw-soft-shadow);
+  box-shadow: var(--mw-login-soft-shadow);
   backdrop-filter: blur(10px);
 }
 
@@ -241,12 +231,12 @@ html.mw-login-active #app {
   top: 6px;
   bottom: 6px;
   width: 1px;
-  background: #e6edf7;
+  background: var(--mw-border);
 }
 
 .mw-highlight strong {
   display: block;
-  color: var(--mw-blue-700);
+  color: var(--mw-blue);
   font-size: 16px;
   line-height: 1.2;
   letter-spacing: 0.5px;
@@ -307,7 +297,7 @@ html.mw-login-active #app {
   border: 1px solid rgb(255 255 255 / 94%);
   border-radius: 28px;
   background: rgb(255 255 255 / 86%);
-  box-shadow: var(--mw-shadow);
+  box-shadow: var(--mw-login-shadow);
   backdrop-filter: blur(20px);
   box-sizing: border-box;
   overflow: hidden;
@@ -413,7 +403,7 @@ html.mw-login-active #app {
 
 .mw-toggle-password:hover {
   background: #f0f6ff;
-  color: var(--mw-blue-700);
+  color: var(--mw-blue);
 }
 
 .mw-toggle-password svg {
@@ -450,8 +440,8 @@ html.mw-login-active #app {
 }
 
 .mw-remember input:checked {
-  border-color: var(--mw-blue-700);
-  background: var(--mw-blue-700);
+  border-color: var(--mw-blue);
+  background: var(--mw-blue);
 }
 
 .mw-remember input:checked::after {
@@ -462,7 +452,7 @@ html.mw-login-active #app {
 }
 
 .mw-forgot {
-  color: var(--mw-blue-700);
+  color: var(--mw-blue);
   text-decoration: none;
   font-weight: 700;
   cursor: pointer;
@@ -495,8 +485,8 @@ html.mw-login-active #app {
 
 .mw-btn-primary {
   color: #fff;
-  background: linear-gradient(110deg, #1a70e9 0%, #0a4fc7 100%);
-  box-shadow: 0 14px 26px rgb(13 86 207 / 25%);
+  background: var(--mw-gradient-btn);
+  box-shadow: var(--mw-shadow-btn);
 }
 
 .mw-btn-primary:hover:not(:disabled) {
@@ -506,13 +496,13 @@ html.mw-login-active #app {
 
 .mw-btn-secondary {
   margin-top: clamp(10px, 1.2vh, 14px);
-  color: var(--mw-blue-700);
-  border-color: #4b86f5;
+  color: var(--mw-blue);
+  border-color: var(--mw-blue-bright);
   background: rgb(255 255 255 / 86%);
 }
 
 .mw-btn-secondary:hover:not(:disabled) {
-  background: #f3f8ff;
+  background: var(--mw-blue-soft);
 }
 
 .mw-security {
@@ -522,8 +512,8 @@ html.mw-login-active #app {
   gap: 6px;
   margin-top: clamp(14px, 2vh, 22px);
   padding-top: clamp(12px, 1.5vh, 18px);
-  border-top: 1px solid #e5edf7;
-  color: #8696aa;
+  border-top: 1px solid var(--mw-border);
+  color: var(--mw-text-muted);
   font-size: 12px;
   line-height: 1.6;
   flex-shrink: 0;
@@ -533,7 +523,7 @@ html.mw-login-active #app {
   flex: 0 0 auto;
   width: 15px;
   height: 15px;
-  color: var(--mw-blue-700);
+  color: var(--mw-blue);
 }
 
 .mw-security span {
@@ -542,7 +532,7 @@ html.mw-login-active #app {
 
 .mw-logto-divider {
   margin: 18px 0 14px;
-  color: #9aaac0;
+  color: var(--mw-text-weak);
   font-size: 13px;
   text-align: center;
 }

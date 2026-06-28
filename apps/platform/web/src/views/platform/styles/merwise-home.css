@@ -1,15 +1,6 @@
-/* Merwise 企业工作台首页 — 对齐 merwise-dashboard-html */
+/* Merwise 企业工作台首页 — 色彩见 merwise-tokens.scss */
 
 .mw-home {
-  --mw-blue: #1467f3;
-  --mw-ink: #132344;
-  --mw-muted: #71819b;
-  --mw-line: #e6edf7;
-  --mw-page: #f7faff;
-  --mw-green: #20b67a;
-  --mw-orange: #ff981f;
-  --mw-soft: 0 7px 20px rgb(31 79 160 / 6%);
-
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -35,10 +26,10 @@
 .mw-home__quota-card,
 .mw-home__feature-card,
 .mw-home__workspace-card {
-  background: #fff;
-  border: 1px solid #edf2fa;
-  border-radius: 17px;
-  box-shadow: var(--mw-soft);
+  background: var(--mw-bg-card);
+  border: 1px solid var(--mw-border-card);
+  border-radius: var(--mw-radius-lg);
+  box-shadow: var(--mw-shadow-card);
 }
 
 .mw-home__hero-card {
@@ -84,11 +75,11 @@
   gap: 8px;
   align-items: center;
   font-weight: 700;
-  color: #72819b;
+  color: var(--mw-text-muted);
 }
 
 .mw-home__hello-icon {
-  color: #72819b;
+  color: var(--mw-text-muted);
 }
 
 .mw-home__hero-card h1 {
@@ -104,7 +95,7 @@
   margin: 0;
   font-size: 15px;
   line-height: 1.85;
-  color: #647590;
+  color: var(--mw-text-body);
 }
 
 .mw-home__actions {
@@ -122,11 +113,11 @@
   padding: 0 17px;
   font: inherit;
   font-weight: 800;
-  color: #475a76;
+  color: var(--mw-text-btn-secondary);
   cursor: pointer;
-  background: #fff;
-  border: 1px solid var(--mw-line);
-  border-radius: 10px;
+  background: var(--mw-bg-card);
+  border: 1px solid var(--mw-border-input);
+  border-radius: var(--mw-radius-md);
   transition:
     background 0.2s ease,
     border-color 0.2s ease,
@@ -135,20 +126,20 @@
 
 .mw-home__btn:hover {
   color: var(--mw-blue);
-  background: #f4f8ff;
-  border-color: #d4e3f8;
+  background: var(--mw-blue-soft);
+  border-color: var(--mw-border-input-hover);
 }
 
 .mw-home__btn--primary {
   color: #fff;
-  background: linear-gradient(120deg, #176ef4, #317dff);
+  background: var(--mw-gradient-btn);
   border-color: #176ef4;
-  box-shadow: 0 10px 18px rgb(20 103 243 / 22%);
+  box-shadow: var(--mw-shadow-btn);
 }
 
 .mw-home__btn--primary:hover {
   color: #fff;
-  background: linear-gradient(120deg, #1a72f5, #3a84ff);
+  background: var(--mw-gradient-btn-hover);
   border-color: #1a72f5;
 }
 
@@ -178,26 +169,26 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: #71819a;
+  color: var(--mw-text-muted);
 }
 
 .mw-home__badge {
   padding: 3px 8px;
   font-size: 11px;
   font-weight: 700;
-  color: #0d9c64;
-  background: #e9fbf3;
-  border-radius: 999px;
+  color: var(--mw-success);
+  background: var(--mw-success-soft);
+  border-radius: var(--mw-radius-pill);
 }
 
 .mw-home__badge--warning {
-  color: #b45309;
-  background: #fff4e7;
+  color: var(--mw-warning);
+  background: var(--mw-warning-soft);
 }
 
 .mw-home__badge--danger {
-  color: #dc2626;
-  background: #fee2e2;
+  color: var(--mw-danger);
+  background: var(--mw-danger-soft);
 }
 
 .mw-home__quota-number {
@@ -210,20 +201,20 @@
 .mw-home__quota-number small {
   font-size: 16px;
   font-weight: 600;
-  color: #7f8da3;
+  color: var(--mw-text-muted);
 }
 
 .mw-home__progress {
   height: 8px;
   overflow: hidden;
-  background: #e9eef7;
+  background: var(--mw-chart-grid);
   border-radius: 9px;
 }
 
 .mw-home__progress > span {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, #1e73f0, #2a82ff);
+  background: var(--mw-gradient-btn);
   border-radius: inherit;
   transition: width 0.3s ease;
 }
@@ -243,7 +234,7 @@
 
 .mw-home__mini {
   padding: 14px;
-  background: #f8fbff;
+  background: var(--mw-blue-soft);
   border-radius: 12px;
 }
 
@@ -257,7 +248,7 @@
   display: block;
   margin-top: 4px;
   font-size: 12px;
-  color: #74849c;
+  color: var(--mw-text-muted);
 }
 
 .mw-home__quota-links {
@@ -303,18 +294,18 @@
   width: 48px;
   height: 48px;
   color: var(--mw-blue);
-  background: #ecf5ff;
-  border-radius: 16px;
+  background: var(--mw-blue-ice);
+  border-radius: var(--mw-radius-lg);
 }
 
 .mw-home__feature-card:nth-child(1) .mw-home__feature-icon {
-  color: #12ad86;
-  background: #eafaf5;
+  color: var(--mw-success);
+  background: var(--mw-success-soft);
 }
 
 .mw-home__feature-card:nth-child(3) .mw-home__feature-icon {
-  color: var(--mw-orange);
-  background: #fff4e7;
+  color: var(--mw-warning);
+  background: var(--mw-warning-soft);
 }
 
 .mw-home__feature-card h3 {
@@ -327,7 +318,7 @@
   margin: 0;
   font-size: 13px;
   line-height: 1.55;
-  color: #71819a;
+  color: var(--mw-text-muted);
 }
 
 .mw-home__workspace-section {
@@ -364,13 +355,13 @@
 .mw-home__section-sub {
   font-size: 12px;
   font-weight: 500;
-  color: #8a98ad;
+  color: var(--mw-text-weak);
 }
 
 .mw-home__workspace-header p {
   margin: 6px 0 0;
   font-size: 12px;
-  color: #75859d;
+  color: var(--mw-text-muted);
 }
 
 .mw-home__project-list {
@@ -388,7 +379,7 @@
   min-height: 226px;
   padding: 18px;
   padding-bottom: 72px;
-  border: 1px solid #ebf0f7;
+  border: 1px solid var(--mw-border-card);
   border-radius: 13px;
 }
 
@@ -400,8 +391,8 @@
 }
 
 .mw-home__project-item--clickable:hover {
-  border-color: #cddcf4;
-  box-shadow: var(--mw-soft);
+  border-color: var(--mw-border-input-hover);
+  box-shadow: var(--mw-shadow-card);
 }
 
 .mw-home__status {
@@ -410,10 +401,10 @@
   font-size: 11px;
   font-weight: 800;
   line-height: 1.2;
-  color: #0e9d67;
+  color: var(--mw-success);
   white-space: nowrap;
-  background: #e8faf3;
-  border-radius: 999px;
+  background: var(--mw-success-soft);
+  border-radius: var(--mw-radius-pill);
 }
 
 .mw-home__status--archived {
@@ -448,9 +439,9 @@
   width: 48px;
   height: 48px;
   color: #fff;
-  background: linear-gradient(145deg, #176ef4, #4a92ff);
-  border-radius: 16px;
-  box-shadow: 0 8px 16px rgb(20 103 243 / 20%);
+  background: var(--mw-gradient-logo);
+  border-radius: var(--mw-radius-lg);
+  box-shadow: var(--mw-shadow-btn);
 }
 
 .mw-home__project-item h3 {
@@ -472,7 +463,7 @@
   margin: 13px 0;
   font-size: 13px;
   line-height: 1.55;
-  color: #71819a;
+  color: var(--mw-text-muted);
 }
 
 .mw-home__members {
@@ -484,28 +475,28 @@
 .mw-home__member {
   width: 24px;
   height: 24px;
-  background: #dce9ff;
-  border: 2px solid #fff;
+  background: var(--mw-blue-ice);
+  border: 2px solid var(--mw-bg-card);
   border-radius: 50%;
   box-shadow: 0 2px 4px rgb(0 0 0 / 8%);
 }
 
 .mw-home__member:nth-child(2) {
-  background: #ffe2c5;
+  background: var(--mw-warning-soft);
 }
 
 .mw-home__member:nth-child(3) {
-  background: #c9f2e7;
+  background: var(--mw-success-soft);
 }
 
 .mw-home__member:nth-child(4) {
-  background: #dbd2ff;
+  background: var(--mw-ai-soft);
 }
 
 .mw-home__members > span {
   margin-left: 5px;
   font-size: 12px;
-  color: #71819a;
+  color: var(--mw-text-muted);
 }
 
 .mw-home__project-foot {
@@ -520,7 +511,7 @@
   gap: 6px;
   align-items: center;
   font-size: 12px;
-  color: #8493a8;
+  color: var(--mw-text-muted);
 }
 
 .mw-home__p-progress {
@@ -529,21 +520,21 @@
   align-items: center;
   margin-top: 12px;
   font-size: 12px;
-  color: #75849c;
+  color: var(--mw-text-muted);
 }
 
 .mw-home__p-track {
   flex: 1;
   height: 6px;
   overflow: hidden;
-  background: #eaf0f8;
+  background: var(--mw-chart-grid);
   border-radius: 8px;
 }
 
 .mw-home__p-track > span {
   display: block;
   height: 100%;
-  background: #1c70f6;
+  background: var(--mw-blue);
   border-radius: inherit;
 }
 
@@ -566,18 +557,18 @@
   display: grid;
   place-items: center;
   text-align: center;
-  color: #6e819f;
+  color: var(--mw-icon-menu);
   cursor: pointer;
-  background: linear-gradient(145deg, #fbfdff, #f7fbff);
-  border: 1.5px dashed #cddcf4;
+  background: linear-gradient(145deg, #fbfdff, var(--mw-blue-soft));
+  border: 1.5px dashed var(--mw-border-input-hover);
   transition:
     border-color 0.2s ease,
     background 0.2s ease;
 }
 
 .mw-home__new-project:hover {
-  background: #f3f8ff;
-  border-color: #b8ccf0;
+  background: var(--mw-blue-soft);
+  border-color: var(--mw-border-input-hover);
 }
 
 .mw-home__new-plus {
@@ -587,13 +578,13 @@
   height: 54px;
   margin: 0 auto 13px;
   color: var(--mw-blue);
-  background: #e9f1ff;
+  background: var(--mw-blue-ice);
   border-radius: 18px;
 }
 
 .mw-home__new-project b {
   font-size: 17px;
-  color: #1b2e50;
+  color: var(--mw-ink);
 }
 
 .mw-home__new-project p {
@@ -607,7 +598,7 @@
   grid-column: 1 / -1;
   padding: 40px 20px;
   text-align: center;
-  border: 1.5px dashed #cddcf4;
+  border: 1.5px dashed var(--mw-border-input-hover);
   border-radius: 13px;
 }
 
@@ -620,7 +611,7 @@
   margin: 0 0 18px;
   font-size: 13px;
   line-height: 1.7;
-  color: #647590;
+  color: var(--mw-text-body);
 }
 
 @media (width <= 1350px) {

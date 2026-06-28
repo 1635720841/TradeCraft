@@ -28,19 +28,19 @@
 /* nprogress 适配主题色 */
 #nprogress {
   & .bar {
-    background: linear-gradient(90deg, #0f766e, #2563eb) !important;
+    background: linear-gradient(90deg, var(--mw-blue-hover), var(--mw-blue)) !important;
     height: 3px !important;
   }
 
   & .peg {
     box-shadow:
-      0 0 12px #0f766e,
-      0 0 6px #2563eb !important;
+      0 0 12px var(--mw-blue-hover),
+      0 0 6px var(--mw-blue) !important;
   }
 
   & .spinner-icon {
-    border-top-color: #0f766e;
-    border-left-color: #2563eb;
+    border-top-color: var(--mw-blue-hover);
+    border-left-color: var(--mw-blue);
   }
 }
 
