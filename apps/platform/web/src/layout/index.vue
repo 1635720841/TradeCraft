@@ -23,6 +23,7 @@ import {
   deviceDetection,
   useResizeObserver
 } from "@pureadmin/utils";
+import { useRoute } from "vue-router";
 
 // import LayTag from "./components/lay-tag/index.vue"; // 暂时隐藏标签栏
 import LayNavbar from "./components/lay-navbar/index.vue";
@@ -33,12 +34,22 @@ import NavHorizontal from "./components/lay-sidebar/NavHorizontal.vue";
 import BackTopIcon from "@/assets/svg/back_top.svg?component";
 
 const { t } = useI18n();
+const route = useRoute();
 const appWrapperRef = ref();
 const { isDark } = useDark();
 const { layout } = useLayout();
 const isMobile = deviceDetection();
 const pureSetting = useSettingStoreHook();
 const { $storage } = useGlobal<GlobalPropertiesApi>();
+
+/** 项目工作台自带侧栏，进入时收起平台左侧导航 */
+const hidePlatformSidebar = computed(() =>
+  /\/projects\/[^/]+\/seo-factory(?:\/|$)/.test(route.path)
+);
+
+const showPlatformSidebar = computed(
+  () => !pureSetting.hiddenSideBar && !hidePlatformSidebar.value
+);
 
 const set: setType = reactive({
   sidebar: computed(() => {
@@ -136,11 +147,10 @@ const LayHeader = defineComponent({
       },
       {
         default: () => [
-          !pureSetting.hiddenSideBar &&
           (layout.value.includes("vertical") || layout.value.includes("mix"))
             ? h(LayNavbar)
             : null,
-          !pureSetting.hiddenSideBar && layout.value.includes("horizontal")
+          showPlatformSidebar.value && layout.value.includes("horizontal")
             ? h(NavHorizontal)
             : null
           // h(LayTag) // 暂时隐藏标签栏
@@ -164,14 +174,14 @@ const LayHeader = defineComponent({
     />
     <NavVertical
       v-show="
-        !pureSetting.hiddenSideBar &&
+        showPlatformSidebar &&
         (layout.includes('vertical') || layout.includes('mix'))
       "
     />
     <div
       :class="[
         'main-container',
-        pureSetting.hiddenSideBar ? 'main-hidden' : ''
+        pureSetting.hiddenSideBar || hidePlatformSidebar ? 'main-hidden' : ''
       ]"
     >
       <div v-if="set.fixedHeader">

@@ -6,7 +6,7 @@
 -->
 <template>
   <nav class="workbench-nav" aria-label="SEO 内容工厂导航">
-    <div class="workbench-nav__label">Modules</div>
+    <div class="workbench-nav__label">功能模块</div>
     <div class="workbench-nav__list">
       <button
         v-for="item in visibleNavItems"

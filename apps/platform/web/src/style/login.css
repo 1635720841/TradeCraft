@@ -1,26 +1,34 @@
 .wave {
   position: fixed;
-  height: 100%;
-  width: 80%;
-  left: 0;
-  bottom: 0;
+  inset: 0;
   z-index: -1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.42;
+}
+
+.select-none {
+  background:
+    radial-gradient(ellipse 80% 60% at 12% 18%, rgb(15 118 110 / 14%), transparent 58%),
+    radial-gradient(ellipse 70% 55% at 88% 82%, rgb(37 99 235 / 12%), transparent 55%),
+    linear-gradient(160deg, #f5f7fb 0%, #eef3f8 48%, #e8f4f2 100%);
 }
 
 .login-container {
-  width: 100vw;
-  height: 100vh;
-  max-width: 100%;
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  grid-gap: 18rem;
+  gap: 18rem;
+  width: 100vw;
+  max-width: 100%;
+  height: 100vh;
   padding: 0 2rem;
 }
 
 .img {
   display: flex;
-  justify-content: flex-end;
   align-items: center;
+  justify-content: flex-end;
 }
 
 .img img {
@@ -30,54 +38,80 @@
 .login-box {
   display: flex;
   align-items: center;
-  text-align: center;
   overflow: hidden;
+  text-align: center;
 }
 
 .login-form {
-  width: 360px;
+  width: 380px;
+  padding: 32px 30px 28px;
+  background: rgb(255 255 255 / 92%);
+  border: 1px solid rgb(15 23 42 / 8%);
+  border-radius: 12px;
+  box-shadow:
+    0 1px 2px rgb(15 23 42 / 5%),
+    0 20px 42px rgb(15 23 42 / 8%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .avatar {
-  width: 350px;
-  height: 80px;
+  width: 100%;
+  max-width: 280px;
+  height: 64px;
+  margin-bottom: 18px;
 }
 
+/* 品牌名已包含在 avatar lockup 中，隐藏重复的标题 */
 .login-form h2 {
-  text-transform: uppercase;
-  margin: 15px 0;
-  color: #999;
-  font:
-    bold 200% Consolas,
-    Monaco,
-    monospace;
+  display: none;
 }
 
-@media screen and (max-width: 1180px) {
+.login-form :is(.el-button--primary) {
+  --el-button-bg-color: #0f766e;
+  --el-button-border-color: #0f766e;
+  --el-button-hover-bg-color: #0d9488;
+  --el-button-hover-border-color: #0d9488;
+  --el-button-active-bg-color: #0f766e;
+  --el-button-active-border-color: #0f766e;
+  font-weight: 650;
+}
+
+.login-form .el-input__wrapper {
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px rgb(15 23 42 / 10%) inset;
+}
+
+.login-form .el-input__wrapper.is-focus {
+  box-shadow:
+    0 0 0 1px #0f766e inset,
+    0 0 0 3px rgb(15 118 110 / 12%);
+}
+
+.login-form .el-alert {
+  border-radius: 8px;
+}
+
+@media screen and (width <= 1180px) {
   .login-container {
-    grid-gap: 9rem;
+    gap: 9rem;
   }
 
   .login-form {
-    width: 290px;
+    width: 320px;
+    padding: 28px 24px;
   }
 
   .login-form h2 {
-    font-size: 2.4rem;
-    margin: 8px 0;
+    font-size: 1.45rem;
   }
 
   .img img {
     width: 360px;
   }
-
-  .avatar {
-    width: 280px;
-    height: 80px;
-  }
 }
 
-@media screen and (max-width: 968px) {
+@media screen and (width <= 968px) {
   .wave {
     display: none;
   }
@@ -92,5 +126,9 @@
 
   .login-box {
     justify-content: center;
+  }
+
+  .login-form {
+    width: min(380px, 92vw);
   }
 }

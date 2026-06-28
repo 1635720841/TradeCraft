@@ -103,7 +103,7 @@ watch(
       <!-- 国际化 -->
       <el-dropdown id="header-translation" trigger="click">
         <GlobalizationIcon
-          class="navbar-bg-hover w-[40px] h-[40px] p-[10px] cursor-pointer outline-hidden"
+          class="shell-action-btn w-[40px] h-[40px] p-[10px] cursor-pointer outline-hidden"
         />
         <template #dropdown>
           <el-dropdown-menu class="translation">
@@ -136,7 +136,7 @@ watch(
       <LayNotice id="header-notice" />
       <!-- 退出登录 -->
       <el-dropdown trigger="click">
-        <span class="el-dropdown-link navbar-bg-hover select-none">
+        <span class="el-dropdown-link shell-user-pill select-none">
           <img :src="userAvatar" :style="avatarsStyle" />
           <p v-if="username" class="dark:text-white">{{ username }}</p>
         </span>
@@ -153,7 +153,7 @@ watch(
         </template>
       </el-dropdown>
       <span
-        class="set-icon navbar-bg-hover"
+        class="set-icon shell-action-btn"
         :title="t('buttons.pureOpenSystemSet')"
         @click="onPanel"
       >

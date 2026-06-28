@@ -23,11 +23,11 @@ export function useLayout() {
     /** 导航 */
     if (!$storage.layout) {
       $storage.layout = {
-        layout: $config?.Layout ?? "vertical",
+        layout: $config?.Layout ?? "mix",
         theme: $config?.Theme ?? "light",
         darkMode: $config?.DarkMode ?? false,
         sidebarStatus: $config?.SidebarStatus ?? true,
-        epThemeColor: $config?.EpThemeColor ?? "#409EFF",
+        epThemeColor: $config?.EpThemeColor ?? "#0f766e",
         themeColor: $config?.Theme ?? "light",
         overallStyle: $config?.OverallStyle ?? "light"
       };

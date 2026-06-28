@@ -1,1 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" class="icon" viewBox="0 0 1024 1024"><path fill="#386BF3" d="M410.558.109c0 210.974-300.876 361.752-300.876 633.548 0 174.943 134.704 316.787 300.876 316.787s300.877-141.817 300.877-316.787C711.408 361.752 410.558 210.974 410.558.109"/><path fill="#C3D2FB" d="M613.469 73.665c0 211.055-300.877 361.914-300.877 633.547C312.592 882.156 447.296 1024 613.47 1024s300.876-141.817 300.876-316.788C914.29 435.58 613.469 284.72 613.469 73.665"/><path fill="#303F5B" d="M312.592 707.212c0-183.713 137.636-312.171 226.723-441.39 81.702 106.112 172.12 218.74 172.12 367.726A309.755 309.755 0 0 1 420.36 950.064a323.1 323.1 0 0 1-107.769-242.852z"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="280" height="64" viewBox="0 0 280 64" fill="none">
+  <defs>
+    <linearGradient id="wmLoginBg" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F766E"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="wmLoginText" x1="76" y1="20" x2="76" y2="46" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F766E"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="48" height="48" rx="13" fill="url(#wmLoginBg)"/>
+  <path d="M18 24 L25.5 38 L32 29.5 L38.5 38 L46 21"
+        fill="none" stroke="#fff" stroke-width="3.6"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="46" cy="21" r="3.2" fill="#fff"/>
+  <text x="74" y="35" font-family="Inter, 'Segoe UI', system-ui, sans-serif"
+        font-size="26" font-weight="800" letter-spacing="-0.5"
+        fill="url(#wmLoginText)">WM SaaS</text>
+  <text x="75" y="52" font-family="Inter, 'Segoe UI', system-ui, sans-serif"
+        font-size="11.5" font-weight="600" letter-spacing="2.4"
+        fill="#7C899B">SEO CONTENT GROWTH</text>
+</svg>

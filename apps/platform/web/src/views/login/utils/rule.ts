@@ -8,6 +8,13 @@ export const REGEXP_PWD =
 
 /** 登录校验 */
 const loginRules = reactive<FormRules>({
+  username: [
+    {
+      required: true,
+      message: "请输入邮箱 / 账号",
+      trigger: "blur"
+    }
+  ],
   password: [
     {
       validator: (rule, value, callback) => {
