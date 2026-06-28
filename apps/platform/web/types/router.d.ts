@@ -58,6 +58,10 @@ declare global {
     activePath?: string;
     /** 当前页面是否已经加载过 */
     loaded?: boolean;
+    /** 内容区铺满视口高度且禁止外层滚动（工作台首页等） */
+    fillViewport?: boolean;
+    /** 隐藏布局页脚 */
+    hideFooter?: boolean;
   }
 
   /**

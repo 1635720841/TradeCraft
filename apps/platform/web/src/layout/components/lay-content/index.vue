@@ -6,6 +6,7 @@ import { useTags } from "@/layout/hooks/useTag";
 import { useGlobal, isNumber } from "@pureadmin/utils";
 import BackTopIcon from "@/assets/svg/back_top.svg?component";
 import { h, computed, Transition, defineComponent } from "vue";
+import { useRoute } from "vue-router";
 import { usePermissionStoreHook } from "@/store/modules/permission";
 
 const props = defineProps({
@@ -13,6 +14,7 @@ const props = defineProps({
 });
 
 const { t } = useI18n();
+const route = useRoute();
 const { showModel } = useTags();
 const { $storage, $config } = useGlobal<GlobalPropertiesApi>();
 
@@ -34,6 +36,10 @@ const hideTabs = computed(() => {
 const hideFooter = computed(() => {
   return $storage?.configure.hideFooter;
 });
+
+const fillViewport = computed(() => Boolean(route.meta?.fillViewport));
+const hideFooterRoute = computed(() => Boolean(route.meta?.hideFooter));
+const showFooter = computed(() => !hideFooter.value && !hideFooterRoute.value);
 
 const stretch = computed(() => {
   return $storage?.configure.stretch;
@@ -110,7 +116,10 @@ const transitionMain = defineComponent({
 
 <template>
   <section
-    :class="[fixedHeader ? 'app-main' : 'app-main-nofixed-header']"
+    :class="[
+      fixedHeader ? 'app-main' : 'app-main-nofixed-header',
+      { 'app-main--fill': fillViewport }
+    ]"
     :style="getSectionStyle"
   >
     <router-view>
@@ -119,6 +128,7 @@ const transitionMain = defineComponent({
           <template #default="{ Comp, fullPath, frameInfo }">
             <el-scrollbar
               v-if="fixedHeader"
+              :class="{ 'app-main__scroll--fill': fillViewport }"
               :wrap-style="{
                 display: 'flex',
                 'flex-wrap': 'wrap',
@@ -134,12 +144,13 @@ const transitionMain = defineComponent({
               }"
             >
               <el-backtop
+                v-if="!fillViewport"
                 :title="t('buttons.pureBackTop')"
                 target=".app-main .el-scrollbar__wrap"
               >
                 <BackTopIcon />
               </el-backtop>
-              <div class="grow">
+              <div class="grow" :class="{ 'grow--fill': fillViewport }">
                 <transitionMain :route="route">
                   <keep-alive
                     v-if="isKeepAlive"
@@ -150,6 +161,7 @@ const transitionMain = defineComponent({
                       :key="fullPath"
                       :frameInfo="frameInfo"
                       class="main-content"
+                      :class="{ 'main-content--fill': fillViewport }"
                     />
                   </keep-alive>
                   <component
@@ -158,10 +170,11 @@ const transitionMain = defineComponent({
                     :key="fullPath"
                     :frameInfo="frameInfo"
                     class="main-content"
+                    :class="{ 'main-content--fill': fillViewport }"
                   />
                 </transitionMain>
               </div>
-              <LayFooter v-if="!hideFooter" />
+              <LayFooter v-if="showFooter" />
             </el-scrollbar>
             <div v-else class="grow">
               <transitionMain :route="route">
@@ -191,7 +204,7 @@ const transitionMain = defineComponent({
     </router-view>
 
     <!-- 页脚 -->
-    <LayFooter v-if="!hideFooter && !fixedHeader" />
+    <LayFooter v-if="showFooter && !fixedHeader" />
   </section>
 </template>
 
@@ -222,6 +235,39 @@ const transitionMain = defineComponent({
 
 .app-main :deep(.el-scrollbar__view) {
   min-height: 100%;
+}
+
+.app-main :deep(.grow--fill) {
+  min-height: 0;
+  height: 100%;
+}
+
+.app-main :deep(.grow--fill > *) {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.app-main--fill :deep(.app-main__scroll--fill .el-scrollbar__wrap) {
+  overflow: hidden !important;
+}
+
+.app-main--fill :deep(.app-main__scroll--fill .el-scrollbar__view) {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0 !important;
+}
+
+.main-content--fill {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  padding: 18px 32px;
+  overflow: hidden;
 }
 
 .app-main :deep(.grow) {
