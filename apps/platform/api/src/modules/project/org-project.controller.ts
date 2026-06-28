@@ -13,12 +13,15 @@ import { UpdateProjectAccessDto } from './dto/update-project-access.dto';
 import { UpdateProjectMemberDto } from './dto/update-project-member.dto';
 import { ProjectAdminService } from './project-admin.service';
 import { ProjectService } from './project.service';
+import { AccessRequestService } from './access-request.service';
+import { listPermissionPresets } from './project-permission-presets';
 
 @Controller('api/v1/org/projects')
 export class OrgProjectController {
   constructor(
     private readonly projectAdminService: ProjectAdminService,
     private readonly projectService: ProjectService,
+    private readonly accessRequestService: AccessRequestService,
   ) {}
 
   @Get('types/catalog')
@@ -28,6 +31,12 @@ export class OrgProjectController {
       data: this.projectService.listProjectTypes(),
       meta: { traceId: ctx.traceId },
     };
+  }
+
+  @Get('permission-presets')
+  @Permissions('project:read')
+  async listPresets(@ReqCtx() ctx: RequestContext) {
+    return { data: listPermissionPresets(), meta: { traceId: ctx.traceId } };
   }
 
   @Get()
@@ -165,6 +174,21 @@ export class OrgProjectController {
       projectId,
       userId,
       dto.permissionIds,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Post(':projectId/access-requests')
+  async createAccessRequest(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Body() body: { message?: string },
+  ) {
+    const data = await this.accessRequestService.create(
+      ctx.organizationId,
+      projectId,
+      ctx.userId,
+      body.message,
     );
     return { data, meta: { traceId: ctx.traceId } };
   }

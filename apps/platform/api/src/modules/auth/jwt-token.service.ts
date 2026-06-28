@@ -21,6 +21,7 @@ export interface AccessTokenClaims {
   type: 'access';
   exp: number;
   iat: number;
+  impersonatedBy?: string;
 }
 
 export interface RefreshTokenClaims {
@@ -50,6 +51,25 @@ export class JwtTokenService {
       type: 'access',
       iat: now,
       exp: now + ACCESS_TTL_SEC,
+    });
+  }
+
+  signImpersonationToken(input: {
+    userId: string;
+    organizationId: string;
+    role: Role;
+    impersonatedBy: string;
+  }): string {
+    const now = Math.floor(Date.now() / 1000);
+    const ttl = 15 * 60;
+    return this.sign({
+      sub: input.userId,
+      org: input.organizationId,
+      role: input.role,
+      type: 'access',
+      impersonatedBy: input.impersonatedBy,
+      iat: now,
+      exp: now + ttl,
     });
   }
 

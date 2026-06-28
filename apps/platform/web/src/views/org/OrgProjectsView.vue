@@ -11,6 +11,27 @@
       class="mb-4"
     />
 
+    <el-card v-if="canUpdate && accessRequests.length" shadow="never">
+      <template #header>
+        <span class="font-medium">待审批访问申请（{{ accessRequests.length }}）</span>
+      </template>
+      <el-table :data="accessRequests" size="small" stripe>
+        <el-table-column label="项目" min-width="120">
+          <template #default="{ row }">{{ row.project?.name ?? row.projectId }}</template>
+        </el-table-column>
+        <el-table-column label="申请人" min-width="160">
+          <template #default="{ row }">{{ row.user?.email ?? row.userId }}</template>
+        </el-table-column>
+        <el-table-column prop="message" label="留言" min-width="120" show-overflow-tooltip />
+        <el-table-column label="操作" width="160">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="onApproveRequest(row.id)">批准</el-button>
+            <el-button link type="danger" @click="onRejectRequest(row.id)">拒绝</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
     <el-card v-loading="loading" shadow="never">
       <template #header>
         <div class="flex flex-wrap items-center justify-between gap-2">
@@ -330,6 +351,17 @@
           </div>
         </el-alert>
 
+        <div class="mb-3 flex flex-wrap gap-2">
+          <el-button
+            v-for="preset in permissionPresets"
+            :key="preset.id"
+            size="small"
+            @click="applyPreset(preset.permissions)"
+          >
+            {{ preset.label }}
+          </el-button>
+        </div>
+
         <el-checkbox-group :model-value="selectedGrantIds" @change="onGrantChange">
           <div class="space-y-2">
             <el-checkbox
@@ -358,7 +390,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import type { FormInstance, FormRules } from "element-plus";
 import { ElMessageBox } from "element-plus";
 import {
@@ -368,6 +400,7 @@ import {
   getOrgProject,
   getProjectMemberPermissions,
   listOrgProjects,
+  listPermissionPresets,
   listProjectTypeCatalog,
   removeProjectMember,
   setProjectMemberPermissions,
@@ -376,6 +409,12 @@ import {
   type OrgProjectItem,
   type OrgProjectMember
 } from "@/api/org/projects";
+import {
+  approveAccessRequest,
+  listPendingAccessRequests,
+  rejectAccessRequest,
+  type AccessRequestItem
+} from "@/api/org/access";
 import { listOrganizationMembers, type OrganizationMember } from "@/api/org/organization";
 import { projectMemberRoleDict, projectMyAccessStatusDict, projectStatusDict } from "@/constants/dicts/platform";
 import { useUserStoreHook } from "@/store/modules/user";
@@ -388,6 +427,7 @@ import { invalidateProjectAccessCache } from "@/router/guards/project-access";
 defineOptions({ name: "OrgProjectsView" });
 
 const router = useRouter();
+const route = useRoute();
 const userStore = useUserStoreHook();
 const { expandGrantIds } = usePermissionGrantExpand();
 const loading = ref(false);
@@ -415,6 +455,8 @@ const grantablePermissions = ref<
   Array<{ id: string; name: string; description?: string }>
 >([]);
 const roleDefaultPermissionIds = ref<string[]>([]);
+const permissionPresets = ref<Array<{ id: string; label: string; permissions: string[] }>>([]);
+const accessRequests = ref<AccessRequestItem[]>([]);
 
 const permissionLabelMap = computed(() =>
   Object.fromEntries(grantablePermissions.value.map(item => [item.id, item.name]))
@@ -690,10 +732,64 @@ function enterProject(projectId: string) {
   router.push(`/projects/${projectId}/seo-factory/overview`);
 }
 
-onMounted(() => {
-  void loadProjects();
+function applyPreset(permissions: string[]) {
+  selectedGrantIds.value = expandGrantIds(permissions);
+}
+
+async function loadAccessRequests() {
+  if (!canUpdate.value) return;
+  try {
+    accessRequests.value = await listPendingAccessRequests();
+  } catch {
+    accessRequests.value = [];
+  }
+}
+
+async function onApproveRequest(id: string) {
+  await approveAccessRequest(id, "content_editor");
+  message("已批准访问申请", { type: "success" });
+  await loadAccessRequests();
+  await loadProjects();
+}
+
+async function onRejectRequest(id: string) {
+  await rejectAccessRequest(id);
+  message("已拒绝", { type: "info" });
+  await loadAccessRequests();
+}
+
+async function handleRouteQuery() {
+  const openManage = route.query.openManage;
+  const openPerm = route.query.openPerm;
+  const preset = route.query.preset;
+  if (typeof openManage === "string") {
+    const row = projects.value.find(p => p.id === openManage);
+    if (row) await openManage(row);
+  } else if (typeof openPerm === "string") {
+    const row = projects.value.find(p => p.id === openPerm);
+    if (row) {
+      await openManage(row);
+      const self = detail.value?.members.find(m => m.userId === userStore.userId);
+      if (self) {
+        await openMemberPerm(self);
+        if (typeof preset === "string") {
+          const p = permissionPresets.value.find(x => x.id === preset);
+          if (p) applyPreset(p.permissions);
+        }
+      }
+    }
+  }
+}
+
+onMounted(async () => {
+  await loadProjects();
   void listProjectTypeCatalog().then(types => {
     projectTypes.value = types;
   });
+  void listPermissionPresets().then(p => {
+    permissionPresets.value = p;
+  });
+  void loadAccessRequests();
+  await handleRouteQuery();
 });
 </script>

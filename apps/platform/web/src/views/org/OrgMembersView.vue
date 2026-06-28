@@ -15,7 +15,7 @@
               class="w-52"
             />
             <el-button v-if="canCreate" type="primary" @click="openCreate">
-              添加成员
+              邀请成员
             </el-button>
           </div>
         </div>
@@ -41,11 +41,34 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column prop="status" label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag v-if="row.status === 'INVITED'" type="warning" size="small">待接受</el-tag>
+            <el-tag v-else-if="row.status === 'DISABLED'" type="info" size="small">已禁用</el-tag>
+            <el-tag v-else type="success" size="small">正常</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="createdAt" label="加入时间" min-width="170">
           <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="240" fixed="right">
           <template #default="{ row }">
+            <el-button
+              v-if="canCreate && row.status === 'INVITED'"
+              type="primary"
+              link
+              @click="onResendInvite(row.email)"
+            >
+              重发邀请
+            </el-button>
+            <el-button
+              v-if="canCreate && row.status === 'INVITED'"
+              type="danger"
+              link
+              @click="onRevokeInvite(row.email)"
+            >
+              撤销
+            </el-button>
             <el-button
               v-if="canUpdate && row.role !== 'SUPER_ADMIN' && row.role !== 'PLATFORM_OPERATOR'"
               type="primary"
@@ -69,16 +92,13 @@
 
     <el-dialog
       v-model="dialogVisible"
-      :title="editingId ? '编辑成员' : '添加成员'"
+      :title="editingId ? '编辑成员' : '邀请成员'"
       width="460px"
       destroy-on-close
     >
       <el-form ref="formRef" :model="form" :rules="rules" label-width="72px">
         <el-form-item v-if="!editingId" label="邮箱" prop="email">
           <el-input v-model="form.email" placeholder="user@company.com" />
-        </el-form-item>
-        <el-form-item v-if="!editingId" label="密码" prop="password">
-          <el-input v-model="form.password" type="password" show-password />
         </el-form-item>
         <el-form-item label="姓名" prop="name">
           <el-input v-model="form.name" maxlength="64" />
@@ -230,8 +250,10 @@ import {
   type PermissionDefinition
 } from "@/api/org/access";
 import {
-  createOrganizationMember,
+  inviteOrganizationMember,
   listOrganizationMembers,
+  resendMemberInvite,
+  revokeMemberInvite,
   updateOrganizationMember,
   type OrganizationMember
 } from "@/api/org/organization";
@@ -268,7 +290,6 @@ const effectivePermissions = ref<string[]>([]);
 
 const form = reactive({
   email: "",
-  password: "",
   name: "",
   role: "MEMBER" as "ADMIN" | "MEMBER"
 });
@@ -338,12 +359,6 @@ const defaultPermHint = computed(() => {
 
 const rules = computed<FormRules>(() => ({
   email: editingId.value ? [] : [{ required: true, message: "请输入邮箱", trigger: "blur" }],
-  password: editingId.value
-    ? []
-    : [
-        { required: true, message: "请输入初始密码", trigger: "blur" },
-        { min: 6, message: "密码至少 6 位", trigger: "blur" }
-      ],
   role: [{ required: true, message: "请选择角色", trigger: "change" }]
 }));
 
@@ -389,7 +404,6 @@ async function loadCatalog() {
 
 function resetForm() {
   form.email = "";
-  form.password = "";
   form.name = "";
   form.role = "MEMBER";
 }
@@ -407,7 +421,6 @@ function openEdit(member: OrganizationMember) {
   }
   editingId.value = member.id;
   form.email = member.email;
-  form.password = "";
   form.name = member.name ?? "";
   form.role = member.role === "ADMIN" ? "ADMIN" : "MEMBER";
   dialogVisible.value = true;
@@ -439,13 +452,12 @@ async function submitForm() {
         });
         message("成员已更新", { type: "success" });
       } else {
-        await createOrganizationMember({
+        await inviteOrganizationMember({
           email: form.email.trim(),
-          password: form.password,
           name: form.name.trim() || undefined,
           role: form.role
         });
-        message("成员已创建", { type: "success" });
+        message("邀请已发送", { type: "success" });
       }
       dialogVisible.value = false;
       await loadMembers();
@@ -469,6 +481,17 @@ async function savePermissions() {
   } finally {
     savingPerms.value = false;
   }
+}
+
+async function onResendInvite(email: string) {
+  await resendMemberInvite(email);
+  message("邀请已重发", { type: "success" });
+}
+
+async function onRevokeInvite(email: string) {
+  await revokeMemberInvite(email);
+  message("邀请已撤销", { type: "success" });
+  await loadMembers();
 }
 
 onMounted(async () => {

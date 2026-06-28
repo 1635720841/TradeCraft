@@ -176,6 +176,14 @@ export async function deleteOrgProject(projectId: string): Promise<{ id: string;
   return res.data;
 }
 
+export async function listProjectMembers(projectId: string): Promise<OrgProjectMember[]> {
+  const res = await http.request<WmApiResponse<OrgProjectMember[]>>(
+    "get",
+    `/api/v1/org/projects/${projectId}/members`
+  );
+  return res.data ?? [];
+}
+
 export async function addProjectMember(
   projectId: string,
   payload: AddProjectMemberPayload
@@ -233,4 +241,18 @@ export async function setProjectMemberPermissions(
     { data: { permissionIds } }
   );
   return res.data;
+}
+
+export interface PermissionPreset {
+  id: string;
+  label: string;
+  permissions: string[];
+}
+
+export async function listPermissionPresets(): Promise<PermissionPreset[]> {
+  const res = await http.request<WmApiResponse<PermissionPreset[]>>(
+    "get",
+    "/api/v1/org/projects/permission-presets"
+  );
+  return res.data ?? [];
 }

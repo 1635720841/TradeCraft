@@ -4,12 +4,19 @@
 
 import { Module } from '@nestjs/common';
 import { OrgBillingController } from './org-billing.controller';
+import { BillingRequestService } from './billing-request.service';
 import { BillingService } from './billing.service';
+import { EntitlementsService } from './entitlements.service';
 import { SubscriptionPlanService } from './subscription-plan.service';
 
 @Module({
   controllers: [OrgBillingController],
-  providers: [BillingService, SubscriptionPlanService],
-  exports: [BillingService, SubscriptionPlanService],
+  providers: [
+    BillingService,
+    SubscriptionPlanService,
+    EntitlementsService,
+    BillingRequestService,
+  ],
+  exports: [BillingService, SubscriptionPlanService, EntitlementsService, BillingRequestService],
 })
 export class BillingModule {}

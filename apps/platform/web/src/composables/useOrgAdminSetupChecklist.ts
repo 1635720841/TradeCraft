@@ -8,16 +8,25 @@ import { listOrgProjects, type OrgProjectItem } from "@/api/org/projects";
 import { useUserStoreHook } from "@/store/modules/user";
 import type { SetupChecklistItem } from "@/types/setup-checklist";
 
-const DISMISS_KEY = "wm:org-admin-setup-dismissed";
+const SNOOZE_KEY = "wm:org-admin-setup-snooze-until";
+const SNOOZE_DAYS = 7;
+
+function isSnoozed(): boolean {
+  const until = localStorage.getItem(SNOOZE_KEY);
+  if (!until) return false;
+  return Date.now() < Number(until);
+}
 
 export function useOrgAdminSetupChecklist() {
   const router = useRouter();
   const userStore = useUserStoreHook();
   const loading = ref(false);
   const projects = ref<OrgProjectItem[]>([]);
-  const dismissed = ref(localStorage.getItem(DISMISS_KEY) === "1");
+  const dismissed = ref(isSnoozed());
 
   const isOrgAdmin = computed(() => userStore.roles.includes("admin"));
+
+  const firstProject = computed(() => projects.value[0]);
 
   async function refresh() {
     if (!isOrgAdmin.value) {
@@ -48,6 +57,7 @@ export function useOrgAdminSetupChecklist() {
 
   const items = computed<SetupChecklistItem[]>(() => {
     const list = projects.value;
+    const target = list[0];
     const hasProject = list.length > 0;
     const hasOpenProject = list.some(p => p.accessActive);
     const selfJoined = list.some(p => p.isMember);
@@ -66,14 +76,20 @@ export function useOrgAdminSetupChecklist() {
         label: "设置项目开放时间（或设为长期开放）",
         done: hasOpenProject,
         actionLabel: "去设置",
-        onAction: () => router.push("/org/projects")
+        onAction: () =>
+          target
+            ? router.push({ path: "/org/projects", query: { openManage: target.id } })
+            : router.push("/org/projects")
       },
       {
         id: "member",
         label: "将自己加入项目成员（企业管理员不会自动获得进入权限）",
         done: selfJoined,
         actionLabel: "去加入",
-        onAction: () => router.push("/org/projects")
+        onAction: () =>
+          target
+            ? router.push({ path: "/org/projects", query: { openManage: target.id } })
+            : router.push("/org/projects")
       },
       {
         id: "enter",
@@ -81,9 +97,14 @@ export function useOrgAdminSetupChecklist() {
         done: canEnterAny,
         actionLabel: "去授权",
         onAction: () => {
-          const target = list.find(p => p.canEnter) ?? list.find(p => p.isMember) ?? list[0];
-          if (target?.canEnter) {
-            router.push(`/projects/${target.id}/seo-factory/overview`);
+          const p = list.find(x => x.canEnter) ?? list.find(x => x.isMember) ?? list[0];
+          if (p?.canEnter) {
+            router.push(`/projects/${p.id}/seo-factory/overview`);
+          } else if (p) {
+            router.push({
+              path: "/org/projects",
+              query: { openPerm: p.id, preset: "content_editor" }
+            });
           } else {
             router.push("/org/projects");
           }
@@ -92,10 +113,17 @@ export function useOrgAdminSetupChecklist() {
     ];
   });
 
+  const pendingCount = computed(
+    () => items.value.filter((item) => !item.done).length
+  );
+
   function dismiss() {
     dismissed.value = true;
-    localStorage.setItem(DISMISS_KEY, "1");
+    localStorage.setItem(
+      SNOOZE_KEY,
+      String(Date.now() + SNOOZE_DAYS * 24 * 60 * 60 * 1000)
+    );
   }
 
-  return { loading, visible, items, refresh, dismiss, allDone };
+  return { loading, visible, items, refresh, dismiss, allDone, firstProject, pendingCount };
 }

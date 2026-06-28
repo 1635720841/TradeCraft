@@ -1,0 +1,15 @@
+{
+  "seo": {
+    "overview": {
+      "title": "Overview"
+    },
+    "jobs": {
+      "title": "Article Jobs"
+    }
+  },
+  "org": {
+    "members": {
+      "invite": "Invite Member"
+    }
+  }
+}

@@ -102,16 +102,97 @@
         />
       </template>
     </el-card>
+
+    <el-card v-if="canManageIntegration" v-loading="webhooksLoading" shadow="never">
+      <template #header>
+        <div class="flex items-center justify-between">
+          <span class="font-medium">出站 Webhook</span>
+          <el-button type="primary" size="small" @click="openWebhookDialog()">
+            添加 Webhook
+          </el-button>
+        </div>
+      </template>
+      <p class="mb-4 text-sm text-gray-500">
+        订阅平台事件并推送到您的 HTTPS 端点（HMAC 签名验证）。
+      </p>
+      <el-table :data="webhooks" stripe>
+        <el-table-column prop="url" label="URL" min-width="220" />
+        <el-table-column prop="events" label="事件" min-width="180">
+          <template #default="{ row }">
+            <el-tag v-for="ev in row.events" :key="ev" class="mr-1 mb-1" size="small">
+              {{ webhookEventLabel(ev) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="isActive" label="状态" width="90">
+          <template #default="{ row }">
+            <el-tag :type="row.isActive ? 'success' : 'info'">
+              {{ row.isActive ? "启用" : "停用" }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="140" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openWebhookDialog(row)">编辑</el-button>
+            <el-button link type="danger" @click="removeWebhook(row.id)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <el-dialog v-model="webhookDialogVisible" :title="webhookForm.id ? '编辑 Webhook' : '添加 Webhook'" width="520px">
+      <el-form label-width="80px">
+        <el-form-item label="URL">
+          <el-input v-model="webhookForm.url" placeholder="https://example.com/hooks/wm" />
+        </el-form-item>
+        <el-form-item label="事件">
+          <el-checkbox-group v-model="webhookForm.events">
+            <el-checkbox
+              v-for="opt in webhookEventOptions"
+              :key="opt.value"
+              :label="opt.value"
+            >
+              {{ opt.label }}
+            </el-checkbox>
+          </el-checkbox-group>
+        </el-form-item>
+        <el-form-item v-if="webhookForm.id" label="启用">
+          <el-switch v-model="webhookForm.isActive" />
+        </el-form-item>
+        <el-alert
+          v-if="createdWebhookSecret"
+          type="success"
+          :closable="false"
+          show-icon
+          class="mb-2"
+          title="请立即保存 Secret（仅显示一次）"
+          :description="createdWebhookSecret"
+        />
+      </el-form>
+      <template #footer>
+        <el-button @click="webhookDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="webhookSaving" @click="saveWebhook">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
+import { ElMessageBox } from "element-plus";
 import {
   getOrganizationProfile,
   updateOrganizationProfile,
   type OrganizationProfile
 } from "@/api/org/organization";
+import {
+  WEBHOOK_EVENT_OPTIONS,
+  createOrgWebhook,
+  deleteOrgWebhook,
+  listOrgWebhooks,
+  updateOrgWebhook,
+  type OrgWebhookItem
+} from "@/api/org/webhooks";
 import {
   planNameDict,
   subscriptionStatusDict
@@ -130,6 +211,20 @@ const form = reactive({ name: "" });
 
 const canEdit = computed(() => hasPerms("org:profile:update"));
 const canViewBilling = computed(() => hasPerms("org:billing:read"));
+const canManageIntegration = computed(() => hasPerms("org:integration:manage"));
+
+const webhooksLoading = ref(false);
+const webhookSaving = ref(false);
+const webhooks = ref<OrgWebhookItem[]>([]);
+const webhookDialogVisible = ref(false);
+const createdWebhookSecret = ref("");
+const webhookEventOptions = WEBHOOK_EVENT_OPTIONS;
+const webhookForm = reactive({
+  id: "",
+  url: "",
+  events: [] as string[],
+  isActive: true
+});
 
 const quotaPercent = computed(() => {
   const quota = profile.value?.quota;
@@ -169,7 +264,80 @@ async function saveProfile() {
   }
 }
 
+function webhookEventLabel(value: string) {
+  return webhookEventOptions.find((o) => o.value === value)?.label ?? value;
+}
+
+async function loadWebhooks() {
+  if (!canManageIntegration.value) return;
+  webhooksLoading.value = true;
+  try {
+    webhooks.value = await listOrgWebhooks();
+  } finally {
+    webhooksLoading.value = false;
+  }
+}
+
+function openWebhookDialog(row?: OrgWebhookItem) {
+  createdWebhookSecret.value = "";
+  if (row) {
+    webhookForm.id = row.id;
+    webhookForm.url = row.url;
+    webhookForm.events = [...row.events];
+    webhookForm.isActive = row.isActive;
+  } else {
+    webhookForm.id = "";
+    webhookForm.url = "";
+    webhookForm.events = ["article.completed"];
+    webhookForm.isActive = true;
+  }
+  webhookDialogVisible.value = true;
+}
+
+async function saveWebhook() {
+  if (!webhookForm.url.trim() || webhookForm.events.length === 0) {
+    message("请填写 URL 并选择至少一个事件", { type: "warning" });
+    return;
+  }
+  webhookSaving.value = true;
+  try {
+    if (webhookForm.id) {
+      await updateOrgWebhook(webhookForm.id, {
+        url: webhookForm.url.trim(),
+        events: webhookForm.events,
+        isActive: webhookForm.isActive
+      });
+      message("Webhook 已更新", { type: "success" });
+    } else {
+      const created = await createOrgWebhook({
+        url: webhookForm.url.trim(),
+        events: webhookForm.events
+      });
+      createdWebhookSecret.value = created.secret ?? "";
+      message("Webhook 已创建", { type: "success" });
+    }
+    await loadWebhooks();
+    if (!createdWebhookSecret.value) {
+      webhookDialogVisible.value = false;
+    }
+  } finally {
+    webhookSaving.value = false;
+  }
+}
+
+async function removeWebhook(id: string) {
+  try {
+    await ElMessageBox.confirm("确认删除该 Webhook？", "删除", { type: "warning" });
+  } catch {
+    return;
+  }
+  await deleteOrgWebhook(id);
+  message("已删除", { type: "success" });
+  await loadWebhooks();
+}
+
 onMounted(() => {
   void loadProfile();
+  void loadWebhooks();
 });
 </script>

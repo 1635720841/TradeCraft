@@ -1,16 +1,22 @@
-/**
- * 项目管理模块：项目 CRUD 与类型注册。
- */
-
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
+import { AccessModule } from '../access/access.module';
+import { BillingModule } from '../billing/billing.module';
+import { NotificationModule } from '../notification/notification.module';
 import { OrgProjectController } from './org-project.controller';
+import { AccessRequestService } from './access-request.service';
 import { ProjectAccessService } from './project-access.service';
 import { ProjectAdminService } from './project-admin.service';
 import { ProjectService } from './project.service';
 
 @Module({
+  imports: [AccessModule, BillingModule, forwardRef(() => NotificationModule)],
   controllers: [OrgProjectController],
-  providers: [ProjectService, ProjectAccessService, ProjectAdminService],
-  exports: [ProjectService, ProjectAccessService],
+  providers: [
+    ProjectService,
+    ProjectAccessService,
+    ProjectAdminService,
+    AccessRequestService,
+  ],
+  exports: [ProjectService, ProjectAccessService, ProjectAdminService, AccessRequestService],
 })
 export class ProjectModule {}

@@ -96,6 +96,10 @@ export const getLogtoConfig = () => {
 };
 
 /** Logto 授权码换平台会话 */
-export const logtoCallback = (data: { code: string; redirectUri: string }) => {
+export const logtoCallback = (data: {
+  code: string;
+  redirectUri: string;
+  inviteToken?: string;
+}) => {
   return http.request<UserResult>("post", "/api/v1/auth/logto/callback", { data });
 };

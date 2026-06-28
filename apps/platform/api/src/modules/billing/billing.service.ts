@@ -132,6 +132,33 @@ export class BillingService {
     return { items, page: safePage, limit: safeLimit, total };
   }
 
+  async exportUsageCsv(
+    organizationId: string,
+    range?: { from?: string; to?: string },
+  ): Promise<string> {
+    const createdAt: { gte?: Date; lte?: Date } = {};
+    if (range?.from) createdAt.gte = new Date(range.from);
+    if (range?.to) createdAt.lte = new Date(range.to);
+
+    const items = await this.prisma.creditUsage.findMany({
+      where: {
+        organizationId,
+        ...(Object.keys(createdAt).length > 0 ? { createdAt } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 5000,
+    });
+
+    const header = 'id,projectId,serviceType,provider,tokensOrCount,estimatedCost,createdAt\n';
+    const rows = items
+      .map(
+        (r) =>
+          `${r.id},${r.projectId ?? ''},${r.serviceType},${r.provider},${r.tokensOrCount},${r.estimatedCost},${r.createdAt.toISOString()}`,
+      )
+      .join('\n');
+    return `\uFEFF${header}${rows}`;
+  }
+
   async getQuotaSummary(organizationId: string): Promise<QuotaSummary> {
     const org = await this.prisma.organization.findFirst({
       where: { id: organizationId },

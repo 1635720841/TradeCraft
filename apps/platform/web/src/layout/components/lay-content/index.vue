@@ -9,6 +9,7 @@ import { h, computed, Transition, defineComponent } from "vue";
 import { useRoute } from "vue-router";
 import { usePermissionStoreHook } from "@/store/modules/permission";
 import OrgSubscriptionBanner from "../OrgSubscriptionBanner.vue";
+import ImpersonationBanner from "../ImpersonationBanner.vue";
 
 const props = defineProps({
   fixedHeader: Boolean
@@ -124,6 +125,7 @@ const transitionMain = defineComponent({
     :style="getSectionStyle"
   >
     <OrgSubscriptionBanner />
+    <ImpersonationBanner />
     <router-view>
       <template #default="{ Component, route }">
         <LayFrame :currComp="Component" :currRoute="route">

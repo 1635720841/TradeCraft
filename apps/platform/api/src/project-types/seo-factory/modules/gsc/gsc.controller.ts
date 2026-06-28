@@ -15,6 +15,7 @@ import type { RequestContext } from '@wm/shared-core';
 import { Public } from '../../../../core/decorators/public.decorator';
 import { ReqCtx } from '../../../../core/decorators/request-context.decorator';
 import { ProjectService } from '../../../../modules/project/project.service';
+import { EntitlementsService } from '../../../../modules/billing/entitlements.service';
 import { GscService } from './gsc.service';
 import { seoFactoryRoutes } from '../../constants/seo-factory-routes';
 
@@ -23,6 +24,7 @@ export class GscController {
   constructor(
     private readonly gscService: GscService,
     private readonly projectService: ProjectService,
+    private readonly entitlementsService: EntitlementsService,
   ) {}
 
   @Get()
@@ -43,6 +45,7 @@ export class GscController {
     @Param('siteId') siteId: string,
   ) {
     await this.projectService.assertSeoSiteRead(ctx.organizationId, projectId, ctx);
+    await this.entitlementsService.assertEntitlement(ctx.organizationId, 'gscEnabled');
     const data = await this.gscService.createConnectUrl(
       ctx.organizationId,
       projectId,
@@ -58,6 +61,7 @@ export class GscController {
     @Param('siteId') siteId: string,
   ) {
     await this.projectService.assertSeoSiteManage(ctx.organizationId, projectId, ctx);
+    await this.entitlementsService.assertEntitlement(ctx.organizationId, 'gscEnabled');
     const data = await this.gscService.sync(ctx.organizationId, projectId, siteId);
     return { data, meta: { traceId: ctx.traceId } };
   }

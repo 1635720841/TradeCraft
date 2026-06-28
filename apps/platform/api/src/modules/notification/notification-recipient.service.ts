@@ -51,6 +51,41 @@ export class NotificationRecipientService {
     return [...new Set(emails)];
   }
 
+  async listProjectJobNotifiableUserIds(
+    organizationId: string,
+    projectId: string,
+  ): Promise<string[]> {
+    const project = await this.prisma.project.findFirst({
+      where: { id: projectId, organizationId },
+      select: { projectType: true },
+    });
+    if (!project) return [];
+
+    const members = await this.prisma.projectMember.findMany({
+      where: { projectId },
+      include: { user: { select: { id: true, role: true, status: true } } },
+    });
+
+    const userIds: string[] = [];
+    for (const member of members) {
+      if (member.user.status !== 'ACTIVE') continue;
+      if (isPlatformStaffOrgRole(member.user.role)) continue;
+
+      const perms = await this.projectAccess.resolveMemberPermissions(
+        member.id,
+        member.role,
+        project.projectType,
+      );
+      const canNotify =
+        member.role === ProjectMemberRole.OWNER ||
+        perms.includes('seo:job:create');
+      if (canNotify) {
+        userIds.push(member.user.id);
+      }
+    }
+    return [...new Set(userIds)];
+  }
+
   /** 企业 ADMIN 邮箱（配额告警） */
   async listOrgAdminEmails(organizationId: string): Promise<string[]> {
     const admins = await this.prisma.user.findMany({
@@ -69,5 +104,17 @@ export class NotificationRecipientService {
           .filter(Boolean),
       ),
     ];
+  }
+
+  async listOrgAdminUserIds(organizationId: string): Promise<string[]> {
+    const admins = await this.prisma.user.findMany({
+      where: {
+        organizationId,
+        role: PrismaRole.ADMIN,
+        status: 'ACTIVE',
+      },
+      select: { id: true, role: true },
+    });
+    return admins.filter((u) => !isPlatformStaffOrgRole(u.role)).map((u) => u.id);
   }
 }

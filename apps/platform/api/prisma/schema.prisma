@@ -164,6 +164,121 @@ model AuditLog {
   @@index([action, createdAt])
 }
 
+enum AccessRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum BillingRequestType {
+  RENEW
+  UPGRADE
+  TOPUP
+}
+
+enum BillingRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// 成员邮件邀请
+model MemberInvite {
+  id             String    @id @default(uuid())
+  organizationId String
+  email          String
+  role           Role      @default(MEMBER)
+  tokenHash      String    @unique
+  invitedById    String
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@unique([organizationId, email])
+  @@index([tokenHash])
+  @@index([organizationId, createdAt])
+}
+
+/// 项目访问申请
+model ProjectAccessRequest {
+  id             String              @id @default(uuid())
+  organizationId String
+  projectId      String
+  userId         String
+  message        String?             @db.VarChar(500)
+  status         AccessRequestStatus @default(PENDING)
+  reviewedById   String?
+  reviewedAt     DateTime?
+  createdAt      DateTime            @default(now())
+
+  @@index([organizationId, projectId, status])
+  @@index([organizationId, status, createdAt])
+}
+
+/// 站内通知
+model UserNotification {
+  id             String    @id @default(uuid())
+  organizationId String
+  userId         String
+  type           String
+  title          String
+  body           String?   @db.VarChar(500)
+  linkPath       String?   @db.VarChar(500)
+  readAt         DateTime?
+  payload        Json?
+  createdAt      DateTime  @default(now())
+
+  @@index([userId, readAt, createdAt])
+  @@index([organizationId, userId, createdAt])
+}
+
+/// 续费/升级申请
+model BillingChangeRequest {
+  id             String               @id @default(uuid())
+  organizationId String
+  requestedById  String
+  type           BillingRequestType
+  targetPlanId   String?
+  topUpAmount    Int?
+  message        String?              @db.VarChar(500)
+  status         BillingRequestStatus @default(PENDING)
+  reviewedById   String?
+  reviewedAt     DateTime?
+  createdAt      DateTime             @default(now())
+
+  @@index([organizationId, status, createdAt])
+  @@index([status, createdAt])
+}
+
+/// 出站 Webhook 配置
+model OrgWebhook {
+  id             String   @id @default(uuid())
+  organizationId String
+  url            String   @db.VarChar(500)
+  secret         String
+  events         String[]
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId, isActive])
+}
+
+/// Webhook 投递日志
+model WebhookDeliveryLog {
+  id             String   @id @default(uuid())
+  organizationId String
+  webhookId      String
+  event          String
+  statusCode     Int?
+  success        Boolean
+  errorMessage   String?  @db.VarChar(500)
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, webhookId, createdAt])
+}
+
 /// Prompt 模板版本库（M12）：平台全局，seo-factory LLM 热更新
 model PromptTemplate {
   id          String   @id @default(uuid())
@@ -196,6 +311,7 @@ model User {
   organization   Organization     @relation(fields: [organizationId], references: [id])
   role           Role             @default(MEMBER)
   status         UserStatus       @default(ACTIVE)
+  locale         String           @default("zh-CN")
   lastLoginAt    DateTime?
   grants         UserPermission[]
   menuGrants     UserMenuGrant[]

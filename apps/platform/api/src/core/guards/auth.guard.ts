@@ -10,9 +10,8 @@ import {
   Role,
   hasAnyPermission,
   type OrganizationType,
-  type RequestContext,
 } from '@wm/shared-core';
-import { attachRequestContext } from '../context/request-context.store';
+import { attachRequestContext, type StoredRequestContext } from '../context/request-context.store';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
 import { ROLES_KEY } from '../decorators/roles.decorator';
@@ -51,6 +50,17 @@ export class AuthGuard implements CanActivate {
     const traceId = this.resolveTraceId(request);
     const role = claims.role as Role;
 
+    const user = await this.prisma.user.findFirst({
+      where: { id: claims.sub },
+      select: { status: true },
+    });
+    if (!user) {
+      throw new UnauthorizedException(ErrorCodes.UNAUTHORIZED, '用户不存在或已被移除');
+    }
+    if (user.status === 'DISABLED') {
+      throw new UnauthorizedException(ErrorCodes.UNAUTHORIZED, '账号已被停用');
+    }
+
     const org = await this.prisma.organization.findFirst({
       where: { id: claims.org },
       select: {
@@ -68,13 +78,19 @@ export class AuthGuard implements CanActivate {
       org.type === 'PLATFORM' ? 'PLATFORM' : 'CUSTOMER';
     const permissions = await this.permissionService.resolveUserPermissions(claims.sub, role);
 
-    const reqCtx: RequestContext = {
+    const path = request.path ?? request.url ?? '';
+    const bypassTenantScope =
+      organizationType === 'PLATFORM' || path.startsWith('/api/v1/console');
+
+    const reqCtx: StoredRequestContext = {
       traceId,
       userId: claims.sub,
       organizationId: claims.org,
       organizationType,
       role,
       permissions,
+      impersonatedBy: claims.impersonatedBy,
+      bypassTenantScope,
     };
 
     attachRequestContext(request as unknown as Record<string, unknown>, reqCtx);

@@ -78,3 +78,60 @@ export async function listBillingPlans(): Promise<SubscriptionPlan[]> {
   );
   return res.data ?? [];
 }
+
+export async function createBillingRequest(payload: {
+  type: "RENEW" | "UPGRADE" | "TOPUP";
+  targetPlanId?: string;
+  topUpAmount?: number;
+  message?: string;
+}) {
+  await http.request("post", "/api/v1/org/billing/requests", { data: payload });
+}
+
+export interface BillingRequestItem {
+  id: string;
+  type: "RENEW" | "UPGRADE" | "TOPUP";
+  targetPlanId?: string | null;
+  topUpAmount?: number | null;
+  message?: string | null;
+  status: string;
+  createdAt: string;
+  reviewedAt?: string | null;
+}
+
+export async function listBillingRequests(): Promise<BillingRequestItem[]> {
+  const res = await http.request<WmApiResponse<BillingRequestItem[]>>(
+    "get",
+    "/api/v1/org/billing/requests"
+  );
+  return res.data ?? [];
+}
+
+export interface OrgEntitlements {
+  planName: string;
+  maxProjects: number;
+  maxConcurrentJobs: number;
+  gscEnabled: boolean;
+  semrushRpaEnabled: boolean;
+  cmsPublishEnabled: boolean;
+}
+
+export async function getOrgEntitlements(): Promise<OrgEntitlements> {
+  const res = await http.request<WmApiResponse<OrgEntitlements>>(
+    "get",
+    "/api/v1/org/billing/entitlements"
+  );
+  return res.data;
+}
+
+export async function downloadBillingUsageCsv() {
+  const res = await http.request<Blob>("get", "/api/v1/org/billing/usage/export", {
+    responseType: "blob"
+  });
+  const url = URL.createObjectURL(res);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "usage.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}

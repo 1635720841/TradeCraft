@@ -380,3 +380,51 @@ export async function listAuditLogs(
   };
   return { items: res.data ?? [], pagination };
 }
+
+export interface BillingChangeRequestItem {
+  id: string;
+  organizationId: string;
+  organizationName?: string;
+  currentPlanName?: string | null;
+  requestedById: string;
+  type: "RENEW" | "UPGRADE" | "TOPUP";
+  targetPlanId?: string | null;
+  topUpAmount?: number | null;
+  message?: string | null;
+  status: string;
+  createdAt: string;
+}
+
+export async function listConsoleBillingRequests(): Promise<BillingChangeRequestItem[]> {
+  const res = await http.request<WmApiResponse<BillingChangeRequestItem[]>>(
+    "get",
+    "/api/v1/console/billing-requests"
+  );
+  return res.data ?? [];
+}
+
+export async function approveConsoleBillingRequest(requestId: string): Promise<void> {
+  await http.request("post", `/api/v1/console/billing-requests/${requestId}/approve`);
+}
+
+export async function rejectConsoleBillingRequest(requestId: string): Promise<void> {
+  await http.request("post", `/api/v1/console/billing-requests/${requestId}/reject`);
+}
+
+export interface ImpersonateResult {
+  accessToken: string;
+  expires: string;
+  targetEmail: string;
+}
+
+export async function impersonateUser(
+  userId: string,
+  reason: string
+): Promise<ImpersonateResult> {
+  const res = await http.request<WmApiResponse<ImpersonateResult>>(
+    "post",
+    "/api/v1/console/impersonate",
+    { data: { userId, reason } }
+  );
+  return res.data;
+}

@@ -228,4 +228,41 @@ export class ConsoleController {
       },
     };
   }
+
+  @Get('billing-requests')
+  @Permissions('console:tenant:update')
+  async listBillingRequests(@ReqCtx() ctx: RequestContext) {
+    const data = await this.consoleService.listBillingRequests();
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Post('billing-requests/:requestId/approve')
+  @Permissions('console:tenant:update')
+  async approveBillingRequest(
+    @ReqCtx() ctx: RequestContext,
+    @Param('requestId') requestId: string,
+  ) {
+    const data = await this.consoleService.approveBillingRequest(requestId, ctx.userId);
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Post('billing-requests/:requestId/reject')
+  @Permissions('console:tenant:update')
+  async rejectBillingRequest(
+    @ReqCtx() ctx: RequestContext,
+    @Param('requestId') requestId: string,
+  ) {
+    const data = await this.consoleService.rejectBillingRequest(requestId, ctx.userId);
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Post('impersonate')
+  @Roles(Role.SUPER_ADMIN)
+  async impersonate(
+    @ReqCtx() ctx: RequestContext,
+    @Body() body: { userId: string; reason: string },
+  ) {
+    const data = await this.consoleService.impersonate(ctx.userId, ctx.traceId, body);
+    return { data, meta: { traceId: ctx.traceId } };
+  }
 }

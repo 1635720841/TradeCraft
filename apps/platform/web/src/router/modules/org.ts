@@ -76,6 +76,17 @@ export default {
         permission: "org:billing:read",
         roles: ["admin", "common", "super_admin"]
       }
+    },
+    {
+      path: "/org/audit",
+      name: "OrgAudit",
+      component: () => import("@/views/org/OrgAuditView.vue"),
+      meta: {
+        title: "操作审计",
+        menuKey: "org:audit",
+        permission: "org:audit:read",
+        roles: ["admin", "super_admin"]
+      }
     }
   ]
 } satisfies RouteConfigsTable;

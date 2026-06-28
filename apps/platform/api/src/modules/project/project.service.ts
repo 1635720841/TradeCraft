@@ -10,6 +10,7 @@ import { BusinessException } from '../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../core/exceptions/error-codes';
 import { tenantVisibleProjectMemberUserFilter } from '../access/tenant-member-visibility';
 import { AuditService } from '../access/audit.service';
+import { EntitlementsService } from '../billing/entitlements.service';
 import { ProjectAccessService } from './project-access.service';
 import { listProjectTypeDescriptors } from './project-type.descriptors';
 import type { CreateProjectDto } from './dto/create-project.dto';
@@ -20,6 +21,7 @@ export class ProjectService {
     private readonly prisma: PrismaService,
     private readonly projectAccessService: ProjectAccessService,
     private readonly auditService: AuditService,
+    private readonly entitlementsService: EntitlementsService,
   ) {}
 
   async list(
@@ -101,6 +103,8 @@ export class ProjectService {
     creatorUserId: string,
     traceId?: string,
   ) {
+    await this.entitlementsService.assertProjectLimit(organizationId);
+
     const project = await this.prisma.project.create({
       data: {
         organizationId,

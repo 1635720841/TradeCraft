@@ -12,6 +12,7 @@ import type { optionsItem, dragItem } from "../types";
 import { ref, computed, shallowRef, watch } from "vue";
 import { useDebounceFn, onKeyStroke } from "@vueuse/core";
 import { usePermissionStoreHook } from "@/store/modules/permission";
+import { searchOrg } from "@/api/org/search";
 import { cloneDeep, isAllEmpty, storageLocal } from "@pureadmin/utils";
 import SearchIcon from "~icons/ri/search-line";
 
@@ -106,22 +107,37 @@ function flatTree(arr) {
 }
 
 /** 查询 */
-function search() {
+async function search() {
+  const q = keyword.value.toLocaleLowerCase().trim();
   const flatMenusData = flatTree(menusData.value);
-  resultOptions.value = flatMenusData.filter(menu =>
-    keyword.value
-      ? transformI18n(menu.meta?.title)
-          .toLocaleLowerCase()
-          .includes(keyword.value.toLocaleLowerCase().trim()) ||
+  const menuHits = flatMenusData.filter(menu =>
+    q
+      ? transformI18n(menu.meta?.title).toLocaleLowerCase().includes(q) ||
         (locale.value === "zh" &&
           !isAllEmpty(
-            match(
-              transformI18n(menu.meta?.title).toLocaleLowerCase(),
-              keyword.value.toLocaleLowerCase().trim()
-            )
+            match(transformI18n(menu.meta?.title).toLocaleLowerCase(), q)
           ))
       : false
   );
+
+  const entityHits: optionsItem[] = [];
+  if (q.length >= 2) {
+    try {
+      const groups = await searchOrg(q, 12);
+      for (const group of groups) {
+        for (const item of group.items) {
+          entityHits.push({
+            path: item.path,
+            meta: { title: `[${group.label}] ${item.title}` }
+          } as unknown as optionsItem);
+        }
+      }
+    } catch {
+      // ignore search errors
+    }
+  }
+
+  resultOptions.value = [...entityHits, ...menuHits];
   activePath.value =
     resultOptions.value?.length > 0 ? resultOptions.value[0].path : "";
 }

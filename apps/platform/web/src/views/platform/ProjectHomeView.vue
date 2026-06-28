@@ -254,7 +254,16 @@
                       去项目管理
                     </button>
                     <template v-else>
-                      <span> · 请联系企业管理员</span>
+                      <button
+                        v-if="canApplyAccess(project)"
+                        type="button"
+                        class="mw-home__quota-link"
+                        :disabled="applyingProjectId === project.id"
+                        @click.stop="applyAccess(project)"
+                      >
+                        {{ applyingProjectId === project.id ? "提交中…" : "申请访问" }}
+                      </button>
+                      <span v-else> · 请联系企业管理员</span>
                     </template>
                   </span>
                 </div>
@@ -299,10 +308,12 @@ import {
   listOrgProjects,
   type OrgProjectItem
 } from "@/api/org/projects";
+import { createProjectAccessRequest } from "@/api/org/access";
 import { projectMyAccessStatusDict, projectStatusDict } from "@/constants/dicts/platform";
 import { useUserStoreHook } from "@/store/modules/user";
 import { dictLabel } from "@/utils/dict";
 import { formatPeriodEnd } from "@/utils/period";
+import { message } from "@/utils/message";
 import HomeIcon from "./components/home/HomeIcon.vue";
 import SetupChecklistPanel from "@/components/SetupChecklistPanel.vue";
 import { useOrgAdminSetupChecklist } from "@/composables/useOrgAdminSetupChecklist";
@@ -317,6 +328,7 @@ const userStore = useUserStoreHook();
 const loading = ref(false);
 const profileLoading = ref(false);
 const showOtherProjects = ref(false);
+const applyingProjectId = ref<string | null>(null);
 const projects = ref<OrgProjectItem[]>([]);
 const profile = ref<OrganizationProfile | null>(null);
 
@@ -435,6 +447,27 @@ function accessHint(project: OrgProjectItem) {
   if (project.myAccessStatus === "member_expired") return "访问已过期";
   if (project.status !== "ACTIVE") return "项目不可用";
   return "暂不可进入";
+}
+
+function canApplyAccess(project: OrgProjectItem) {
+  if (isAdmin.value || canEnter(project)) return false;
+  if (project.status !== "ACTIVE") return false;
+  return (
+    project.myAccessStatus === "not_member" ||
+    project.myAccessStatus === "member_expired"
+  );
+}
+
+async function applyAccess(project: OrgProjectItem) {
+  applyingProjectId.value = project.id;
+  try {
+    await createProjectAccessRequest(project.id);
+    message("访问申请已提交，请等待管理员审批", { type: "success" });
+  } catch {
+    message("提交失败，请稍后重试", { type: "error" });
+  } finally {
+    applyingProjectId.value = null;
+  }
 }
 
 async function loadProfile() {

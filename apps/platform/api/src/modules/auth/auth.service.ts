@@ -147,9 +147,17 @@ export class AuthService {
     return this.buildUserProfile(user);
   }
 
-  async loginWithLogtoCode(code: string, redirectUri: string): Promise<AuthSessionPayload> {
+  async loginWithLogtoCode(
+    code: string,
+    redirectUri: string,
+    inviteToken?: string,
+  ): Promise<AuthSessionPayload> {
     const identity = await this.logtoAuthService.exchangeAuthorizationCode(code, redirectUri);
-    const user = await this.syncUserFromLogto(identity);
+    const user = await this.syncUserFromLogto(identity, inviteToken);
+
+    if (user.status && user.status !== 'ACTIVE') {
+      throw new UnauthorizedException(ErrorCodes.UNAUTHORIZED, '账号未激活或已禁用');
+    }
 
     await this.prisma.user.update({
       where: { id: user.id },
@@ -168,35 +176,123 @@ export class AuthService {
     return this.buildSession(user);
   }
 
-  async syncUserFromLogto(identity: LogtoIdentity): Promise<{
+  async syncUserFromLogto(
+    identity: LogtoIdentity,
+    inviteToken?: string,
+  ): Promise<{
     id: string;
     email: string;
     name: string | null;
     organizationId: string;
     role: PrismaRole;
+    status?: string;
   }> {
     const email = identity.email.trim().toLowerCase();
 
     const bySubject = await this.prisma.user.findFirst({
       where: { authSubject: identity.sub },
-      select: { id: true, email: true, name: true, organizationId: true, role: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        organizationId: true,
+        role: true,
+        status: true,
+      },
     });
     if (bySubject) {
+      if (bySubject.status !== 'ACTIVE') {
+        throw new UnauthorizedException(ErrorCodes.UNAUTHORIZED, '账号未激活或已禁用');
+      }
       return bySubject;
+    }
+
+    const pendingInvite = inviteToken
+      ? await this.findInviteByToken(inviteToken)
+      : await this.prisma.memberInvite.findFirst({
+          where: {
+            email,
+            revokedAt: null,
+            acceptedAt: null,
+            expiresAt: { gt: new Date() },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+
+    if (pendingInvite) {
+      if (pendingInvite.email !== email) {
+        throw new UnauthorizedException(ErrorCodes.UNAUTHORIZED, '邀请邮箱与登录账号不一致');
+      }
+
+      const user = await this.prisma.user.findFirst({
+        where: { email, organizationId: pendingInvite.organizationId },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          organizationId: true,
+          role: true,
+          status: true,
+        },
+      });
+
+      if (!user) {
+        throw new UnauthorizedException(ErrorCodes.UNAUTHORIZED, '邀请用户不存在');
+      }
+
+      await this.prisma.$transaction([
+        this.prisma.memberInvite.update({
+          where: { id: pendingInvite.id },
+          data: { acceptedAt: new Date() },
+        }),
+        this.prisma.user.update({
+          where: { id: user.id },
+          data: {
+            authSubject: identity.sub,
+            name: user.name ?? identity.name ?? null,
+            status: 'ACTIVE',
+          },
+        }),
+      ]);
+
+      return { ...user, status: 'ACTIVE' };
     }
 
     const byEmail = await this.prisma.user.findFirst({
       where: { email },
-      select: { id: true, email: true, name: true, organizationId: true, role: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        organizationId: true,
+        role: true,
+        status: true,
+      },
     });
     if (byEmail) {
+      if (byEmail.status === 'INVITED') {
+        throw new UnauthorizedException(
+          ErrorCodes.UNAUTHORIZED,
+          '请先通过邀请邮件中的链接接受邀请',
+        );
+      }
+      if (byEmail.status !== 'ACTIVE') {
+        throw new UnauthorizedException(ErrorCodes.UNAUTHORIZED, '账号未激活或已禁用');
+      }
       return this.prisma.user.update({
         where: { id: byEmail.id },
         data: {
           authSubject: identity.sub,
           name: byEmail.name ?? identity.name ?? null,
         },
-        select: { id: true, email: true, name: true, organizationId: true, role: true },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          organizationId: true,
+          role: true,
+          status: true,
+        },
       });
     }
 
@@ -211,8 +307,29 @@ export class AuthService {
         organizationId: org.id,
         role: PrismaRole.ADMIN,
         authSubject: identity.sub,
+        status: 'ACTIVE',
       },
-      select: { id: true, email: true, name: true, organizationId: true, role: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        organizationId: true,
+        role: true,
+        status: true,
+      },
+    });
+  }
+
+  private async findInviteByToken(rawToken: string) {
+    const { createHash } = await import('node:crypto');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    return this.prisma.memberInvite.findFirst({
+      where: {
+        tokenHash,
+        revokedAt: null,
+        acceptedAt: null,
+        expiresAt: { gt: new Date() },
+      },
     });
   }
 

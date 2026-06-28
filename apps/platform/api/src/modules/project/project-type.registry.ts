@@ -31,3 +31,13 @@ export function getProjectTypePlugin(type: string): IProjectTypePlugin | undefin
 export function listProjectTypeDescriptors(): Array<{ type: string; label: string }> {
   return PROJECT_TYPE_CATALOG.map(({ type, label }) => ({ type, label }));
 }
+
+export function getAggregatedPluginPermissions() {
+  const map = new Map<string, { id: string; name: string; module: string }>();
+  for (const plugin of loadRegistry()) {
+    for (const perm of plugin.permissions()) {
+      map.set(perm.id, perm);
+    }
+  }
+  return [...map.values()];
+}

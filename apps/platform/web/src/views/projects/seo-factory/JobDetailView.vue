@@ -301,6 +301,14 @@
 
           <div class="job-detail-panel">
             <el-collapse>
+              <el-collapse-item title="协作" name="collab">
+                <ArticleJobCollabPanel
+                  v-if="job"
+                  :project-id="projectId"
+                  :job-id="job.id"
+                  :can-write="canWriteJob"
+                />
+              </el-collapse-item>
               <el-collapse-item title="高级信息" name="advanced">
                 <ul class="job-detail-meta-list">
                   <li class="job-detail-meta-list__item">
@@ -571,6 +579,7 @@ import { isBriefPending } from "@/utils/seo-factory/job-progress";
 import { resolveEffectiveLocalSeoScore } from "@/utils/seo-factory/local-seo-display";
 import { resolveJobDisplayErrorMessage } from "@/utils/seo-factory/job-error-display";
 import ArticleJobBriefPanel from "./components/ArticleJobBriefPanel.vue";
+import ArticleJobCollabPanel from "./components/ArticleJobCollabPanel.vue";
 import ArticleJobBriefReviewPanel from "./components/ArticleJobBriefReviewPanel.vue";
 import ArticleJobProgressStepper from "./components/ArticleJobProgressStepper.vue";
 import ArticleJobDraftEditor from "./components/ArticleJobDraftEditor.vue";

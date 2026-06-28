@@ -1,0 +1,133 @@
+<!--
+  任务协作：指派人 + 评论。
+-->
+<template>
+  <div class="space-y-4">
+    <div>
+      <div class="mb-2 text-sm font-medium text-gray-700">负责人</div>
+      <el-select
+        v-model="selectedAssignee"
+        filterable
+        clearable
+        placeholder="选择项目成员"
+        class="w-full"
+        :disabled="!canWrite"
+        @change="onAssignChange"
+      >
+        <el-option
+          v-for="m in members"
+          :key="m.userId"
+          :label="m.name || m.email"
+          :value="m.userId"
+        />
+      </el-select>
+    </div>
+    <div>
+      <div class="mb-2 text-sm font-medium text-gray-700">评论</div>
+      <div v-if="comments.length" class="mb-2 max-h-40 space-y-2 overflow-y-auto">
+        <div
+          v-for="c in comments"
+          :key="c.id"
+          class="rounded border border-gray-100 bg-gray-50 px-2 py-1 text-sm"
+        >
+          <div class="text-xs text-gray-500">
+            {{ c.author?.name || c.author?.email || "用户" }} ·
+            {{ formatTime(c.createdAt) }}
+          </div>
+          <div class="mt-0.5 whitespace-pre-wrap">{{ c.body }}</div>
+        </div>
+      </div>
+      <el-input
+        v-model="commentText"
+        type="textarea"
+        :rows="2"
+        placeholder="添加评论…"
+        :disabled="!canWrite"
+      />
+      <el-button
+        class="mt-2"
+        size="small"
+        type="primary"
+        :disabled="!canWrite || !commentText.trim()"
+        :loading="posting"
+        @click="submitComment"
+      >
+        发送
+      </el-button>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { onMounted, ref, watch } from "vue";
+import {
+  addJobComment,
+  assignJobUser,
+  listJobAssignees,
+  listJobComments,
+  unassignJobUser,
+  type JobComment
+} from "@/api/seo-factory/article-job-collab";
+import { listProjectMembers, type OrgProjectMember } from "@/api/org/projects";
+import { message } from "@/utils/message";
+
+const props = defineProps<{
+  projectId: string;
+  jobId: string;
+  canWrite: boolean;
+}>();
+
+const members = ref<OrgProjectMember[]>([]);
+const comments = ref<JobComment[]>([]);
+const selectedAssignee = ref("");
+const commentText = ref("");
+const posting = ref(false);
+
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleString("zh-CN");
+}
+
+async function refresh() {
+  const [c, a] = await Promise.all([
+    listJobComments(props.projectId, props.jobId),
+    listJobAssignees(props.projectId, props.jobId)
+  ]);
+  comments.value = c;
+  selectedAssignee.value = a[0]?.userId ?? "";
+}
+
+async function loadMembers() {
+  members.value = await listProjectMembers(props.projectId);
+}
+
+async function onAssignChange(userId: string | undefined) {
+  if (!userId) {
+    const current = (await listJobAssignees(props.projectId, props.jobId))[0];
+    if (current) await unassignJobUser(props.projectId, props.jobId, current.userId);
+    return;
+  }
+  await assignJobUser(props.projectId, props.jobId, userId);
+  message("已更新负责人", { type: "success" });
+}
+
+async function submitComment() {
+  const body = commentText.value.trim();
+  if (!body) return;
+  posting.value = true;
+  try {
+    await addJobComment(props.projectId, props.jobId, body);
+    commentText.value = "";
+    comments.value = await listJobComments(props.projectId, props.jobId);
+  } finally {
+    posting.value = false;
+  }
+}
+
+watch(
+  () => [props.projectId, props.jobId],
+  () => void refresh(),
+  { immediate: true }
+);
+
+onMounted(() => void loadMembers());
+</script>

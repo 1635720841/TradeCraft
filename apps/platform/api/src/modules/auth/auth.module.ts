@@ -6,10 +6,12 @@
  */
 
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AuthGuard } from '../../core/guards/auth.guard';
 import { RateLimitGuard } from '../../core/guards/rate-limit.guard';
+import { TenantContextInterceptor } from '../../core/interceptors/tenant-context.interceptor';
 import { AccessModule } from '../access/access.module';
+import { MemberInviteModule } from '../organization/member-invite.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { AuthTokenService } from './auth-token.service';
@@ -17,7 +19,7 @@ import { JwtTokenService } from './jwt-token.service';
 import { LogtoAuthService } from './logto/logto-auth.service';
 
 @Module({
-  imports: [AccessModule],
+  imports: [AccessModule, MemberInviteModule],
   controllers: [AuthController],
   providers: [
     AuthService,
@@ -26,6 +28,7 @@ import { LogtoAuthService } from './logto/logto-auth.service';
     LogtoAuthService,
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: RateLimitGuard },
+    { provide: APP_INTERCEPTOR, useClass: TenantContextInterceptor },
   ],
   exports: [AuthService, JwtTokenService, AuthTokenService],
 })

@@ -94,7 +94,43 @@ export async function listOrganizationMembers(): Promise<OrganizationMember[]> {
   return res.data ?? [];
 }
 
-/** 创建成员 */
+export interface InviteMemberPayload {
+  email: string;
+  name?: string;
+  role?: "ADMIN" | "MEMBER";
+}
+
+/** 邀请成员（邮件） */
+export async function inviteOrganizationMember(
+  payload: InviteMemberPayload
+): Promise<{ id: string; email: string; status: string }> {
+  const res = await http.request<WmApiResponse<{ id: string; email: string; status: string }>>(
+    "post",
+    "/api/v1/org/members/invite",
+    { data: payload }
+  );
+  return res.data;
+}
+
+/** 重发邀请 */
+export async function resendMemberInvite(email: string) {
+  const res = await http.request<WmApiResponse<{ email: string }>>(
+    "post",
+    `/api/v1/org/members/${encodeURIComponent(email)}/resend-invite`
+  );
+  return res.data;
+}
+
+/** 撤销邀请 */
+export async function revokeMemberInvite(email: string) {
+  const res = await http.request<WmApiResponse<{ ok: boolean }>>(
+    "delete",
+    `/api/v1/org/members/${encodeURIComponent(email)}/invite`
+  );
+  return res.data;
+}
+
+/** 创建成员（密码，开发/备用） */
 export async function createOrganizationMember(
   payload: CreateMemberPayload
 ): Promise<OrganizationMember> {

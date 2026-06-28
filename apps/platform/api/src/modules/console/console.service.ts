@@ -12,6 +12,8 @@ import { AccessService } from '../access/access.service';
 import { AuditService } from '../access/audit.service';
 import { MenuService } from '../access/menu.service';
 import { AuthService } from '../auth/auth.service';
+import { BillingRequestService } from '../billing/billing-request.service';
+import { JwtTokenService } from '../auth/jwt-token.service';
 import { BillingService } from '../billing/billing.service';
 import { SubscriptionPlanService } from '../billing/subscription-plan.service';
 import { OrganizationService } from '../organization/organization.service';
@@ -23,6 +25,8 @@ export class ConsoleService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly authService: AuthService,
+    private readonly jwtTokenService: JwtTokenService,
+    private readonly billingRequestService: BillingRequestService,
     private readonly organizationService: OrganizationService,
     private readonly subscriptionPlanService: SubscriptionPlanService,
     private readonly billingService: BillingService,
@@ -463,6 +467,55 @@ export class ConsoleService {
       dateFrom,
       dateTo,
     });
+  }
+
+  listBillingRequests() {
+    return this.billingRequestService.listPending();
+  }
+
+  approveBillingRequest(requestId: string, reviewerId: string) {
+    return this.billingRequestService.approve(requestId, reviewerId);
+  }
+
+  rejectBillingRequest(requestId: string, reviewerId: string) {
+    return this.billingRequestService.reject(requestId, reviewerId);
+  }
+
+  async impersonate(
+    actorUserId: string,
+    traceId: string,
+    input: { userId: string; reason: string },
+  ) {
+    const target = await this.prisma.user.findFirst({
+      where: { id: input.userId },
+      select: { id: true, organizationId: true, role: true, email: true },
+    });
+    if (!target) {
+      throw new BusinessException(ErrorCodes.NOT_FOUND, '用户不存在');
+    }
+
+    const accessToken = this.jwtTokenService.signImpersonationToken({
+      userId: target.id,
+      organizationId: target.organizationId,
+      role: target.role as Role,
+      impersonatedBy: actorUserId,
+    });
+
+    await this.auditService.log({
+      organizationId: target.organizationId,
+      actorUserId,
+      action: 'console.impersonate',
+      targetType: 'User',
+      targetId: target.id,
+      metadata: { reason: input.reason, targetEmail: target.email },
+      traceId,
+    });
+
+    return {
+      accessToken,
+      expires: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      targetEmail: target.email,
+    };
   }
 
   private async assertCustomerTenant(organizationId: string) {

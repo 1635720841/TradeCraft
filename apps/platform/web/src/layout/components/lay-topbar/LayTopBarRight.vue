@@ -8,6 +8,7 @@ import LayNotice from "../lay-notice/index.vue";
 import { useNav } from "@/layout/hooks/useNav";
 import { useUserStoreHook } from "@/store/modules/user";
 import { getOrganizationProfile } from "@/api/org/organization";
+import { useOrgAdminSetupChecklist } from "@/composables/useOrgAdminSetupChecklist";
 import { memberRoleDict } from "@/constants/dicts/platform";
 import { dictLabel } from "@/utils/dict";
 import LogoutCircleRLine from "~icons/ri/logout-circle-r-line";
@@ -16,6 +17,8 @@ const { t } = useI18n();
 const router = useRouter();
 const { logout, onPanel, username, userAvatar } = useNav();
 const userStore = useUserStoreHook();
+const { visible: setupChecklistVisible, pendingCount: setupPendingCount } =
+  useOrgAdminSetupChecklist();
 
 const orgName = ref("我的企业");
 
@@ -49,12 +52,26 @@ onMounted(async () => {
 function goOrganization() {
   router.push("/org/profile");
 }
+
+function goSetupChecklist() {
+  router.push("/welcome");
+}
 </script>
 
 <template>
   <div class="shell-topbar-right">
     <LaySearch id="header-search" />
     <LayNotice id="header-notice" />
+    <button
+      v-if="setupChecklistVisible && setupPendingCount > 0"
+      type="button"
+      class="shell-topbar-action shell-topbar-setup-badge"
+      title="管理员首次配置未完成"
+      @click="goSetupChecklist"
+    >
+      <span class="shell-topbar-setup-badge__dot">{{ setupPendingCount }}</span>
+      <span class="hidden sm:inline">待配置</span>
+    </button>
     <button
       v-if="!isPlatformOperator"
       type="button"
@@ -104,6 +121,28 @@ function goOrganization() {
     display: inline-flex;
     flex-wrap: wrap;
     min-width: 100%;
+  }
+}
+
+.shell-topbar-setup-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--el-color-warning);
+
+  &__dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: var(--el-color-warning);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
   }
 }
 </style>

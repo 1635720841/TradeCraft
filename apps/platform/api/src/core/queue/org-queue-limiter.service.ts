@@ -5,7 +5,9 @@
 import { Injectable } from '@nestjs/common';
 import { BusinessException } from '../exceptions/business.exception';
 import { ErrorCodes } from '../exceptions/error-codes';
+import { PrismaService } from '../database/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { maxConcurrentJobsForPlan } from '../../modules/billing/plan-entitlements.constants';
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   const n = Number(value);
@@ -14,12 +16,13 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
 
 @Injectable()
 export class OrgQueueLimiterService {
-  private readonly maxConcurrent: number;
   private readonly rateMax: number;
   private readonly rateDurationMs: number;
 
-  constructor(private readonly redis: RedisService) {
-    this.maxConcurrent = parsePositiveInt(process.env.ORG_QUEUE_MAX_CONCURRENT, 3);
+  constructor(
+    private readonly redis: RedisService,
+    private readonly prisma: PrismaService,
+  ) {
     this.rateMax = parsePositiveInt(process.env.ORG_QUEUE_RATE_MAX, 10);
     this.rateDurationMs = parsePositiveInt(process.env.ORG_QUEUE_RATE_DURATION_MS, 60_000);
   }
@@ -30,11 +33,17 @@ export class OrgQueueLimiterService {
     const concurrentKey = `org_queue:active:${organizationId}`;
     const rateKey = `org_queue:rate:${organizationId}`;
 
+    const org = await this.prisma.organization.findFirst({
+      where: { id: organizationId },
+      select: { planName: true },
+    });
+    const maxConcurrent = maxConcurrentJobsForPlan(org?.planName ?? 'trial');
+
     const active = Number((await client.get(concurrentKey)) ?? 0);
-    if (active >= this.maxConcurrent) {
+    if (active >= maxConcurrent) {
       throw new BusinessException(
         ErrorCodes.RATE_LIMIT_EXCEEDED,
-        `当前企业并行任务已达上限（${this.maxConcurrent}），请稍后再试`,
+        `当前企业并行任务已达上限（${maxConcurrent}），请稍后再试`,
       );
     }
 

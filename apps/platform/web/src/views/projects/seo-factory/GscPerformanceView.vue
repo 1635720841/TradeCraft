@@ -15,6 +15,17 @@
       </template>
 
       <el-alert
+        v-if="!gscEnabled"
+        class="mb-4"
+        type="warning"
+        :closable="false"
+        show-icon
+        title="当前套餐未包含 Google Search Console 集成"
+        description="请前往「订阅与用量」申请升级至标准版或企业版后使用。"
+      />
+
+      <el-alert
+        v-else
         class="mb-4"
         type="info"
         :closable="false"
@@ -24,6 +35,7 @@
       />
 
       <div v-loading="loading" class="space-y-4">
+        <template v-if="gscEnabled">
         <el-card v-for="site in sites" :key="site.siteId" shadow="never" class="border">
           <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>
@@ -160,9 +172,13 @@
             description="已连接，正在等待搜索数据（连接后会自动同步，也可手动点「同步数据」）"
           />
         </el-card>
+        </template>
       </div>
 
-      <el-empty v-if="!loading && sites.length === 0" description="请先在「站点管理」创建站点" />
+      <el-empty
+        v-if="gscEnabled && !loading && sites.length === 0"
+        description="请先在「站点管理」创建站点"
+      />
     </el-card>
   </div>
 </template>
@@ -171,6 +187,7 @@
 import { onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import { ElMessageBox } from "element-plus";
+import { getOrgEntitlements } from "@/api/org/billing";
 import {
   disconnectSiteGsc,
   formatGscPercent,
@@ -196,6 +213,7 @@ const route = useRoute();
 const projectId = route.params.projectId as string;
 
 const loading = ref(false);
+const gscEnabled = ref(true);
 const sites = ref<ProjectGscSiteOverview[]>([]);
 const connectingSiteId = ref<string | null>(null);
 const syncingSiteId = ref<string | null>(null);
@@ -287,9 +305,16 @@ async function handleDisconnect(siteId: string) {
 }
 
 onMounted(async () => {
+  try {
+    const ent = await getOrgEntitlements();
+    gscEnabled.value = ent.gscEnabled;
+  } catch {
+    gscEnabled.value = true;
+  }
   if (route.query.gsc === "connected") {
     message("Google Search Console 已连接，正在拉取搜索数据…", { type: "success" });
   }
+  if (!gscEnabled.value) return;
   await loadOverview();
   void autoSyncStaleSites();
 });

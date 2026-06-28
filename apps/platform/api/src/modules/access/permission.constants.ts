@@ -21,6 +21,8 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   { id: 'org:member:create', name: '添加成员', module: 'org', description: '邀请或创建成员', sortOrder: 21 },
   { id: 'org:member:update', name: '编辑成员', module: 'org', description: '修改成员信息', sortOrder: 22 },
   { id: 'org:member:grant', name: '授权成员', module: 'org', description: '为成员分配权限', sortOrder: 23 },
+  { id: 'org:audit:read', name: '查看操作审计', module: 'org', description: '查看本企业操作日志', sortOrder: 24 },
+  { id: 'org:integration:manage', name: '管理集成', module: 'org', description: '配置 Webhook 等集成', sortOrder: 25 },
   { id: 'org:billing:read', name: '查看订阅与配额', module: 'org', description: '查看套餐、账期、用量明细', sortOrder: 30 },
   {
     id: 'org:billing:manage',
@@ -55,6 +57,8 @@ export const ROLE_DEFAULT_PERMISSIONS: Partial<Record<Role, string[]>> = {
     'org:member:create',
     'org:member:update',
     'org:member:grant',
+    'org:audit:read',
+    'org:integration:manage',
     'org:billing:read',
     'project:create',
     'project:read',

@@ -68,6 +68,18 @@
           <el-table-column prop="createdAt" label="加入时间" min-width="170">
             <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
           </el-table-column>
+          <el-table-column v-if="canImpersonate" label="操作" width="100" fixed="right">
+            <template #default="{ row }">
+              <el-button
+                link
+                type="primary"
+                :loading="impersonatingUserId === row.id"
+                @click="handleImpersonate(row)"
+              >
+                代登录
+              </el-button>
+            </template>
+          </el-table-column>
         </el-table>
       </template>
     </el-card>
@@ -167,9 +179,11 @@
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessageBox } from "element-plus";
+import { useUserStoreHook } from "@/store/modules/user";
 import {
   addTenantQuotaTopUp,
   getTenant,
+  impersonateUser,
   listAuditLogs,
   renewTenant,
   updateTenant,
@@ -179,12 +193,15 @@ import {
 import { memberRoleDict, planNameDict, subscriptionStatusDict } from "@/constants/dicts/platform";
 import { dictLabel, dictTagType } from "@/utils/dict";
 import { hasPerms } from "@/utils/auth";
+import { startImpersonation } from "@/utils/impersonation";
 import { formatPeriodWindow } from "@/utils/period";
 import { message } from "@/utils/message";
 
 defineOptions({ name: "ConsoleTenantDetailView" });
 
 const canManageTenant = computed(() => hasPerms("console:tenant:update"));
+const userStore = useUserStoreHook();
+const canImpersonate = computed(() => userStore.roles.includes("super_admin"));
 
 const route = useRoute();
 const router = useRouter();
@@ -210,6 +227,7 @@ const editForm = ref<{
 const topUpVisible = ref(false);
 const topUpAmount = ref(100);
 const topUpNote = ref("");
+const impersonatingUserId = ref<string | null>(null);
 
 const quotaPercent = computed(() => {
   const quota = tenant.value?.quota;
@@ -306,6 +324,30 @@ async function submitTopUp() {
     await Promise.all([loadTenant(), loadAudit()]);
   } finally {
     saving.value = false;
+  }
+}
+
+async function handleImpersonate(member: { id: string; email: string }) {
+  try {
+    const { value: reason } = await ElMessageBox.prompt(
+      `确认以 ${member.email} 身份代登录？将切换为租户视角（15 分钟有效）。`,
+      "代登录",
+      {
+        confirmButtonText: "确认",
+        cancelButtonText: "取消",
+        inputPlaceholder: "请填写代登录原因（审计用）",
+        inputValidator: (v) => (v?.trim() ? true : "请填写原因")
+      }
+    );
+    impersonatingUserId.value = member.id;
+    const result = await impersonateUser(member.id, reason.trim());
+    await startImpersonation(result.accessToken, result.expires, result.targetEmail);
+    message(`已切换为 ${result.targetEmail}`, { type: "success" });
+    await router.push("/welcome");
+  } catch {
+    /* 用户取消 */
+  } finally {
+    impersonatingUserId.value = null;
   }
 }
 

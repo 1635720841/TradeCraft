@@ -1,28 +1,72 @@
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
-import { ref, computed } from "vue";
+import { ref, onMounted, onUnmounted } from "vue";
+import { useRouter } from "vue-router";
 import { Bell } from "@lucide/vue";
-import { noticesData } from "./data";
-import NoticeList from "./components/NoticeList.vue";
+import {
+  listNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
+  type UserNotification
+} from "@/api/org/notifications";
 
 const { t } = useI18n();
+const router = useRouter();
 const noticesNum = ref(0);
-const notices = ref(noticesData);
-const activeKey = ref(noticesData[0]?.key);
+const list = ref<UserNotification[]>([]);
+const loading = ref(false);
+let timer: ReturnType<typeof setInterval> | undefined;
 
-notices.value.map(v => (noticesNum.value += v.list.length));
+async function refresh() {
+  loading.value = true;
+  try {
+    const result = await listNotifications();
+    list.value = result.items;
+    noticesNum.value = result.unread;
+  } catch {
+    list.value = [];
+    noticesNum.value = 0;
+  } finally {
+    loading.value = false;
+  }
+}
 
-const getLabel = computed(
-  () => item =>
-    t(item.name) + (item.list.length > 0 ? `(${item.list.length})` : "")
-);
+async function onClickItem(item: UserNotification) {
+  if (!item.readAt) {
+    await markNotificationRead(item.id).catch(() => undefined);
+    item.readAt = new Date().toISOString();
+    noticesNum.value = Math.max(0, noticesNum.value - 1);
+  }
+  if (item.linkPath) {
+    await router.push(item.linkPath);
+  }
+}
+
+async function onMarkAll() {
+  await markAllNotificationsRead();
+  list.value.forEach(i => {
+    i.readAt = new Date().toISOString();
+  });
+  noticesNum.value = 0;
+}
+
+onMounted(() => {
+  void refresh();
+  timer = setInterval(() => void refresh(), 30_000);
+  window.addEventListener("focus", refresh);
+});
+
+onUnmounted(() => {
+  if (timer) clearInterval(timer);
+  window.removeEventListener("focus", refresh);
+});
 </script>
 
 <template>
-  <el-dropdown trigger="click" placement="bottom-end">
+  <el-dropdown trigger="click" placement="bottom-end" @visible-change="v => v && refresh()">
     <button type="button" class="shell-topbar-action shell-topbar-notice">
       <el-badge
-        :value="Number(noticesNum) === 0 ? '' : noticesNum"
+        :value="noticesNum === 0 ? '' : noticesNum"
         :max="99"
         class="shell-topbar-notice__badge"
       >
@@ -30,31 +74,27 @@ const getLabel = computed(
       </el-badge>
     </button>
     <template #dropdown>
-      <el-dropdown-menu>
-        <el-tabs
-          v-model="activeKey"
-          :stretch="true"
-          class="dropdown-tabs"
-          :style="{ width: notices.length === 0 ? '200px' : '330px' }"
-        >
-          <el-empty
-            v-if="notices.length === 0"
-            :description="t('status.pureNoMessage')"
-            :image-size="60"
-          />
-          <span v-else>
-            <template v-for="item in notices" :key="item.key">
-              <el-tab-pane :label="getLabel(item)" :name="`${item.key}`">
-                <el-scrollbar max-height="330px">
-                  <div class="noticeList-container">
-                    <NoticeList :list="item.list" :emptyText="item.emptyText" />
-                  </div>
-                </el-scrollbar>
-              </el-tab-pane>
-            </template>
-          </span>
-        </el-tabs>
-      </el-dropdown-menu>
+      <div class="w-80 p-3">
+        <div class="mb-2 flex items-center justify-between">
+          <span class="text-sm font-medium">通知</span>
+          <el-button v-if="noticesNum > 0" link type="primary" @click="onMarkAll">
+            全部已读
+          </el-button>
+        </div>
+        <el-scrollbar v-loading="loading" max-height="320px">
+          <el-empty v-if="list.length === 0" :description="t('status.pureNoNotify')" :image-size="48" />
+          <div
+            v-for="item in list"
+            :key="item.id"
+            class="cursor-pointer border-b border-gray-100 px-1 py-2 last:border-0 hover:bg-gray-50"
+            :class="{ 'opacity-60': item.readAt }"
+            @click="onClickItem(item)"
+          >
+            <div class="text-sm font-medium">{{ item.title }}</div>
+            <div v-if="item.body" class="mt-0.5 text-xs text-gray-500">{{ item.body }}</div>
+          </div>
+        </el-scrollbar>
+      </div>
     </template>
   </el-dropdown>
 </template>
@@ -70,23 +110,5 @@ const getLabel = computed(
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.dropdown-tabs {
-  .noticeList-container {
-    padding: 15px 24px 0;
-  }
-
-  :deep(.el-tabs__header) {
-    margin: 0;
-  }
-
-  :deep(.el-tabs__nav-wrap)::after {
-    height: 1px;
-  }
-
-  :deep(.el-tabs__nav-wrap) {
-    padding: 0 36px;
-  }
 }
 </style>

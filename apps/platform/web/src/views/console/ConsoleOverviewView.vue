@@ -28,6 +28,42 @@
           />
         </div>
 
+        <el-card v-if="billingRequests.length" shadow="never" class="mb-4 border border-blue-100">
+          <template #header>
+            <span class="font-medium text-blue-700">待审批续费/升级申请</span>
+          </template>
+          <el-table :data="billingRequests" stripe>
+            <el-table-column prop="organizationName" label="企业" min-width="160" />
+            <el-table-column prop="type" label="类型" width="100" />
+            <el-table-column prop="message" label="说明" min-width="160">
+              <template #default="{ row }">{{ row.message || "-" }}</template>
+            </el-table-column>
+            <el-table-column prop="createdAt" label="申请时间" min-width="170">
+              <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="160" fixed="right">
+              <template #default="{ row }">
+                <el-button
+                  link
+                  type="primary"
+                  :loading="actingRequestId === row.id"
+                  @click="approveRequest(row.id)"
+                >
+                  通过
+                </el-button>
+                <el-button
+                  link
+                  type="danger"
+                  :loading="actingRequestId === row.id"
+                  @click="rejectRequest(row.id)"
+                >
+                  拒绝
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+
         <el-card v-if="overview.highQuotaAlerts.length" shadow="never" class="mb-4 border border-orange-100">
           <template #header>
             <span class="font-medium text-orange-700">配额告警租户</span>
@@ -86,14 +122,58 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { getConsoleOverview, type ConsoleOverview } from "@/api/console/index";
+import {
+  approveConsoleBillingRequest,
+  getConsoleOverview,
+  listConsoleBillingRequests,
+  rejectConsoleBillingRequest,
+  type BillingChangeRequestItem,
+  type ConsoleOverview
+} from "@/api/console/index";
 import { planNameDict, subscriptionStatusDict } from "@/constants/dicts/platform";
 import { dictLabel } from "@/utils/dict";
+import { message } from "@/utils/message";
 
 defineOptions({ name: "ConsoleOverviewView" });
 
 const loading = ref(false);
 const overview = ref<ConsoleOverview | null>(null);
+const billingRequests = ref<BillingChangeRequestItem[]>([]);
+const actingRequestId = ref<string | null>(null);
+
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleString("zh-CN");
+}
+
+async function loadBillingRequests() {
+  try {
+    billingRequests.value = await listConsoleBillingRequests();
+  } catch {
+    billingRequests.value = [];
+  }
+}
+
+async function approveRequest(requestId: string) {
+  actingRequestId.value = requestId;
+  try {
+    await approveConsoleBillingRequest(requestId);
+    message("已通过申请", { type: "success" });
+    await Promise.all([loadOverview(), loadBillingRequests()]);
+  } finally {
+    actingRequestId.value = null;
+  }
+}
+
+async function rejectRequest(requestId: string) {
+  actingRequestId.value = requestId;
+  try {
+    await rejectConsoleBillingRequest(requestId);
+    message("已拒绝申请", { type: "success" });
+    await loadBillingRequests();
+  } finally {
+    actingRequestId.value = null;
+  }
+}
 
 async function loadOverview() {
   loading.value = true;
@@ -105,6 +185,6 @@ async function loadOverview() {
 }
 
 onMounted(() => {
-  void loadOverview();
+  void Promise.all([loadOverview(), loadBillingRequests()]);
 });
 </script>

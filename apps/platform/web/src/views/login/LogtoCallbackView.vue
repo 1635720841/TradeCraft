@@ -28,11 +28,15 @@ onMounted(async () => {
   }
 
   try {
-    const res = await logtoCallback({ code, redirectUri });
+    const inviteToken =
+      sessionStorage.getItem("wm:invite-token") ??
+      (typeof route.query.inviteToken === "string" ? route.query.inviteToken : undefined);
+    const res = await logtoCallback({ code, redirectUri, inviteToken });
     if (!res?.success) {
       errorText.value = "Logto 登录失败";
       return;
     }
+    sessionStorage.removeItem("wm:invite-token");
     await useUserStoreHook().applySession(res.data);
     await initRouter();
     await router.replace(resolveEntryPath(storageLocal().getItem(userKey)));

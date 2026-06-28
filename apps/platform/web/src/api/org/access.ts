@@ -1,5 +1,5 @@
 /**
- * 企业权限 API（成员授权 + 权限目录）。
+ * 企业权限 API（成员授权 + 权限目录）与项目访问申请。
  */
 
 import { http } from "@/utils/http";
@@ -34,25 +34,27 @@ export interface PermissionCatalogResult {
   };
 }
 
-/** 获取权限目录（含角色默认与隐含关系） */
+export interface AccessRequestItem {
+  id: string;
+  projectId: string;
+  userId: string;
+  message?: string | null;
+  status: string;
+  createdAt: string;
+  user?: { email: string; name: string | null };
+  project?: { name: string };
+}
+
 export async function listPermissionCatalog(): Promise<PermissionCatalogResult> {
   const res = await http.request<
     WmApiResponse<PermissionDefinition[]> & {
-      meta?: {
-        accessMeta?: PermissionCatalogResult["accessMeta"];
-      };
+      meta?: { accessMeta?: PermissionCatalogResult["accessMeta"] };
     }
   >("get", "/api/v1/org/permissions");
-  return {
-    catalog: res.data ?? [],
-    accessMeta: res.meta?.accessMeta
-  };
+  return { catalog: res.data ?? [], accessMeta: res.meta?.accessMeta };
 }
 
-/** 获取成员权限 */
-export async function getMemberPermissions(
-  userId: string
-): Promise<MemberPermissionsResult> {
+export async function getMemberPermissions(userId: string): Promise<MemberPermissionsResult> {
   const res = await http.request<WmApiResponse<MemberPermissionsResult>>(
     "get",
     `/api/v1/org/members/${userId}/permissions`
@@ -60,7 +62,6 @@ export async function getMemberPermissions(
   return res.data;
 }
 
-/** 设置成员权限 */
 export async function setMemberPermissions(
   userId: string,
   permissionIds: string[]
@@ -69,6 +70,43 @@ export async function setMemberPermissions(
     "put",
     `/api/v1/org/members/${userId}/permissions`,
     { data: { permissionIds } }
+  );
+  return res.data;
+}
+
+export async function createProjectAccessRequest(
+  projectId: string,
+  message?: string
+): Promise<AccessRequestItem> {
+  const res = await http.request<WmApiResponse<AccessRequestItem>>(
+    "post",
+    `/api/v1/org/projects/${projectId}/access-requests`,
+    { data: { message } }
+  );
+  return res.data;
+}
+
+export async function listPendingAccessRequests(): Promise<AccessRequestItem[]> {
+  const res = await http.request<WmApiResponse<AccessRequestItem[]>>(
+    "get",
+    "/api/v1/org/access-requests"
+  );
+  return res.data ?? [];
+}
+
+export async function approveAccessRequest(requestId: string, presetId?: string) {
+  const res = await http.request<WmApiResponse<{ ok: boolean }>>(
+    "post",
+    `/api/v1/org/access-requests/${requestId}/approve`,
+    { data: { presetId } }
+  );
+  return res.data;
+}
+
+export async function rejectAccessRequest(requestId: string) {
+  const res = await http.request<WmApiResponse<{ ok: boolean }>>(
+    "post",
+    `/api/v1/org/access-requests/${requestId}/reject`
   );
   return res.data;
 }

@@ -35,6 +35,15 @@ export default [
     }
   },
   {
+    path: "/invite/accept",
+    name: "InviteAccept",
+    component: () => import("@/views/login/InviteAcceptView.vue"),
+    meta: {
+      title: "接受邀请",
+      showLink: false
+    }
+  },
+  {
     path: "/access-denied",
     redirect: "/error/403",
     meta: { title: $t("menus.pureAccessDenied"), showLink: false }
@@ -134,7 +143,9 @@ export default [
     beforeEnter: async (to) => {
       const allowed = await ensureProjectRouteAccess(to);
       if (!allowed) {
-        return { path: "/error/403" };
+        const projectId = to.params.projectId;
+        const id = Array.isArray(projectId) ? projectId[0] : projectId;
+        return { path: "/error/403", query: id ? { projectId: id } : {} };
       }
     },
     children: [

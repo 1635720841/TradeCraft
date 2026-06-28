@@ -8,6 +8,10 @@
         <div class="flex flex-wrap items-center justify-between gap-2">
           <span class="font-medium">订阅与配额</span>
           <el-button link type="primary" @click="refreshQuota">刷新</el-button>
+          <el-button link type="primary" @click="downloadBillingUsageCsv">导出 CSV</el-button>
+          <el-button type="primary" size="small" @click="requestRenew">申请续费</el-button>
+          <el-button size="small" @click="openUpgradeDialog">申请升级</el-button>
+          <el-button size="small" @click="openTopUpDialog">申请加购</el-button>
         </div>
       </template>
 
@@ -16,7 +20,7 @@
         type="info"
         :closable="false"
         show-icon
-        title="续期与加购配额由平台管理员在「平台管理 → 租户管理」中操作；企业侧仅可查看订阅与用量。"
+        title="续期与加购可通过下方「申请续费/升级」提交，由平台管理员审批。"
       />
 
       <template v-if="profile">
@@ -135,13 +139,88 @@
         />
       </div>
     </el-card>
+
+    <el-card v-loading="loadingRequests" shadow="never">
+      <template #header>
+        <span class="font-medium">申请记录</span>
+      </template>
+      <el-table :data="billingRequests" stripe>
+        <el-table-column prop="type" label="类型" width="100">
+          <template #default="{ row }">{{ billingRequestTypeLabel(row.type) }}</template>
+        </el-table-column>
+        <el-table-column prop="message" label="说明" min-width="160">
+          <template #default="{ row }">{{ row.message || "-" }}</template>
+        </el-table-column>
+        <el-table-column prop="status" label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag :type="billingRequestStatusType(row.status)">
+              {{ billingRequestStatusLabel(row.status) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="createdAt" label="申请时间" min-width="170">
+          <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <el-dialog v-model="upgradeVisible" title="申请升级套餐" width="420px">
+      <el-form label-width="80px">
+        <el-form-item label="目标套餐">
+          <el-select v-model="upgradePlanId" class="w-full" placeholder="选择套餐">
+            <el-option
+              v-for="plan in plans"
+              :key="plan.id"
+              :label="dictLabel(planNameDict, plan.name)"
+              :value="plan.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="说明">
+          <el-input v-model="upgradeMessage" type="textarea" maxlength="200" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="upgradeVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submittingRequest" @click="submitUpgrade">
+          提交
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="topUpVisible" title="申请加购配额" width="420px">
+      <el-form label-width="80px">
+        <el-form-item label="加购篇数">
+          <el-input-number v-model="topUpAmount" :min="1" :max="100000" class="w-full" />
+        </el-form-item>
+        <el-form-item label="说明">
+          <el-input v-model="topUpMessage" type="textarea" maxlength="200" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="topUpVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submittingRequest" @click="submitTopUp">
+          提交
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { getOrganizationProfile, type OrganizationProfile } from "@/api/org/organization";
-import { listBillingUsage, type CreditUsageItem } from "@/api/org/billing";
+import {
+  listBillingUsage,
+  createBillingRequest,
+  downloadBillingUsageCsv,
+  listBillingPlans,
+  listBillingRequests,
+  type BillingRequestItem,
+  type CreditUsageItem,
+  type SubscriptionPlan
+} from "@/api/org/billing";
+import { message } from "@/utils/message";
 import { billingServiceTypeDict } from "@/constants/dicts/billing";
 import {
   planNameDict,
@@ -154,11 +233,21 @@ defineOptions({ name: "OrgBillingView" });
 
 const loadingQuota = ref(false);
 const loadingUsage = ref(false);
+const loadingRequests = ref(false);
+const submittingRequest = ref(false);
 const profile = ref<OrganizationProfile | null>(null);
 const items = ref<CreditUsageItem[]>([]);
+const billingRequests = ref<BillingRequestItem[]>([]);
+const plans = ref<SubscriptionPlan[]>([]);
 const page = ref(1);
 const limit = ref(20);
 const total = ref(0);
+const upgradeVisible = ref(false);
+const topUpVisible = ref(false);
+const upgradePlanId = ref("");
+const upgradeMessage = ref("");
+const topUpAmount = ref(100);
+const topUpMessage = ref("");
 
 const quotaPercent = computed(() => {
   const quota = profile.value?.quota;
@@ -213,7 +302,107 @@ function onSizeChange() {
   void fetchUsage();
 }
 
+async function requestRenew() {
+  try {
+    await createBillingRequest({ type: "RENEW", message: "申请续费" });
+    message("续费申请已提交", { type: "success" });
+    await loadRequests();
+  } catch {
+    message("提交失败", { type: "error" });
+  }
+}
+
+function billingRequestTypeLabel(type: string) {
+  if (type === "RENEW") return "续费";
+  if (type === "UPGRADE") return "升级";
+  if (type === "TOPUP") return "加购";
+  return type;
+}
+
+function billingRequestStatusLabel(status: string) {
+  if (status === "PENDING") return "待审批";
+  if (status === "APPROVED") return "已通过";
+  if (status === "REJECTED") return "已拒绝";
+  return status;
+}
+
+function billingRequestStatusType(status: string) {
+  if (status === "PENDING") return "warning";
+  if (status === "APPROVED") return "success";
+  if (status === "REJECTED") return "danger";
+  return "info";
+}
+
+async function loadRequests() {
+  loadingRequests.value = true;
+  try {
+    billingRequests.value = await listBillingRequests();
+  } finally {
+    loadingRequests.value = false;
+  }
+}
+
+async function loadPlans() {
+  try {
+    plans.value = await listBillingPlans();
+  } catch {
+    plans.value = [];
+  }
+}
+
+function openUpgradeDialog() {
+  upgradePlanId.value = plans.value[0]?.id ?? "";
+  upgradeMessage.value = "";
+  upgradeVisible.value = true;
+}
+
+function openTopUpDialog() {
+  topUpAmount.value = 100;
+  topUpMessage.value = "";
+  topUpVisible.value = true;
+}
+
+async function submitUpgrade() {
+  if (!upgradePlanId.value) {
+    message("请选择目标套餐", { type: "warning" });
+    return;
+  }
+  submittingRequest.value = true;
+  try {
+    await createBillingRequest({
+      type: "UPGRADE",
+      targetPlanId: upgradePlanId.value,
+      message: upgradeMessage.value.trim() || "申请升级套餐"
+    });
+    message("升级申请已提交", { type: "success" });
+    upgradeVisible.value = false;
+    await loadRequests();
+  } catch {
+    message("提交失败", { type: "error" });
+  } finally {
+    submittingRequest.value = false;
+  }
+}
+
+async function submitTopUp() {
+  submittingRequest.value = true;
+  try {
+    await createBillingRequest({
+      type: "TOPUP",
+      topUpAmount: topUpAmount.value,
+      message: topUpMessage.value.trim() || `申请加购 ${topUpAmount.value} 篇`
+    });
+    message("加购申请已提交", { type: "success" });
+    topUpVisible.value = false;
+    await loadRequests();
+  } catch {
+    message("提交失败", { type: "error" });
+  } finally {
+    submittingRequest.value = false;
+  }
+}
+
 onMounted(async () => {
-  await Promise.all([refreshQuota(), fetchUsage()]);
+  await Promise.all([refreshQuota(), fetchUsage(), loadRequests(), loadPlans()]);
 });
 </script>
