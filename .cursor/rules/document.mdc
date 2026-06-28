@@ -4,7 +4,7 @@ globs: "{docs/**/*.md,README.md,CHANGELOG.md,.cursor/skills/**/*.md}"
 alwaysApply: false
 ---
 
-# 文档规范（WM）
+# 文档规范（MW）
 
 ## 通用
 

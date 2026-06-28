@@ -54,7 +54,7 @@ export const projectStatusDict = [
 web/src/
 ├── router/modules/          platform.ts, seo-factory.ts（静态路由）
 ├── store/                   pure-admin 自带（少改）
-├── utils/http/              axios 封装 + WM 错误适配
+├── utils/http/              axios 封装 + MW 错误适配
 ├── api/platform/            project.ts 等平台 API
 ├── api/seo-factory/         article-job.ts 等插件 API
 ├── composables/             use-pagination, seo-factory/

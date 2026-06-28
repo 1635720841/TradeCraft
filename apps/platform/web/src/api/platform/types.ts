@@ -1,5 +1,5 @@
 /**
- * WM 平台 API 响应格式（NestJS GlobalExceptionFilter 对齐）。
+ * MW 平台 API 响应格式（NestJS GlobalExceptionFilter 对齐）。
  */
 export interface WmPaginationMeta {
   page: number;

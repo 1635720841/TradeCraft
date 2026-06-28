@@ -1,10 +1,10 @@
 ---
-description: 前端页面与组件目录边界（WM + pure-admin）
+description: 前端页面与组件目录边界（MW + pure-admin）
 globs: "apps/**/web/src/{views,components,api,constants}/**"
 alwaysApply: false
 ---
 
-# 前端目录与边界（WM）
+# 前端目录与边界（MW）
 
 ## 顶层划分
 

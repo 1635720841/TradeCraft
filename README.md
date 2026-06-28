@@ -1,4 +1,4 @@
-# WM — SEO SaaS 企业平台
+# MW — SEO SaaS 企业平台
 
 B2B SaaS 企业平台，企业内管理多个项目。首个项目类型：**seo-factory**（SEO 文章自动化）。
 

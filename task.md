@@ -1,4 +1,4 @@
-# WM 项目开发任务清单
+# MW 项目开发任务清单
 
 > 依据：[开发文档v2.md](开发文档v2.md)、[docs/文件/ai开发文档.md](docs/文件/ai开发文档.md)、[docs/CURRENT_STATE.md](docs/CURRENT_STATE.md)、`.cursor/skills/seo-saas-platform/`
 >

@@ -23,7 +23,7 @@ export default ({ mode }: ConfigEnv): UserConfigExport => {
       // 端口号
       port: VITE_PORT,
       host: "0.0.0.0",
-      // WM 后端 API（登录 Mock 仍走 mock/，业务 API 走代理）
+      // MW 后端 API（登录 Mock 仍走 mock/，业务 API 走代理）
       proxy: {
         "/api": {
           target: process.env.VITE_API_BASE_URL ?? "http://localhost:3000",
