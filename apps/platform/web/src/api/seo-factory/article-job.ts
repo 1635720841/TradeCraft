@@ -21,9 +21,10 @@ import type {
   SeoFactoryProjectStats,
   WmApiResponse
 } from "./types";
+import { seoFactoryApiPath } from "./paths";
 
 function projectBase(projectId: string) {
-  return `/api/v1/projects/${projectId}/article-jobs`;
+  return seoFactoryApiPath(projectId, "article-jobs");
 }
 
 /** 创建文章任务（202 异步入队） */

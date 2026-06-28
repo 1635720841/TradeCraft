@@ -21,6 +21,14 @@
         </div>
       </template>
 
+      <el-alert
+        class="mb-4"
+        type="info"
+        :closable="false"
+        show-icon
+        title="此处配置企业级权限（资料、成员、项目列表等）。项目内 SEO 能力须在「项目管理 → 成员」中配置；企业管理员可管理项目但不自动拥有进入权限。"
+      />
+
       <el-table :data="filteredMembers" stripe>
         <el-table-column prop="email" label="邮箱" min-width="180" />
         <el-table-column prop="name" label="姓名" min-width="120">
@@ -106,6 +114,14 @@
       <div v-loading="loadingPerms">
         <el-alert
           class="mb-4"
+          type="warning"
+          :closable="false"
+          show-icon
+          title="企业权限不含 SEO 工厂操作能力。成员须先被加入项目并在项目内授权，方可进入 SEO 工作台。"
+        />
+
+        <el-alert
+          class="mb-4"
           type="info"
           :closable="false"
           show-icon
@@ -165,22 +181,33 @@
             </div>
           </template>
 
-          <el-checkbox-group
-            v-else
-            :model-value="selectedGrantIds"
-            @change="onGrantChange"
-          >
-            <div class="grid grid-cols-1 gap-2">
-              <el-checkbox
-                v-for="perm in group.items"
-                :key="perm.id"
-                :value="perm.id"
-                :disabled="isDefaultPermission(perm.id)"
-              >
-                {{ perm.name }}
-              </el-checkbox>
-            </div>
-          </el-checkbox-group>
+          <template v-else>
+            <el-alert
+              v-if="group.module === 'project'"
+              class="mb-3"
+              type="info"
+              :closable="false"
+              show-icon
+            >
+              项目权限决定成员能否创建、查看或管理企业项目；SEO
+              业务能力请在各项目的成员设置中单独授权。
+            </el-alert>
+            <el-checkbox-group
+              :model-value="selectedGrantIds"
+              @change="onGrantChange"
+            >
+              <div class="grid grid-cols-1 gap-2">
+                <el-checkbox
+                  v-for="perm in group.items"
+                  :key="perm.id"
+                  :value="perm.id"
+                  :disabled="isDefaultPermission(perm.id)"
+                >
+                  {{ perm.name }}
+                </el-checkbox>
+              </div>
+            </el-checkbox-group>
+          </template>
         </div>
       </div>
       <template #footer>
@@ -211,16 +238,18 @@ import {
 import { memberRoleDict } from "@/constants/dicts/platform";
 import {
   ORG_PERMISSION_SECTIONS,
-  PERMISSION_IMPLIES,
-  PERMISSION_MODULE_LABELS,
-  ROLE_DEFAULT_PERMISSION_IDS
+  PERMISSION_MODULE_LABELS
 } from "@/constants/platform-access";
+import { useUserStoreHook } from "@/store/modules/user";
+import { usePermissionGrantExpand } from "@/composables/usePermissionGrantExpand";
 import { dictLabel, dictTagType } from "@/utils/dict";
 import { hasPerms } from "@/utils/auth";
 import { message } from "@/utils/message";
 
 defineOptions({ name: "OrgMembersView" });
 
+const userStore = useUserStoreHook();
+const { expandGrantIds } = usePermissionGrantExpand();
 const loading = ref(false);
 const saving = ref(false);
 const savingPerms = ref(false);
@@ -272,7 +301,13 @@ const permissionNameMap = computed(() =>
 );
 
 const grantableCatalog = computed(() =>
-  catalog.value.filter(item => !item.id.startsWith("console:"))
+  catalog.value.filter(
+    item => !item.id.startsWith("console:") && item.module !== "seo"
+  )
+);
+
+const roleDefaultPermissions = computed(
+  () => userStore.accessMeta?.roleDefaultPermissions ?? {}
 );
 
 const permissionGroups = computed(() => {
@@ -297,7 +332,7 @@ const permissionGroups = computed(() => {
 
 const defaultPermHint = computed(() => {
   if (!permTarget.value) return "-";
-  const defaults = ROLE_DEFAULT_PERMISSION_IDS[permTarget.value.role] ?? [];
+  const defaults = roleDefaultPermissions.value[permTarget.value.role] ?? [];
   return defaults.length ? `${defaults.length} 项（默认已生效）` : "无";
 });
 
@@ -318,18 +353,8 @@ function formatTime(iso: string) {
 
 function isDefaultPermission(permId: string) {
   if (!permTarget.value) return false;
-  const defaults = ROLE_DEFAULT_PERMISSION_IDS[permTarget.value.role] ?? [];
+  const defaults = roleDefaultPermissions.value[permTarget.value.role] ?? [];
   return defaults.includes(permId);
-}
-
-function expandGrantIds(ids: string[]) {
-  const expanded = new Set(ids);
-  for (const id of ids) {
-    for (const implied of PERMISSION_IMPLIES[id] ?? []) {
-      expanded.add(implied);
-    }
-  }
-  return [...expanded];
 }
 
 function onGrantChange(ids: string[]) {
@@ -346,7 +371,20 @@ async function loadMembers() {
 }
 
 async function loadCatalog() {
-  catalog.value = await listPermissionCatalog();
+  await userStore.ensureAuthProfile();
+  const fromStore = userStore.accessMeta?.permissionCatalog;
+  if (fromStore?.length) {
+    catalog.value = fromStore;
+    return;
+  }
+  const { catalog: items, accessMeta } = await listPermissionCatalog();
+  catalog.value = items;
+  if (accessMeta) {
+    userStore.patchAccessMeta({
+      permissionCatalog: items,
+      ...accessMeta
+    });
+  }
 }
 
 function resetForm() {

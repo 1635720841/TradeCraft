@@ -50,6 +50,7 @@
         :templates="allTemplates"
         :template-map="templateMap"
         :applying-slot-id="applyingSlotId"
+        :readonly="!canManagePrompt"
         @edit="openEditDialog"
         @apply="handleApplyBinding"
       />
@@ -67,7 +68,7 @@
               <el-radio-button value="legacy">历史归档</el-radio-button>
               <el-radio-button value="unused">未接入</el-radio-button>
             </el-radio-group>
-            <el-button type="primary" @click="openCreateDialog">新建版本</el-button>
+            <el-button v-if="canManagePrompt" type="primary" @click="openCreateDialog">新建版本</el-button>
             <el-button link type="primary" @click="refreshAll">刷新</el-button>
           </div>
         </div>
@@ -107,7 +108,7 @@
             {{ formatTime(row.updatedAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column v-if="canManagePrompt" label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link @click="openEditDialog(row.version)">编辑</el-button>
             <el-button type="primary" link @click="handleClearCache(row.version)">清缓存</el-button>
@@ -287,9 +288,12 @@ import {
   type PromptUsageCategory
 } from "@/constants/prompt-usage";
 import { message } from "@/utils/message";
+import { hasPerms } from "@/utils/auth";
 import PromptRuntimeBoard from "@/views/platform/components/PromptRuntimeBoard.vue";
 
 defineOptions({ name: "PromptManageView" });
+
+const canManagePrompt = computed(() => hasPerms("console:prompt:manage"));
 
 const loading = ref(false);
 const bindingsLoading = ref(false);

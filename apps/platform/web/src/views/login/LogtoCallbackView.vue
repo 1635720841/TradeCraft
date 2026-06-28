@@ -2,8 +2,10 @@
 import { onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { message } from "@/utils/message";
-import { initRouter, getTopMenu } from "@/router/utils";
+import { initRouter, resolveEntryPath } from "@/router/utils";
 import { useUserStoreHook } from "@/store/modules/user";
+import { storageLocal } from "@pureadmin/utils";
+import { userKey } from "@/utils/auth";
 import { logtoCallback } from "@/api/user";
 
 defineOptions({
@@ -33,7 +35,7 @@ onMounted(async () => {
     }
     await useUserStoreHook().applySession(res.data);
     await initRouter();
-    await router.replace(getTopMenu(true).path);
+    await router.replace(resolveEntryPath(storageLocal().getItem(userKey)));
     message("Logto 登录成功", { type: "success" });
   } catch {
     errorText.value = "Logto 登录失败，请重试";

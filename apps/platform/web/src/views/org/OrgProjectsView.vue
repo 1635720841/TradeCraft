@@ -30,7 +30,7 @@
 
       <el-table :data="projects" stripe :row-class-name="rowClassName" @row-click="onRowClick">
         <el-table-column prop="name" label="项目名称" min-width="160" />
-        <el-table-column prop="projectType" label="类型" width="120" />
+        <el-table-column v-if="canCreate || canUpdate" prop="projectType" label="类型" width="120" />
         <el-table-column label="我的访问" width="110">
           <template #default="{ row }">
             <el-tag :type="dictTagType(projectMyAccessStatusDict, row.myAccessStatus)" size="small">
@@ -38,20 +38,20 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="项目开放" width="110">
+        <el-table-column v-if="canCreate || canUpdate" label="项目开放" width="110">
           <template #default="{ row }">
             <el-tag :type="row.accessActive ? 'success' : 'warning'" size="small">
               {{ row.accessActive ? "开放中" : "未开放" }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="开放时间" min-width="220">
+        <el-table-column v-if="canCreate || canUpdate" label="开放时间" min-width="220">
           <template #default="{ row }">
             {{ formatAccessWindow(row.accessStart, row.accessEnd) }}
           </template>
         </el-table-column>
-        <el-table-column prop="memberCount" label="成员数" width="90" />
-        <el-table-column prop="status" label="状态" width="100">
+        <el-table-column v-if="canCreate || canUpdate" prop="memberCount" label="成员数" width="90" />
+        <el-table-column v-if="canCreate || canUpdate" prop="status" label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="dictTagType(projectStatusDict, row.status)" size="small">
               {{ dictLabel(projectStatusDict, row.status) }}
@@ -109,7 +109,12 @@
         </el-form-item>
         <el-form-item label="项目类型" prop="projectType">
           <el-select v-model="createForm.projectType" class="w-full">
-            <el-option label="SEO 内容工厂" value="seo-factory" />
+            <el-option
+              v-for="item in projectTypes"
+              :key="item.type"
+              :label="item.label"
+              :value="item.type"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="开放开始">
@@ -298,6 +303,14 @@
     >
       <div v-loading="loadingPerms">
         <el-alert
+          class="mb-4"
+          type="info"
+          :closable="false"
+          show-icon
+          title="须先加入项目且访问期有效，方可进入 SEO 工作台。此处配置的是项目内操作权限。"
+        />
+
+        <el-alert
           v-if="effectivePermissions.length"
           class="mb-4"
           type="success"
@@ -312,7 +325,7 @@
               size="small"
               type="info"
             >
-              {{ PROJECT_PERMISSION_LABELS[permId] ?? permId }}
+              {{ permissionLabelMap[permId] ?? permId }}
             </el-tag>
           </div>
         </el-alert>
@@ -320,12 +333,15 @@
         <el-checkbox-group :model-value="selectedGrantIds" @change="onGrantChange">
           <div class="space-y-2">
             <el-checkbox
-              v-for="permId in grantablePermissionIds"
-              :key="permId"
-              :value="permId"
-              :disabled="isDefaultPermission(permId)"
+              v-for="perm in grantablePermissions"
+              :key="perm.id"
+              :value="perm.id"
+              :disabled="isDefaultPermission(perm.id)"
             >
-              {{ PROJECT_PERMISSION_LABELS[permId] ?? permId }}
+              <span>{{ perm.name }}</span>
+              <span v-if="perm.description" class="ml-1 text-xs text-gray-400">
+                — {{ perm.description }}
+              </span>
             </el-checkbox>
           </div>
         </el-checkbox-group>
@@ -346,13 +362,13 @@ import { useRouter } from "vue-router";
 import type { FormInstance, FormRules } from "element-plus";
 import { ElMessageBox } from "element-plus";
 import {
-  PROJECT_PERMISSION_LABELS,
   addProjectMember,
   createOrgProject,
   deleteOrgProject,
   getOrgProject,
   getProjectMemberPermissions,
   listOrgProjects,
+  listProjectTypeCatalog,
   removeProjectMember,
   setProjectMemberPermissions,
   updateOrgProject,
@@ -362,38 +378,25 @@ import {
 } from "@/api/org/projects";
 import { listOrganizationMembers, type OrganizationMember } from "@/api/org/organization";
 import { projectMemberRoleDict, projectMyAccessStatusDict, projectStatusDict } from "@/constants/dicts/platform";
+import { useUserStoreHook } from "@/store/modules/user";
+import { usePermissionGrantExpand } from "@/composables/usePermissionGrantExpand";
 import { dictLabel, dictTagType } from "@/utils/dict";
 import { hasPerms } from "@/utils/auth";
 import { message } from "@/utils/message";
+import { invalidateProjectAccessCache } from "@/router/guards/project-access";
 
 defineOptions({ name: "OrgProjectsView" });
 
-const ROLE_DEFAULTS: Record<string, string[]> = {
-  OWNER: [
-    "project:read",
-    "project:update",
-    "seo:job:create",
-    "seo:job:read",
-    "seo:keyword:manage",
-    "seo:site:manage"
-  ],
-  EDITOR: [
-    "project:read",
-    "seo:job:create",
-    "seo:job:read",
-    "seo:keyword:manage",
-    "seo:site:manage"
-  ],
-  VIEWER: ["project:read", "seo:job:read"]
-};
-
 const router = useRouter();
+const userStore = useUserStoreHook();
+const { expandGrantIds } = usePermissionGrantExpand();
 const loading = ref(false);
 const loadingDetail = ref(false);
 const loadingPerms = ref(false);
 const saving = ref(false);
 const savingPerms = ref(false);
 const projects = ref<OrgProjectItem[]>([]);
+const projectTypes = ref<Array<{ type: string; label: string }>>([]);
 const page = ref(1);
 const limit = ref(20);
 const total = ref(0);
@@ -408,7 +411,14 @@ const orgMembers = ref<OrganizationMember[]>([]);
 const permTarget = ref<OrgProjectMember | null>(null);
 const selectedGrantIds = ref<string[]>([]);
 const effectivePermissions = ref<string[]>([]);
-const grantablePermissionIds = ref<string[]>([]);
+const grantablePermissions = ref<
+  Array<{ id: string; name: string; description?: string }>
+>([]);
+const roleDefaultPermissionIds = ref<string[]>([]);
+
+const permissionLabelMap = computed(() =>
+  Object.fromEntries(grantablePermissions.value.map(item => [item.id, item.name]))
+);
 
 const canCreate = computed(() => hasPerms("project:create"));
 const canUpdate = computed(() => hasPerms("project:update"));
@@ -439,7 +449,7 @@ const permDrawerTitle = computed(() =>
 
 const createForm = reactive({
   name: "",
-  projectType: "seo-factory" as const,
+  projectType: "seo-factory",
   accessStart: null as string | null,
   accessEnd: null as string | null
 });
@@ -499,11 +509,11 @@ function formatAccessWindow(start: string | null, end: string | null) {
 
 function isDefaultPermission(permId: string) {
   if (!permTarget.value) return false;
-  return (ROLE_DEFAULTS[permTarget.value.role] ?? []).includes(permId);
+  return roleDefaultPermissionIds.value.includes(permId);
 }
 
 function onGrantChange(ids: string[]) {
-  selectedGrantIds.value = ids;
+  selectedGrantIds.value = expandGrantIds(ids);
 }
 
 async function loadProjects() {
@@ -621,6 +631,7 @@ async function submitAddMember() {
     await addProjectMember(activeProjectId.value, { ...addMemberForm });
     addMemberVisible.value = false;
     message("成员已添加", { type: "success" });
+    invalidateProjectAccessCache(activeProjectId.value);
     await loadDetail(activeProjectId.value);
     await loadProjects();
   } finally {
@@ -635,6 +646,7 @@ async function removeMember(member: OrgProjectMember) {
   });
   await removeProjectMember(activeProjectId.value, member.userId);
   message("成员已移除", { type: "success" });
+  invalidateProjectAccessCache(activeProjectId.value);
   await loadDetail(activeProjectId.value);
   await loadProjects();
 }
@@ -648,7 +660,8 @@ async function openMemberPerm(member: OrgProjectMember) {
     const result = await getProjectMemberPermissions(activeProjectId.value, member.userId);
     selectedGrantIds.value = [...result.grants];
     effectivePermissions.value = result.effectivePermissions;
-    grantablePermissionIds.value = result.grantablePermissionIds;
+    grantablePermissions.value = result.grantablePermissions ?? [];
+    roleDefaultPermissionIds.value = result.roleDefaultPermissionIds ?? [];
   } finally {
     loadingPerms.value = false;
   }
@@ -666,6 +679,7 @@ async function saveMemberPermissions() {
     selectedGrantIds.value = [...result.grants];
     effectivePermissions.value = result.effectivePermissions;
     message("项目权限已保存", { type: "success" });
+    invalidateProjectAccessCache(activeProjectId.value);
     await loadDetail(activeProjectId.value);
   } finally {
     savingPerms.value = false;
@@ -678,5 +692,8 @@ function enterProject(projectId: string) {
 
 onMounted(() => {
   void loadProjects();
+  void listProjectTypeCatalog().then(types => {
+    projectTypes.value = types;
+  });
 });
 </script>

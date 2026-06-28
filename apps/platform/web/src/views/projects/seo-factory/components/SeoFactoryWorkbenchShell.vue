@@ -30,6 +30,7 @@
           站点 <strong>{{ siteCount }}</strong>
         </span>
         <el-tooltip
+          v-if="canCreateJob"
           :disabled="siteCount > 0"
           content="请先在「站点」创建站点"
           placement="bottom"
@@ -59,8 +60,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { getProject } from "@/api/platform/project";
+import { getOrgProject } from "@/api/org/projects";
 import { getSeoFactoryProjectStats } from "@/api/seo-factory/article-job";
+import { provideProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
 import SeoFactoryWorkbenchNav from "./SeoFactoryWorkbenchNav.vue";
 
 defineOptions({ name: "SeoFactoryWorkbenchShell" });
@@ -68,6 +70,8 @@ defineOptions({ name: "SeoFactoryWorkbenchShell" });
 const route = useRoute();
 const router = useRouter();
 const projectId = computed(() => route.params.projectId as string);
+const { can } = provideProjectSeoAccess(projectId);
+const canCreateJob = computed(() => can("seo:job:create"));
 const projectName = ref("");
 const siteCount = ref(0);
 
@@ -75,7 +79,7 @@ async function loadContext() {
   if (!projectId.value) return;
   try {
     const [project, stats] = await Promise.all([
-      getProject(projectId.value),
+      getOrgProject(projectId.value),
       getSeoFactoryProjectStats(projectId.value)
     ]);
     projectName.value = project.name;

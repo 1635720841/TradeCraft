@@ -68,10 +68,12 @@ web/src/
 ## 路由
 
 ```
-/platform/projects
+/welcome                        登录后工作台
+/org/projects                   企业管理 — 项目列表
 /projects/:projectId/seo-factory/jobs
 /projects/:projectId/seo-factory/jobs/create
 /projects/:projectId/seo-factory/jobs/:id
+/console/*                      平台运营 Console
 ```
 
 - 新路由：加 `router/modules/*.ts`，`meta.title` 直接写中文
@@ -111,12 +113,12 @@ const emit = defineEmits<{ submit: [id: string] }>();
 ## API 层与错误
 
 ```typescript
-// src/api/platform/project.ts
+// src/api/org/projects.ts
 import { http } from "@/utils/http";
 
-const res = await http.request<WmApiResponse<ProjectItem[]>>(
+const res = await http.request<WmApiResponse<OrgProjectItem[]>>(
   "get",
-  "/api/v1/platform/projects"
+  "/api/v1/org/projects"
 );
 ```
 

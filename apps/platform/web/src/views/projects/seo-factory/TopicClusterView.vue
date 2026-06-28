@@ -11,7 +11,7 @@
         <div class="flex flex-wrap items-center justify-between gap-2">
           <span class="font-medium">主题集群</span>
           <div class="flex flex-wrap gap-2">
-            <el-button v-if="isAdmin" type="primary" @click="openCreateDialog">新建主题</el-button>
+            <el-button v-if="canManageKeywords" type="primary" @click="openCreateDialog">新建主题</el-button>
             <el-button @click="loadClusters">刷新</el-button>
             <el-button link type="primary" @click="goKeywords">关键词池</el-button>
           </div>
@@ -67,9 +67,9 @@
             <el-button size="small" @click="goClusterKeywords(cluster.id)">
               查看关键词
             </el-button>
-            <el-button v-if="isAdmin" size="small" @click="openEditDialog(cluster)">编辑</el-button>
+            <el-button v-if="canManageKeywords" size="small" @click="openEditDialog(cluster)">编辑</el-button>
             <el-button
-              v-if="isAdmin"
+              v-if="canManageKeywords"
               size="small"
               type="danger"
               link
@@ -82,7 +82,7 @@
       </div>
 
       <el-empty v-if="!loading && clusters.length === 0" description="暂无主题，可先新建或从关键词池归入">
-        <el-button v-if="isAdmin" type="primary" @click="openCreateDialog">新建主题</el-button>
+        <el-button v-if="canManageKeywords" type="primary" @click="openCreateDialog">新建主题</el-button>
       </el-empty>
     </el-card>
 
@@ -179,15 +179,16 @@ import { listKeywords } from "@/api/seo-factory/keyword";
 import { listSites } from "@/api/seo-factory/site";
 import type { SiteItem } from "@/api/seo-factory/types";
 import { message } from "@/utils/message";
-import { useUserStoreHook } from "@/store/modules/user";
+import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
 
 defineOptions({ name: "TopicClusterView" });
 
 const route = useRoute();
 const router = useRouter();
 const projectId = route.params.projectId as string;
-const userStore = useUserStoreHook();
-const isAdmin = computed(() => userStore.roles.includes("admin"));
+const { can } = useProjectSeoAccess();
+const canManageKeywords = computed(() => can("seo:keyword:manage"));
+const canCreateJob = computed(() => can("seo:job:create"));
 
 const loading = ref(false);
 const saving = ref(false);

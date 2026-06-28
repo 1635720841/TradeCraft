@@ -8,8 +8,9 @@ import type { RequestContext } from '@wm/shared-core';
 import { ReqCtx } from '../../../../core/decorators/request-context.decorator';
 import { ProjectService } from '../../../../modules/project/project.service';
 import { ExportService } from './export.service';
+import { seoFactoryRoutes } from '../../constants/seo-factory-routes';
 
-@Controller('api/v1/projects/:projectId/article-jobs')
+@Controller(seoFactoryRoutes('article-jobs'))
 export class ExportController {
   constructor(
     private readonly exportService: ExportService,
@@ -24,7 +25,7 @@ export class ExportController {
     @Param('id') id: string,
     @Res() res: Response,
   ): Promise<void> {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
     const file = await this.exportService.getFreshExportHtml(
       ctx.organizationId,
       projectId,
@@ -42,7 +43,7 @@ export class ExportController {
     @Param('id') id: string,
     @Res() res: Response,
   ): Promise<void> {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
     const file = await this.exportService.getExportObject(
       ctx.organizationId,
       projectId,
@@ -61,7 +62,7 @@ export class ExportController {
     @Param('id') id: string,
     @Res() res: Response,
   ): Promise<void> {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
     const pack = await this.exportService.buildExportPackage(
       ctx.organizationId,
       projectId,

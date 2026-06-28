@@ -10,7 +10,7 @@
 
     <el-card v-loading="loading" shadow="never">
       <template v-if="tenant">
-        <div class="mb-4 flex flex-wrap gap-2">
+        <div v-if="canManageTenant" class="mb-4 flex flex-wrap gap-2">
           <el-button type="primary" @click="openEdit">编辑</el-button>
           <el-button @click="handleRenew">续期</el-button>
           <el-button @click="openTopUp">加购配额</el-button>
@@ -178,10 +178,13 @@ import {
 } from "@/api/console/index";
 import { memberRoleDict, planNameDict, subscriptionStatusDict } from "@/constants/dicts/platform";
 import { dictLabel, dictTagType } from "@/utils/dict";
+import { hasPerms } from "@/utils/auth";
 import { formatPeriodWindow } from "@/utils/period";
 import { message } from "@/utils/message";
 
 defineOptions({ name: "ConsoleTenantDetailView" });
+
+const canManageTenant = computed(() => hasPerms("console:tenant:update"));
 
 const route = useRoute();
 const router = useRouter();

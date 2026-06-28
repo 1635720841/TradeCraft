@@ -16,6 +16,7 @@ const MVP_PROJECT_ID = '00000000-0000-4000-8000-000000000002';
 const MVP_SITE_ID = '00000000-0000-4000-8000-000000000003';
 const MVP_USER_ID = '00000000-0000-4000-8000-000000000004';
 const MVP_MEMBER_USER_ID = '00000000-0000-4000-8000-000000000005';
+const MVP_OUTSIDER_USER_ID = '00000000-0000-4000-8000-000000000006';
 const PLATFORM_ORG_ID = '00000000-0000-4000-8000-000000000010';
 const SUPER_USER_ID = '00000000-0000-4000-8000-000000000011';
 const PLATFORM_OPS_USER_ID = '00000000-0000-4000-8000-000000000012';
@@ -23,6 +24,8 @@ const DEV_USER_EMAIL = 'admin@dev.local';
 const DEV_USER_PASSWORD = 'admin123';
 const DEV_MEMBER_EMAIL = 'member@dev.local';
 const DEV_MEMBER_PASSWORD = 'member123';
+const DEV_OUTSIDER_EMAIL = 'outsider@dev.local';
+const DEV_OUTSIDER_PASSWORD = 'outsider123';
 const SUPER_USER_EMAIL = 'super@dev.local';
 const SUPER_USER_PASSWORD = 'super123';
 const PLATFORM_OPS_EMAIL = 'ops@dev.local';
@@ -90,7 +93,7 @@ async function ensureCatalogs() {
     ['org:member:update', '编辑成员', 'org', '修改成员信息', 22],
     ['org:member:grant', '授权成员', 'org', '为成员分配权限', 23],
     ['org:billing:read', '查看订阅与配额', 'org', '查看套餐、账期、用量明细', 30],
-    ['org:billing:manage', '管理订阅与配额', 'org', '续期账期、加购配额', 31],
+    ['org:billing:manage', '管理订阅与配额', 'org', '仅平台 Console 运营（租户侧不可授）', 31],
     ['console:tenant:list', '租户列表', 'console', '查看全平台租户', 40],
     ['console:tenant:read', '租户详情', 'console', '查看租户详情', 41],
     ['console:tenant:create', '新建租户', 'console', '创建租户与管理员', 42],
@@ -305,6 +308,28 @@ async function ensureMvpDevData() {
       organizationId: MVP_ORGANIZATION_ID,
       role: 'MEMBER',
     },
+  });
+
+  await prisma.user.upsert({
+    where: { email: DEV_OUTSIDER_EMAIL },
+    create: {
+      id: MVP_OUTSIDER_USER_ID,
+      email: DEV_OUTSIDER_EMAIL,
+      name: '未加入项目成员',
+      passwordHash: hashPassword(DEV_OUTSIDER_PASSWORD),
+      organizationId: MVP_ORGANIZATION_ID,
+      role: 'MEMBER',
+    },
+    update: {
+      name: '未加入项目成员',
+      passwordHash: hashPassword(DEV_OUTSIDER_PASSWORD),
+      organizationId: MVP_ORGANIZATION_ID,
+      role: 'MEMBER',
+    },
+  });
+
+  await prisma.projectMember.deleteMany({
+    where: { projectId: MVP_PROJECT_ID, userId: MVP_OUTSIDER_USER_ID },
   });
 
   await prisma.project.upsert({

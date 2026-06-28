@@ -11,14 +11,14 @@
         <div class="flex flex-wrap items-center justify-between gap-2">
           <span class="font-medium">关键词池</span>
           <div class="flex flex-wrap gap-2">
-            <el-button v-if="isAdmin" type="warning" :loading="generatingSeeds" @click="openSeedDialog">
+            <el-button v-if="canManageKeywords" type="warning" :loading="generatingSeeds" @click="openSeedDialog">
               AI 生成种子词
             </el-button>
-            <el-button v-if="isAdmin" :loading="enrichingMetrics" @click="handleEnrichMetrics">
+            <el-button v-if="canManageKeywords" :loading="enrichingMetrics" @click="handleEnrichMetrics">
               回填 Semrush 指标
             </el-button>
-            <el-button v-if="isAdmin" type="primary" @click="openCreateDialog">添加关键词</el-button>
-            <el-button v-if="isAdmin" @click="openImportDialog">批量导入</el-button>
+            <el-button v-if="canManageKeywords" type="primary" @click="openCreateDialog">添加关键词</el-button>
+            <el-button v-if="canManageKeywords" @click="openImportDialog">批量导入</el-button>
             <el-button
               type="primary"
               :disabled="selectedKeywords.length === 0"
@@ -52,7 +52,7 @@
 
       <div v-if="selectedKeywords.length" class="mb-4 flex flex-wrap items-center gap-2">
         <span class="text-sm text-gray-600">已选 {{ selectedKeywords.length }} 项</span>
-        <el-button v-if="isAdmin" size="small" @click="openAssignClusterDialog">归入主题</el-button>
+        <el-button v-if="canManageKeywords" size="small" @click="openAssignClusterDialog">归入主题</el-button>
       </div>
 
       <div class="mb-4 flex flex-wrap items-center gap-3">
@@ -164,7 +164,7 @@
               查看任务
             </el-button>
             <el-button
-              v-if="isAdmin && row.status === 'PENDING'"
+              v-if="canCreateJob && row.status === 'PENDING'"
               type="success"
               link
               @click="handleApprove(row as KeywordEntryItem)"
@@ -172,7 +172,7 @@
               通过
             </el-button>
             <el-button
-              v-if="isAdmin"
+              v-if="canManageKeywords"
               type="primary"
               link
               @click="openEditDialog(row as KeywordEntryItem)"
@@ -383,18 +383,19 @@ import {
 } from "@/constants/dicts/seo-factory";
 import { dictLabel, dictTagType } from "@/utils/dict";
 import { message } from "@/utils/message";
-import { useUserStoreHook } from "@/store/modules/user";
+import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
 
 defineOptions({ name: "KeywordPoolView" });
 
 const route = useRoute();
 const router = useRouter();
 const projectId = route.params.projectId as string;
-const userStore = useUserStoreHook();
-const isAdmin = computed(() => userStore.roles.includes("admin"));
+const { can } = useProjectSeoAccess();
+const canManageKeywords = computed(() => can("seo:keyword:manage"));
+const canCreateJob = computed(() => can("seo:job:create"));
 
 const emptyKeywordHint = computed(() =>
-  isAdmin.value
+  canManageKeywords.value
     ? "暂无关键词，请添加或批量导入"
     : "暂无关键词，请联系管理员导入；您可勾选后批量创建任务"
 );

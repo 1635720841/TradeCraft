@@ -3,6 +3,7 @@
  */
 
 import { http } from "@/utils/http";
+import { seoFactoryApiPath } from "./paths";
 import type { ScoreCalibrationReadinessState } from "@/constants/dicts/score-calibration";
 import type { WmApiResponse } from "./types";
 
@@ -377,7 +378,7 @@ export interface ScoreReverseExperiment {
 }
 
 function labBase(projectId: string) {
-  return `/api/v1/projects/${projectId}/seo-score-lab`;
+  return seoFactoryApiPath(projectId, "seo-score-lab");
 }
 
 /** 校准就绪状态（轻量，供设置页门控提示） */

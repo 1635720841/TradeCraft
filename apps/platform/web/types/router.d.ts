@@ -24,6 +24,10 @@ declare global {
     showParent?: boolean;
     /** 页面级别权限设置 `可选` */
     roles?: Array<string>;
+    /** 功能权限（与 permission.constants 对齐）`可选` */
+    permission?: string | string[];
+    /** 项目工作台内权限（项目成员 seo:* / project:*，非企业级）`可选` */
+    seoPermission?: string | string[];
     /** 后端菜单目录 key（与 MENU_CATALOG id 对齐）`可选` */
     menuKey?: string;
     /** 按钮级别权限设置 `可选` */

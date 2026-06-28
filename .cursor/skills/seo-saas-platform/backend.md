@@ -120,7 +120,8 @@ this.logger.info('Article job created', {
 ### 路由
 
 ```
-/api/v1/platform/...
+/api/v1/org/...          # 企业资料、成员、项目、计费
+/api/v1/console/...      # 平台运营台（租户、审计、Prompt）
 /api/v1/projects/:projectId/article-jobs
 ```
 

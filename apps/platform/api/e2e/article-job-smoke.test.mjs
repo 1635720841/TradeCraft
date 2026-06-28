@@ -61,7 +61,7 @@ describe('E2E article job smoke', () => {
     const me = await apiRequest('GET', '/api/v1/auth/me', { token: accessToken });
     assert.ok(me.data?.email, '应返回当前用户邮箱');
 
-    const project = await apiRequest('GET', `/api/v1/platform/projects/${E2E_PROJECT_ID}`, {
+    const project = await apiRequest('GET', `/api/v1/org/projects/${E2E_PROJECT_ID}`, {
       token: accessToken,
     });
     assert.equal(project.data?.projectType, 'seo-factory');

@@ -33,7 +33,13 @@
                 :value="site.id"
               />
             </el-select>
-            <el-button type="primary" :loading="saving" :disabled="!selectedSiteId" @click="submitAdminForm">
+            <el-button
+              v-if="canManageSite"
+              type="primary"
+              :loading="saving"
+              :disabled="!selectedSiteId"
+              @click="submitAdminForm"
+            >
               保存配置
             </el-button>
           </div>
@@ -42,7 +48,16 @@
 
       <el-empty v-if="!sitesLoading && sites.length === 0" description="请先在「站点」创建站点" />
 
-      <el-form v-else :model="adminForm" label-width="120px">
+      <el-alert
+        v-else-if="!canManageSite"
+        class="mb-4"
+        type="info"
+        :closable="false"
+        show-icon
+        title="您仅有查看权限，无法修改项目设置"
+      />
+
+      <el-form v-else :model="adminForm" label-width="120px" :disabled="!canManageSite">
         <el-form-item label="大纲需确认">
           <el-switch v-model="adminForm.requireBriefApproval" />
           <p class="mt-1 text-xs text-gray-500">
@@ -360,6 +375,7 @@ import {
 import { scoreCalibrationReadinessDict } from "@/constants/dicts/score-calibration";
 import { dictLabel } from "@/utils/dict";
 import { message } from "@/utils/message";
+import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
 import GscPerformanceView from "./GscPerformanceView.vue";
 import SitePageLibraryPanel from "./components/SitePageLibraryPanel.vue";
 
@@ -370,6 +386,8 @@ const cmsUiEnabled = WORDPRESS_CMS_UI_ENABLED;
 const route = useRoute();
 const router = useRouter();
 const projectId = route.params.projectId as string;
+const { can } = useProjectSeoAccess();
+const canManageSite = computed(() => can("seo:site:manage"));
 
 const sitesLoading = ref(false);
 const saving = ref(false);

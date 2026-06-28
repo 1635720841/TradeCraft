@@ -32,7 +32,13 @@
             </div>
             <p class="mt-2 text-sm text-gray-600">{{ slot.trigger }}</p>
           </div>
-          <el-button type="primary" link size="small" @click="emit('edit', slot.activeVersion)">
+          <el-button
+            v-if="!readonly"
+            type="primary"
+            link
+            size="small"
+            @click="emit('edit', slot.activeVersion)"
+          >
             编辑正文
           </el-button>
         </div>
@@ -44,6 +50,7 @@
               :model-value="draftVersions[slot.id] ?? slot.activeVersion"
               class="min-w-[220px] flex-1"
               filterable
+              :disabled="readonly"
               placeholder="选择 Prompt 版本"
               @update:model-value="value => setDraftVersion(slot.id, String(value))"
             >
@@ -55,6 +62,7 @@
               />
             </el-select>
             <el-button
+              v-if="!readonly"
               type="primary"
               size="small"
               :disabled="!canApply(slot)"
@@ -112,6 +120,7 @@ const props = defineProps<{
   templates: PromptTemplateItem[];
   templateMap: Record<string, PromptTemplateItem | undefined>;
   applyingSlotId: PromptRuntimeSlotId | null;
+  readonly?: boolean;
 }>();
 
 const emit = defineEmits<{

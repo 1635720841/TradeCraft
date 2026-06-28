@@ -26,13 +26,27 @@ export interface MemberPermissionsResult {
   effectivePermissions: string[];
 }
 
-/** 获取权限目录 */
-export async function listPermissionCatalog(): Promise<PermissionDefinition[]> {
-  const res = await http.request<WmApiResponse<PermissionDefinition[]>>(
-    "get",
-    "/api/v1/org/permissions"
-  );
-  return res.data ?? [];
+export interface PermissionCatalogResult {
+  catalog: PermissionDefinition[];
+  accessMeta?: {
+    roleDefaultPermissions: Record<string, string[]>;
+    permissionImplies: Record<string, string[]>;
+  };
+}
+
+/** 获取权限目录（含角色默认与隐含关系） */
+export async function listPermissionCatalog(): Promise<PermissionCatalogResult> {
+  const res = await http.request<
+    WmApiResponse<PermissionDefinition[]> & {
+      meta?: {
+        accessMeta?: PermissionCatalogResult["accessMeta"];
+      };
+    }
+  >("get", "/api/v1/org/permissions");
+  return {
+    catalog: res.data ?? [],
+    accessMeta: res.meta?.accessMeta
+  };
 }
 
 /** 获取成员权限 */

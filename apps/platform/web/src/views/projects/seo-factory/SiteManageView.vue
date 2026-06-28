@@ -11,7 +11,7 @@
         <div class="flex flex-wrap items-center justify-between gap-2">
           <span class="font-medium">站点</span>
           <div class="flex gap-2">
-            <el-button type="primary" @click="openCreateDialog">新建站点</el-button>
+            <el-button v-if="canManageSite" type="primary" @click="openCreateDialog">新建站点</el-button>
             <el-button :loading="sitesLoading" @click="loadSites">刷新</el-button>
           </div>
         </div>
@@ -59,7 +59,7 @@
             {{ formatTime(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="120" fixed="right">
+        <el-table-column v-if="canManageSite" label="操作" width="120" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link @click="openEditDialog(row as SiteItem)">编辑</el-button>
           </template>
@@ -249,12 +249,15 @@ import {
   type ContentLanguageCode
 } from "@/constants/dicts/seo-factory";
 import { message } from "@/utils/message";
+import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
 
 defineOptions({ name: "SiteManageView" });
 
 const route = useRoute();
 const router = useRouter();
 const projectId = route.params.projectId as string;
+const { can } = useProjectSeoAccess();
+const canManageSite = computed(() => can("seo:site:manage"));
 
 const sitesLoading = ref(false);
 const siteSaving = ref(false);

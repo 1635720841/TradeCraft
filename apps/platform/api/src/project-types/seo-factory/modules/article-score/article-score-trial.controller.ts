@@ -11,8 +11,9 @@ import { ReqCtx } from '../../../../core/decorators/request-context.decorator';
 import { ProjectService } from '../../../../modules/project/project.service';
 import { ScoreArticleContentTrialDto } from './dto/score-article-content-trial.dto';
 import { ArticleScoreService } from './article-score.service';
+import { seoFactoryRoutes } from '../../constants/seo-factory-routes';
 
-@Controller('api/v1/projects/:projectId/content-score')
+@Controller(seoFactoryRoutes('content-score'))
 export class ArticleScoreTrialController {
   constructor(
     private readonly articleScoreService: ArticleScoreService,
@@ -26,7 +27,7 @@ export class ArticleScoreTrialController {
     @Param('projectId') projectId: string,
     @Body() dto: ScoreArticleContentTrialDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
     const data = await this.articleScoreService.scoreTrialContent(
       ctx.organizationId,
       projectId,

@@ -23,8 +23,19 @@ export class OrgController {
   @Get('permissions')
   @Permissions('org:member:grant')
   listPermissions(@ReqCtx() ctx: RequestContext) {
-    const data = this.permissionService.listCatalog();
-    return { data, meta: { traceId: ctx.traceId, total: data.length } };
+    const data = this.permissionService.listTenantCatalog();
+    const accessMeta = this.permissionService.buildTenantAccessMeta();
+    return {
+      data,
+      meta: {
+        traceId: ctx.traceId,
+        total: data.length,
+        accessMeta: {
+          roleDefaultPermissions: accessMeta.roleDefaultPermissions,
+          permissionImplies: accessMeta.permissionImplies,
+        },
+      },
+    };
   }
 
   @Get('profile')
@@ -115,7 +126,3 @@ export class OrgController {
     return { data, meta: { traceId: ctx.traceId } };
   }
 }
-
-/** @deprecated 兼容旧路径 */
-@Controller('api/v1/platform/organization')
-export class LegacyOrganizationController extends OrgController {}

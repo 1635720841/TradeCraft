@@ -23,8 +23,9 @@ import { ScoreReverseExperimentService } from './score-reverse-experiment.servic
 import { CreateScoreReverseExperimentDto } from './dto/create-score-reverse-experiment.dto';
 import { UpdateScoreReverseTrialsDto } from './dto/update-score-reverse-trials.dto';
 import { RunScoreReverseTrialDto } from './dto/run-score-reverse-trial.dto';
+import { seoFactoryRoutes } from '../../constants/seo-factory-routes';
 
-@Controller('api/v1/projects/:projectId/seo-score-lab')
+@Controller(seoFactoryRoutes('seo-score-lab'))
 export class ScoreCalibrationController {
   constructor(
     private readonly scoreCalibrationService: ScoreCalibrationService,
@@ -34,14 +35,14 @@ export class ScoreCalibrationController {
 
   @Get('reverse-experiments')
   async listReverseExperiments(@ReqCtx() ctx: RequestContext, @Param('projectId') projectId: string) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
     const data = await this.scoreReverseExperimentService.list(ctx.organizationId, projectId);
     return { data, meta: { traceId: ctx.traceId, pagination: { total: data.length } } };
   }
 
   @Get('reverse-evidence')
   async reverseEvidence(@ReqCtx() ctx: RequestContext, @Param('projectId') projectId: string) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
     const data = await this.scoreReverseExperimentService.evidence(ctx.organizationId, projectId);
     return { data, meta: { traceId: ctx.traceId, pagination: { total: data.length } } };
   }
@@ -52,7 +53,7 @@ export class ScoreCalibrationController {
     @Param('projectId') projectId: string,
     @Body() dto: CreateScoreReverseExperimentDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.scoreReverseExperimentService.create(
       ctx.organizationId, projectId, dto, ctx.traceId,
     );
@@ -66,7 +67,7 @@ export class ScoreCalibrationController {
     @Param('experimentId') experimentId: string,
     @Body() dto: UpdateScoreReverseTrialsDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.scoreReverseExperimentService.updateTrials(
       ctx.organizationId, projectId, experimentId, dto, ctx.traceId,
     );
@@ -79,7 +80,7 @@ export class ScoreCalibrationController {
     @Param('projectId') projectId: string,
     @Param('experimentId') experimentId: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.scoreReverseExperimentService.analyze(
       ctx.organizationId, projectId, experimentId, ctx.traceId,
     );
@@ -93,7 +94,7 @@ export class ScoreCalibrationController {
     @Param('experimentId') experimentId: string,
     @Body() dto: RunScoreReverseTrialDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.scoreReverseExperimentService.runTrial(
       ctx.organizationId, projectId, experimentId, dto, ctx.traceId,
     );
@@ -106,7 +107,7 @@ export class ScoreCalibrationController {
     @Param('projectId') projectId: string,
     @Param('experimentId') experimentId: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.scoreReverseExperimentService.delete(
       ctx.organizationId, projectId, experimentId, ctx.traceId,
     );
@@ -115,7 +116,7 @@ export class ScoreCalibrationController {
 
   @Get('readiness')
   async readiness(@ReqCtx() ctx: RequestContext, @Param('projectId') projectId: string) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
     const data = await this.scoreCalibrationService.getReadiness(
       ctx.organizationId,
       projectId,
@@ -125,7 +126,7 @@ export class ScoreCalibrationController {
 
   @Get('summary')
   async summary(@ReqCtx() ctx: RequestContext, @Param('projectId') projectId: string) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
     const data = await this.scoreCalibrationService.getSummary(
       ctx.organizationId,
       projectId,
@@ -140,7 +141,7 @@ export class ScoreCalibrationController {
     @Param('projectId') projectId: string,
     @Query() query: QueryScoreCalibrationPairsDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
     const data = await this.scoreCalibrationService.listPairs(
       ctx.organizationId,
       projectId,
@@ -151,7 +152,7 @@ export class ScoreCalibrationController {
 
   @Get('export')
   async export(@ReqCtx() ctx: RequestContext, @Param('projectId') projectId: string) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
     const data = await this.scoreCalibrationService.exportTrainingSet(
       ctx.organizationId,
       projectId,
@@ -162,7 +163,7 @@ export class ScoreCalibrationController {
 
   @Get('samples')
   async listSamples(@ReqCtx() ctx: RequestContext, @Param('projectId') projectId: string) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
     const data = await this.scoreCalibrationService.listManualSamples(
       ctx.organizationId,
       projectId,
@@ -176,7 +177,7 @@ export class ScoreCalibrationController {
     @Param('projectId') projectId: string,
     @Param('jobId') jobId: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
     const data = await this.scoreCalibrationService.getManualSample(
       ctx.organizationId,
       projectId,
@@ -191,7 +192,7 @@ export class ScoreCalibrationController {
     @Param('projectId') projectId: string,
     @Body() dto: CreateManualCalibrationSampleDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.scoreCalibrationService.createManualSample(
       ctx.organizationId,
       projectId,
@@ -208,7 +209,7 @@ export class ScoreCalibrationController {
     @Param('jobId') jobId: string,
     @Body() dto: UpdateManualCalibrationSampleDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.scoreCalibrationService.updateManualSample(
       ctx.organizationId,
       projectId,
@@ -225,7 +226,7 @@ export class ScoreCalibrationController {
     @Param('projectId') projectId: string,
     @Param('jobId') jobId: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.scoreCalibrationService.deleteManualSample(
       ctx.organizationId,
       projectId,
@@ -243,7 +244,7 @@ export class ScoreCalibrationController {
     @Param('snapshotId') snapshotId: string,
     @Body() dto: SetWorkflowPairExcludedDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.scoreCalibrationService.setWorkflowPairExcluded(
       ctx.organizationId,
       projectId,
@@ -261,7 +262,7 @@ export class ScoreCalibrationController {
     @Param('projectId') projectId: string,
     @Query() query: QueryScoreCalibrationLabListDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
     const data = await this.scoreCalibrationService.listJobsWithoutPairs(
       ctx.organizationId,
       projectId,
@@ -276,7 +277,7 @@ export class ScoreCalibrationController {
     @Param('projectId') projectId: string,
     @Query() query: QueryScoreCalibrationLabListDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
     const data = await this.scoreCalibrationService.listShadowLogs(
       ctx.organizationId,
       projectId,
@@ -291,7 +292,7 @@ export class ScoreCalibrationController {
     @Param('projectId') projectId: string,
     @Body() dto: PredictSemrushScoreDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.scoreCalibrationService.predict(
       ctx.organizationId,
       projectId,

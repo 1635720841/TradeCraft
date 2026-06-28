@@ -3,6 +3,7 @@
  */
 
 import { http } from "@/utils/http";
+import { seoFactoryApiPath } from "./paths";
 import type { ArticleJobItem, KeywordCannibalizationWarning, WmApiResponse } from "./types";
 
 export interface KeywordEntryItem {
@@ -61,7 +62,7 @@ export interface ImportKeywordsResult {
 }
 
 function projectBase(projectId: string) {
-  return `/api/v1/projects/${projectId}/keywords`;
+  return seoFactoryApiPath(projectId, "keywords");
 }
 
 export async function listKeywords(

@@ -3,6 +3,7 @@
  */
 
 import { http } from "@/utils/http";
+import { seoFactoryApiPath } from "./paths";
 import type { WmApiResponse } from "./types";
 
 export interface GscSummaryTotals {
@@ -58,7 +59,7 @@ export async function getSiteGscStatus(
 ): Promise<SiteGscStatus> {
   const res = await http.request<WmApiResponse<SiteGscStatus>>(
     "get",
-    `/api/v1/projects/${projectId}/sites/${siteId}/gsc`
+    seoFactoryApiPath(projectId, `sites/${siteId}/gsc`)
   );
   return res.data;
 }
@@ -69,7 +70,7 @@ export async function getGscConnectUrl(
 ): Promise<{ authUrl: string }> {
   const res = await http.request<WmApiResponse<{ authUrl: string }>>(
     "get",
-    `/api/v1/projects/${projectId}/sites/${siteId}/gsc/connect-url`
+    seoFactoryApiPath(projectId, `sites/${siteId}/gsc/connect-url`)
   );
   return res.data;
 }
@@ -80,7 +81,7 @@ export async function syncSiteGsc(
 ): Promise<{ summary: GscSummaryData }> {
   const res = await http.request<WmApiResponse<{ summary: GscSummaryData }>>(
     "post",
-    `/api/v1/projects/${projectId}/sites/${siteId}/gsc/sync`
+    seoFactoryApiPath(projectId, `sites/${siteId}/gsc/sync`)
   );
   return res.data;
 }
@@ -91,7 +92,7 @@ export async function disconnectSiteGsc(
 ): Promise<void> {
   await http.request(
     "post",
-    `/api/v1/projects/${projectId}/sites/${siteId}/gsc/disconnect`
+    seoFactoryApiPath(projectId, `sites/${siteId}/gsc/disconnect`)
   );
 }
 
@@ -100,7 +101,7 @@ export async function getProjectGscOverview(
 ): Promise<ProjectGscSiteOverview[]> {
   const res = await http.request<WmApiResponse<ProjectGscSiteOverview[]>>(
     "get",
-    `/api/v1/projects/${projectId}/gsc/overview`
+    seoFactoryApiPath(projectId, "gsc/overview")
   );
   return res.data ?? [];
 }

@@ -22,7 +22,13 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   { id: 'org:member:update', name: '编辑成员', module: 'org', description: '修改成员信息', sortOrder: 22 },
   { id: 'org:member:grant', name: '授权成员', module: 'org', description: '为成员分配权限', sortOrder: 23 },
   { id: 'org:billing:read', name: '查看订阅与配额', module: 'org', description: '查看套餐、账期、用量明细', sortOrder: 30 },
-  { id: 'org:billing:manage', name: '管理订阅与配额', module: 'org', description: '续期账期、加购配额', sortOrder: 31 },
+  {
+    id: 'org:billing:manage',
+    name: '管理订阅与配额',
+    module: 'org',
+    description: '仅平台 Console 运营（租户侧不可授）',
+    sortOrder: 31,
+  },
   { id: 'console:tenant:list', name: '租户列表', module: 'console', description: '查看全平台租户', sortOrder: 40 },
   { id: 'console:tenant:read', name: '租户详情', module: 'console', description: '查看租户详情', sortOrder: 41 },
   { id: 'console:tenant:create', name: '新建租户', module: 'console', description: '创建租户与管理员', sortOrder: 42 },
@@ -50,20 +56,13 @@ export const ROLE_DEFAULT_PERMISSIONS: Partial<Record<Role, string[]>> = {
     'org:member:update',
     'org:member:grant',
     'org:billing:read',
-    'org:billing:manage',
     'project:create',
     'project:read',
     'project:update',
-    'seo:job:create',
-    'seo:job:read',
-    'seo:keyword:manage',
-    'seo:site:manage',
   ],
   [Role.MEMBER]: [
     'org:profile:read',
     'project:read',
-    'seo:job:create',
-    'seo:job:read',
   ],
   [Role.PLATFORM_OPERATOR]: [
     'console:tenant:list',
@@ -91,10 +90,37 @@ export const PLATFORM_GRANTABLE_PERMISSION_IDS = PERMISSION_CATALOG.filter((item
   item.id.startsWith('console:'),
 ).map((item) => item.id);
 
-/** 租户管理员可授予成员的权限（不含 console） */
+/** 租户管理员可授予成员的权限（仅 org:* + project:*，不含 seo / console / 续期） */
 export const TENANT_GRANTABLE_PERMISSION_IDS = PERMISSION_CATALOG.filter(
-  (item) => !item.id.startsWith('console:'),
+  (item) =>
+    (item.id.startsWith('org:') || item.id.startsWith('project:')) &&
+    item.id !== 'org:billing:manage',
 ).map((item) => item.id);
+
+/** 租户侧权限目录（成员授权页 / auth/me） */
+export function listTenantPermissionCatalog(): PermissionDefinition[] {
+  const allowed = new Set(TENANT_GRANTABLE_PERMISSION_IDS);
+  return PERMISSION_CATALOG.filter((item) => allowed.has(item.id)).map((item) => ({
+    ...item,
+  }));
+}
+
+/** auth/me 与 /org/permissions 共用的租户 accessMeta */
+export function buildTenantAccessMeta() {
+  return {
+    permissionCatalog: listTenantPermissionCatalog(),
+    roleDefaultPermissions: Object.fromEntries(
+      Object.entries(ROLE_DEFAULT_PERMISSIONS).map(([key, value]) => [key, value ?? []]),
+    ),
+    permissionImplies: PERMISSION_IMPLIES as Record<string, string[]>,
+  };
+}
+
+/** 租户用户 DB 额外授权：仅保留 org:* / project:* */
+export function sanitizeTenantUserGrants(permissionIds: readonly string[]): string[] {
+  const allowed = new Set(TENANT_GRANTABLE_PERMISSION_IDS);
+  return [...new Set(permissionIds.filter((id) => allowed.has(id)))];
+}
 
 /** 展开授权项：自动附带 PERMISSION_IMPLIES 前置权限 */
 export function expandPermissionGrants(permissionIds: string[]): string[] {

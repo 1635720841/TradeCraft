@@ -14,7 +14,7 @@ import {
   tenantVisibleProjectMemberUserFilter,
 } from '../access/tenant-member-visibility';
 import { AuditService } from '../access/audit.service';
-import { isWithinAccessWindow } from './project-access.constants';
+import { isWithinAccessWindow, listGrantablePermissionsForProjectType } from './project-access.constants';
 import { ProjectAccessService } from './project-access.service';
 import { ProjectService } from './project.service';
 import type { AddProjectMemberDto } from './dto/add-project-member.dto';
@@ -125,6 +125,7 @@ export class ProjectAdminService {
       myAccessStatus: access.myAccessStatus,
       canEnter: access.canEnter,
       canManage: access.canManage,
+      effectivePermissions: await this.resolveViewerProjectPermissions(ctx, project),
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
       members: [] as Array<{
@@ -409,7 +410,7 @@ export class ProjectAdminService {
     const project = await this.assertProjectInOrg(ctx.organizationId, projectId);
     const member = await this.assertTenantVisibleProjectMember(ctx, projectId, userId);
 
-    const grants = await this.projectAccessService.setMemberPermissions(
+    await this.projectAccessService.setMemberPermissions(
       member.id,
       project.projectType,
       permissionIds,
@@ -425,11 +426,11 @@ export class ProjectAdminService {
       traceId: ctx.traceId,
     });
 
-    return {
+    return this.projectAccessService.getMemberAccessSummary(
+      projectId,
       userId,
-      grants: permissionIds,
-      effectivePermissions: grants,
-    };
+      project.projectType,
+    );
   }
 
   private filterProjectMembersForViewer<
@@ -480,6 +481,27 @@ export class ProjectAdminService {
     }
 
     return member;
+  }
+
+  private async resolveViewerProjectPermissions(
+    ctx: RequestContext,
+    project: { id: string; projectType: string },
+  ): Promise<string[]> {
+    if (ctx.role === Role.SUPER_ADMIN) {
+      return listGrantablePermissionsForProjectType(project.projectType);
+    }
+    const member = await this.prisma.projectMember.findUnique({
+      where: { projectId_userId: { projectId: project.id, userId: ctx.userId } },
+      select: { id: true, role: true },
+    });
+    if (!member) {
+      return [];
+    }
+    return this.projectAccessService.resolveMemberPermissions(
+      member.id,
+      member.role,
+      project.projectType,
+    );
   }
 
   private async assertProjectInOrg(organizationId: string, projectId: string) {

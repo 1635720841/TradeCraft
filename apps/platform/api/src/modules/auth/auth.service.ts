@@ -11,6 +11,11 @@ import { UnauthorizedException } from '../../core/exceptions/auth.exception';
 import { ErrorCodes } from '../../core/exceptions/error-codes';
 import { MenuService } from '../access/menu.service';
 import { PermissionService } from '../access/permission.service';
+import {
+  buildTenantAccessMeta,
+  sanitizeTenantUserGrants,
+  type PermissionDefinition,
+} from '../access/permission.constants';
 import { AuditService } from '../access/audit.service';
 import { JwtTokenService } from './jwt-token.service';
 import type { LoginDto } from './dto/login.dto';
@@ -28,6 +33,12 @@ export interface AuthSessionPayload {
   permissions: string[];
 }
 
+export interface AuthAccessMeta {
+  permissionCatalog: PermissionDefinition[];
+  roleDefaultPermissions: Record<string, string[]>;
+  permissionImplies: Record<string, string[]>;
+}
+
 export interface AuthUserProfile {
   id: string;
   email: string;
@@ -38,6 +49,7 @@ export interface AuthUserProfile {
   permissions: string[];
   grants: string[];
   visibleMenuKeys: string[];
+  accessMeta: AuthAccessMeta;
 }
 
 @Injectable()
@@ -303,10 +315,14 @@ export class AuthService {
   }): Promise<AuthUserProfile> {
     const role = user.role as Role;
     const permissions = await this.permissionService.resolveUserPermissions(user.id, role);
-    const [grants, visibleMenuKeys] = await Promise.all([
+    const [rawGrants, visibleMenuKeys] = await Promise.all([
       this.permissionService.getUserPermissionIds(user.id),
       this.menuService.resolveVisibleMenuKeys(user.id, role, permissions),
     ]);
+    const grants =
+      role === Role.ADMIN || role === Role.MEMBER
+        ? sanitizeTenantUserGrants(rawGrants)
+        : rawGrants;
 
     return {
       id: user.id,
@@ -318,6 +334,7 @@ export class AuthService {
       permissions,
       grants,
       visibleMenuKeys,
+      accessMeta: buildTenantAccessMeta(),
     };
   }
 

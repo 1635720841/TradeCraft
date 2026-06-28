@@ -7,7 +7,7 @@
       type="info"
       :closable="false"
       show-icon
-      title="平台管理员账号由超级管理员在此授予 console 权限；租户成员通常由角色与权限自动决定侧栏，仅个别账号需要菜单覆盖。"
+      title="平台管理员账号在此授予 console 权限；租户成员侧栏通常由角色与权限自动决定，菜单覆盖仅用于个别特例。"
       class="mb-4"
     />
 
@@ -64,94 +64,110 @@
       <el-alert type="warning" :closable="false" show-icon title="超级管理员拥有全部权限，不可在此配置。" />
     </el-card>
 
-    <el-card
-      v-else-if="selectedUser?.role === 'PLATFORM_OPERATOR'"
-      v-loading="loadingPerms"
-      shadow="never"
-    >
-      <template #header>
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <span class="font-medium">平台权限 — {{ selectedUser.email }}</span>
-          <div class="flex flex-wrap gap-2">
-            <el-button @click="selectAllPlatformPerms">全选平台权限</el-button>
-            <el-button @click="clearExtraGrants">清空额外授权</el-button>
-            <el-button type="primary" :loading="savingPerms" @click="savePermissions">
-              保存权限
-            </el-button>
-          </div>
-        </div>
-      </template>
+    <el-card v-else-if="selectedUser" shadow="never">
+      <el-tabs v-model="configTab">
+        <el-tab-pane
+          v-if="selectedUser.role === 'PLATFORM_OPERATOR'"
+          label="平台账号权限"
+          name="platform"
+        >
+          <div v-loading="loadingPerms">
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <span class="font-medium">{{ selectedUser.email }}</span>
+              <div class="flex flex-wrap gap-2">
+                <el-button @click="selectAllPlatformPerms">全选平台权限</el-button>
+                <el-button @click="clearExtraGrants">清空额外授权</el-button>
+                <el-button type="primary" :loading="savingPerms" @click="savePermissions">
+                  保存权限
+                </el-button>
+              </div>
+            </div>
 
-      <el-alert
-        class="mb-4"
-        type="info"
-        :closable="false"
-        show-icon
-        :title="`角色默认权限：${defaultPermHint}（灰色不可取消）`"
-      />
+            <el-alert
+              class="mb-4"
+              type="info"
+              :closable="false"
+              show-icon
+              :title="`角色默认权限：${defaultPermHint}（灰色不可取消）`"
+            />
 
-      <el-alert
-        v-if="effectivePermissions.length"
-        class="mb-4"
-        type="success"
-        :closable="false"
-        show-icon
-      >
-        <template #title>最终生效权限（{{ effectivePermissions.length }} 项）</template>
-        <div class="mt-1 flex flex-wrap gap-1">
-          <el-tag
-            v-for="permId in effectivePermissions"
-            :key="permId"
-            size="small"
-            type="info"
-          >
-            {{ permissionNameMap[permId] ?? permId }}
-          </el-tag>
-        </div>
-      </el-alert>
-
-      <div
-        v-for="section in consolePermissionSections"
-        :key="section.key"
-        class="mb-4 rounded-lg border border-gray-100 p-3"
-      >
-        <div class="mb-2 text-sm font-medium text-gray-600">{{ section.label }}</div>
-        <el-checkbox-group :model-value="selectedGrantIds" @change="onGrantChange">
-          <div class="grid grid-cols-1 gap-2">
-            <el-checkbox
-              v-for="perm in section.items"
-              :key="perm.id"
-              :value="perm.id"
-              :disabled="isDefaultPermission(perm.id)"
+            <el-alert
+              v-if="effectivePermissions.length"
+              class="mb-4"
+              type="success"
+              :closable="false"
+              show-icon
             >
-              <span>{{ perm.name }}</span>
-              <span v-if="perm.description" class="ml-1 text-xs text-gray-400">
-                — {{ perm.description }}
-              </span>
-            </el-checkbox>
+              <template #title>最终生效权限（{{ effectivePermissions.length }} 项）</template>
+              <div class="mt-1 flex flex-wrap gap-1">
+                <el-tag
+                  v-for="permId in effectivePermissions"
+                  :key="permId"
+                  size="small"
+                  type="info"
+                >
+                  {{ permissionNameMap[permId] ?? permId }}
+                </el-tag>
+              </div>
+            </el-alert>
+
+            <div
+              v-for="section in consolePermissionSections"
+              :key="section.key"
+              class="mb-4 rounded-lg border border-gray-100 p-3"
+            >
+              <div class="mb-2 text-sm font-medium text-gray-600">{{ section.label }}</div>
+              <el-checkbox-group :model-value="selectedGrantIds" @change="onGrantChange">
+                <div class="grid grid-cols-1 gap-2">
+                  <el-checkbox
+                    v-for="perm in section.items"
+                    :key="perm.id"
+                    :value="perm.id"
+                    :disabled="isDefaultPermission(perm.id)"
+                  >
+                    <span>{{ perm.name }}</span>
+                    <span v-if="perm.description" class="ml-1 text-xs text-gray-400">
+                      — {{ perm.description }}
+                    </span>
+                  </el-checkbox>
+                </div>
+              </el-checkbox-group>
+            </div>
           </div>
-        </el-checkbox-group>
-      </div>
-    </el-card>
+        </el-tab-pane>
 
-    <el-card v-else-if="menuConfig" v-loading="loadingMenus" shadow="never">
-      <template #header>
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <span class="font-medium">菜单覆盖 — {{ menuConfig.user.email }}</span>
-          <el-button type="primary" :loading="savingMenus" @click="saveMenus">
-            保存覆盖
-          </el-button>
-        </div>
-      </template>
+        <el-tab-pane
+          v-if="selectedUser.role !== 'PLATFORM_OPERATOR'"
+          label="菜单覆盖（高级）"
+          name="menu"
+        >
+          <div v-loading="loadingMenus">
+            <el-alert
+              class="mb-4"
+              type="warning"
+              :closable="false"
+              show-icon
+              title="常规场景请通过「企业管理 → 成员与权限」控制访问；勿随意覆盖菜单，否则可能与实际权限不一致。"
+            />
 
-      <el-checkbox-group v-model="enabledMenuIds">
-        <div class="space-y-2">
-          <el-checkbox v-for="menu in menuConfig.menus" :key="menu.id" :value="menu.id">
-            {{ menu.title }}
-            <span class="text-xs text-gray-400">（{{ menu.routePath }}）</span>
-          </el-checkbox>
-        </div>
-      </el-checkbox-group>
+            <div v-if="menuConfig" class="flex flex-wrap items-center justify-between gap-2 mb-4">
+              <span class="font-medium">{{ menuConfig.user.email }}</span>
+              <el-button type="primary" :loading="savingMenus" @click="saveMenus">
+                保存覆盖
+              </el-button>
+            </div>
+
+            <el-checkbox-group v-if="menuConfig" v-model="enabledMenuIds">
+              <div class="space-y-2">
+                <el-checkbox v-for="menu in menuConfig.menus" :key="menu.id" :value="menu.id">
+                  {{ menu.title }}
+                  <span class="text-xs text-gray-400">（{{ menu.routePath }}）</span>
+                </el-checkbox>
+              </div>
+            </el-checkbox-group>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
     </el-card>
   </div>
 </template>
@@ -172,14 +188,17 @@ import {
 import { memberRoleDict } from "@/constants/dicts/platform";
 import {
   CONSOLE_PERMISSION_SECTIONS,
-  PERMISSION_IMPLIES,
-  PLATFORM_GRANTABLE_PERMISSION_IDS,
-  ROLE_DEFAULT_PERMISSION_IDS
+  PLATFORM_GRANTABLE_PERMISSION_IDS
 } from "@/constants/platform-access";
+import { useUserStoreHook } from "@/store/modules/user";
+import { usePermissionGrantExpand } from "@/composables/usePermissionGrantExpand";
 import { dictLabel, dictTagType } from "@/utils/dict";
 import { message } from "@/utils/message";
 
 defineOptions({ name: "ConsoleAccessView" });
+
+const userStore = useUserStoreHook();
+const { expandGrantIds } = usePermissionGrantExpand();
 
 const loadingUsers = ref(false);
 const loadingMenus = ref(false);
@@ -192,11 +211,16 @@ const limit = ref(50);
 const total = ref(0);
 const keyword = ref("");
 const selectedUser = ref<ConsoleUserItem | null>(null);
+const configTab = ref("platform");
 const menuConfig = ref<UserMenuConfig | null>(null);
 const enabledMenuIds = ref<string[]>([]);
 const catalog = ref<PermissionDefinition[]>([]);
 const selectedGrantIds = ref<string[]>([]);
 const effectivePermissions = ref<string[]>([]);
+
+const roleDefaultPermissions = computed(
+  () => userStore.accessMeta?.roleDefaultPermissions ?? {}
+);
 
 const permissionNameMap = computed(() =>
   Object.fromEntries(catalog.value.map(p => [p.id, p.name]))
@@ -220,24 +244,14 @@ const consolePermissionSections = computed(() =>
 
 const defaultPermHint = computed(() => {
   if (!selectedUser.value) return "-";
-  const defaults = ROLE_DEFAULT_PERMISSION_IDS[selectedUser.value.role] ?? [];
+  const defaults = roleDefaultPermissions.value[selectedUser.value.role] ?? [];
   return defaults.length ? `${defaults.length} 项` : "无";
 });
 
 function isDefaultPermission(permId: string) {
   if (!selectedUser.value) return false;
-  const defaults = ROLE_DEFAULT_PERMISSION_IDS[selectedUser.value.role] ?? [];
+  const defaults = roleDefaultPermissions.value[selectedUser.value.role] ?? [];
   return defaults.includes(permId);
-}
-
-function expandGrantIds(ids: string[]) {
-  const expanded = new Set(ids);
-  for (const id of ids) {
-    for (const implied of PERMISSION_IMPLIES[id] ?? []) {
-      expanded.add(implied);
-    }
-  }
-  return [...expanded];
 }
 
 function onGrantChange(ids: string[]) {
@@ -303,10 +317,12 @@ async function onSelectUser(user: ConsoleUserItem | undefined) {
   }
 
   if (user.role === "PLATFORM_OPERATOR") {
+    configTab.value = "platform";
     await loadPlatformPermissions(user);
     return;
   }
 
+  configTab.value = "menu";
   await loadMenuOverride(user);
 }
 
@@ -339,7 +355,8 @@ async function savePermissions() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await userStore.ensureAuthProfile();
   void fetchUsers();
   void listConsolePermissions().then(items => {
     catalog.value = items;

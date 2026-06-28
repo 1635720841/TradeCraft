@@ -21,6 +21,15 @@ export class OrgProjectController {
     private readonly projectService: ProjectService,
   ) {}
 
+  @Get('types/catalog')
+  @Permissions('project:read')
+  async listTypes(@ReqCtx() ctx: RequestContext) {
+    return {
+      data: this.projectService.listProjectTypes(),
+      meta: { traceId: ctx.traceId },
+    };
+  }
+
   @Get()
   @Permissions('project:read')
   async list(

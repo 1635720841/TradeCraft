@@ -20,17 +20,16 @@ import {
   Post,
 } from '@nestjs/common';
 import type { RequestContext } from '@wm/shared-core';
-import { Role } from '@wm/shared-core';
 import { ReqCtx } from '../../../../core/decorators/request-context.decorator';
-import { Roles } from '../../../../core/decorators/roles.decorator';
 import { ProjectService } from '../../../../modules/project/project.service';
 import { AssignKeywordsToClusterDto } from './dto/assign-keywords-to-cluster.dto';
 import { CreateJobsFromClusterDto } from './dto/create-jobs-from-cluster.dto';
 import { CreateKeywordClusterDto } from './dto/create-keyword-cluster.dto';
 import { UpdateKeywordClusterDto } from './dto/update-keyword-cluster.dto';
 import { KeywordClusterService } from './keyword-cluster.service';
+import { seoFactoryRoutes } from '../../constants/seo-factory-routes';
 
-@Controller('api/v1/projects/:projectId/keyword-clusters')
+@Controller(seoFactoryRoutes('keyword-clusters'))
 export class KeywordClusterController {
   constructor(
     private readonly keywordClusterService: KeywordClusterService,
@@ -39,32 +38,30 @@ export class KeywordClusterController {
 
   @Get()
   async list(@ReqCtx() ctx: RequestContext, @Param('projectId') projectId: string) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoKeywordRead(ctx.organizationId, projectId, ctx);
     const data = await this.keywordClusterService.findMany(ctx.organizationId, projectId);
     return { data, meta: { traceId: ctx.traceId } };
   }
 
   @Post()
-  @Roles(Role.ADMIN)
   async create(
     @ReqCtx() ctx: RequestContext,
     @Param('projectId') projectId: string,
     @Body() dto: CreateKeywordClusterDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoKeywordManage(ctx.organizationId, projectId, ctx);
     const data = await this.keywordClusterService.create(ctx.organizationId, projectId, dto);
     return { data, meta: { traceId: ctx.traceId } };
   }
 
   @Patch(':id')
-  @Roles(Role.ADMIN)
   async update(
     @ReqCtx() ctx: RequestContext,
     @Param('projectId') projectId: string,
     @Param('id') id: string,
     @Body() dto: UpdateKeywordClusterDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoKeywordManage(ctx.organizationId, projectId, ctx);
     const data = await this.keywordClusterService.update(
       ctx.organizationId,
       projectId,
@@ -75,26 +72,24 @@ export class KeywordClusterController {
   }
 
   @Delete(':id')
-  @Roles(Role.ADMIN)
   async remove(
     @ReqCtx() ctx: RequestContext,
     @Param('projectId') projectId: string,
     @Param('id') id: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoKeywordManage(ctx.organizationId, projectId, ctx);
     const data = await this.keywordClusterService.remove(ctx.organizationId, projectId, id);
     return { data, meta: { traceId: ctx.traceId } };
   }
 
   @Post(':id/assign-keywords')
-  @Roles(Role.ADMIN)
   async assignKeywords(
     @ReqCtx() ctx: RequestContext,
     @Param('projectId') projectId: string,
     @Param('id') id: string,
     @Body() dto: AssignKeywordsToClusterDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoKeywordManage(ctx.organizationId, projectId, ctx);
     const data = await this.keywordClusterService.assignKeywords(
       ctx.organizationId,
       projectId,
@@ -112,7 +107,7 @@ export class KeywordClusterController {
     @Param('id') id: string,
     @Body() dto: CreateJobsFromClusterDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.keywordClusterService.createJobsFromCluster(
       ctx.organizationId,
       projectId,

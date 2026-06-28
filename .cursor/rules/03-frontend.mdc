@@ -90,13 +90,14 @@ ElMessage.error(error.message ?? '操作失败，请稍后重试');
 ## API 层
 
 ```typescript
-// src/api/platform/project.ts
+// src/api/org/projects.ts
 import { http } from "@/utils/http";
 
-export async function listProjects() {
-  const res = await http.request<WmApiResponse<ProjectItem[]>>(
+export async function listOrgProjects(page = 1, limit = 20) {
+  const res = await http.request<WmApiResponse<OrgProjectItem[]>>(
     "get",
-    "/api/v1/platform/projects"
+    "/api/v1/org/projects",
+    { params: { page, limit } }
   );
   return res.data ?? [];
 }

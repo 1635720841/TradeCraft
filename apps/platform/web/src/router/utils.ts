@@ -80,6 +80,14 @@ const ORG_MENU_PATH_ORDER: Array<{ menuKey: string; path: string }> = [
   { menuKey: "org:members", path: "/org/members" }
 ];
 
+const CONSOLE_MENU_PATH_ORDER: Array<{ menuKey: string; path: string }> = [
+  { menuKey: "console:overview", path: "/console/overview" },
+  { menuKey: "console:tenants", path: "/console/tenants" },
+  { menuKey: "console:prompts", path: "/console/prompts" },
+  { menuKey: "console:access", path: "/console/access" },
+  { menuKey: "console:audit", path: "/console/audit" }
+];
+
 export function resolveOrgEntryPath(visibleMenuKeys?: string[]): string {
   const keys = visibleMenuKeys ?? [];
   for (const item of ORG_MENU_PATH_ORDER) {
@@ -88,6 +96,33 @@ export function resolveOrgEntryPath(visibleMenuKeys?: string[]): string {
     }
   }
   return "/org/profile";
+}
+
+export function resolveConsoleEntryPath(visibleMenuKeys?: string[]): string {
+  const keys = visibleMenuKeys ?? [];
+  for (const item of CONSOLE_MENU_PATH_ORDER) {
+    if (keys.includes(item.menuKey)) {
+      return item.path;
+    }
+  }
+  return "/console/overview";
+}
+
+/** 登录后按角色解析首页路径 */
+export function resolveEntryPath(
+  userInfo: DataInfo<number> | null | undefined
+): string {
+  const roles = userInfo?.roles ?? [];
+  if (roles.includes("platform_operator")) {
+    return resolveConsoleEntryPath(userInfo?.visibleMenuKeys);
+  }
+  if (roles.includes("super_admin")) {
+    const keys = userInfo?.visibleMenuKeys ?? [];
+    if (keys.some(k => k.startsWith("console:"))) {
+      return resolveConsoleEntryPath(keys);
+    }
+  }
+  return resolveOrgEntryPath(userInfo?.visibleMenuKeys);
 }
 
 /** 路由级权限校验（与 hasPerms 一致，读 localStorage） */

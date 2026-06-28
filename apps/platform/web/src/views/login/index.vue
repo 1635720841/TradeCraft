@@ -27,8 +27,10 @@ import { useRouter } from "vue-router";
 import { debounce } from "@pureadmin/utils";
 import { useEventListener } from "@vueuse/core";
 import { getLogtoConfig, type LogtoConfigResult } from "@/api/user";
-import { initRouter, getTopMenu } from "@/router/utils";
+import { initRouter, resolveEntryPath } from "@/router/utils";
 import { useUserStoreHook } from "@/store/modules/user";
+import { storageLocal } from "@pureadmin/utils";
+import { userKey } from "@/utils/auth";
 import { message } from "@/utils/message";
 import { loginBg, heroDeco } from "./utils/static";
 import "./styles/merwise-login.css";
@@ -107,8 +109,9 @@ const onLogin = async () => {
         persistRemember();
         return initRouter().then(() => {
           disabled.value = true;
+          const entry = resolveEntryPath(storageLocal().getItem(userKey));
           router
-            .push(getTopMenu(true).path)
+            .push(entry)
             .then(() => {
               message("登录成功", { type: "success" });
             })

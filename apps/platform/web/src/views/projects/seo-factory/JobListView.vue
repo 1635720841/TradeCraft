@@ -45,7 +45,9 @@
             <el-button @click="goContentScore">内容评分</el-button>
             <el-button @click="goSites">站点</el-button>
             <el-button @click="() => fetchJobs()">刷新</el-button>
-            <el-button type="primary" @click="goCreate">新建任务</el-button>
+            <el-button v-if="canCreateJob" type="primary" @click="goCreate">
+              新建任务
+            </el-button>
           </div>
         </div>
       </template>
@@ -306,6 +308,7 @@ import {
 } from "@/utils/seo-factory/cms-publish-status";
 import { draftEditStatusLabel } from "@/utils/seo-factory/draft-edit-preview";
 import { isBriefPending, isReviewPending } from "@/utils/seo-factory/job-progress";
+import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
 import ArticleJobProgressStepper from "./components/ArticleJobProgressStepper.vue";
 
 defineOptions({ name: "JobListView" });
@@ -315,6 +318,9 @@ const cmsUiEnabled = WORDPRESS_CMS_UI_ENABLED;
 const route = useRoute();
 const router = useRouter();
 const projectId = route.params.projectId as string;
+
+const { can } = useProjectSeoAccess();
+const canCreateJob = computed(() => can("seo:job:create"));
 
 const tableRef = ref<TableInstance>();
 const loading = ref(false);

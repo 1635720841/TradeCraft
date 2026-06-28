@@ -14,8 +14,12 @@ import { JobStatus } from '@prisma/client';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../../../core/database/prisma.service';
 import {
+  ARTICLE_BRIEF_PENDING_EVENT,
   ARTICLE_COMPLETED_EVENT,
+  ARTICLE_FAILED_EVENT,
+  type ArticleBriefPendingPayload,
   type ArticleCompletedPayload,
+  type ArticleFailedPayload,
 } from '../../../../core/event-bus/events';
 import { LoggerService } from '../../../../core/logger/logger.service';
 import {
@@ -188,6 +192,18 @@ export class WorkflowService {
       if (step === 'brief') {
         const paused = await this.shouldPauseForBriefApproval(jobId);
         if (paused) {
+          const jobRow = await this.prisma.articleJob.findFirst({
+            where: { id: jobId },
+            select: { targetKeyword: true },
+          });
+          const briefPayload: ArticleBriefPendingPayload = {
+            traceId,
+            organizationId,
+            projectId,
+            jobId,
+            targetKeyword: jobRow?.targetKeyword ?? '',
+          };
+          this.eventEmitter.emit(ARTICLE_BRIEF_PENDING_EVENT, briefPayload);
           this.logger.info('Workflow paused for brief approval', {
             traceId,
             organizationId,
@@ -246,7 +262,14 @@ export class WorkflowService {
   ): Promise<void> {
     const job = await this.prisma.articleJob.findFirst({
       where: { id: jobId, organizationId, projectId },
-      select: { status: true, briefData: true, draftData: true, seoCheckData: true, semrushScore: true },
+      select: {
+        status: true,
+        targetKeyword: true,
+        briefData: true,
+        draftData: true,
+        seoCheckData: true,
+        semrushScore: true,
+      },
     });
 
     const failedStep = job ? resolveFailedStep(job) : 'serp';
@@ -269,6 +292,16 @@ export class WorkflowService {
       errorMessage,
       failedStep,
     });
+
+    const failedPayload: ArticleFailedPayload = {
+      traceId,
+      organizationId,
+      projectId,
+      jobId,
+      targetKeyword: job?.targetKeyword ?? '',
+      errorMessage,
+    };
+    this.eventEmitter.emit(ARTICLE_FAILED_EVENT, failedPayload);
   }
 
   private async shouldPauseForBriefApproval(jobId: string): Promise<boolean> {

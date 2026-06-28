@@ -21,10 +21,15 @@ alwaysApply: false
 
 | 层 | 管什么 | 入口 | 关键权限 |
 |----|--------|------|----------|
-| **企业级** | 账号、企业功能、能否看到菜单 | `/org/members` | `org:*`、`project:*`、`seo:*` |
-| **项目级** | 谁能进项目、项目内能力 | `/org/projects` | `ProjectMember` + `ProjectMemberPermission` |
+| **企业级** | 账号、企业功能、能否看到菜单 | `/org/members` | `org:*`、`project:*`（**不含** `seo:*`） |
+| **项目级** | 谁能进项目、项目内 SEO 能力 | `/org/projects` → 成员 | `ProjectMember` + `ProjectMemberPermission` + `seo:*` |
 
-**不要混用**：企业级 `seo:*` 不等于已加入项目；进工作台以项目成员 + 访问期为准。
+**不要混用**：企业授权页不可授 `seo:*`；进工作台以项目成员 + 访问期为准。
+
+## 续期与加购
+
+- **仅平台 Console**（`console:tenant:update`）可续期账期、加购配额
+- 企业 `/org/billing` **只读**（`org:billing:read`）；`org:billing:manage` 不对租户开放
 
 ## 项目准入（硬规则）
 
@@ -33,7 +38,7 @@ alwaysApply: false
 - **企业有效时间**：`currentPeriodStart/End`；过期后客户企业 API 返回 `ORG_SUBSCRIPTION_EXPIRED`（超管/平台运营除外）
 - **例外**：仅 `SUPER_ADMIN` 可绕过成员校验
 - **企业 `ADMIN`**：可 `canManage`（改成员、访问期），**不自动** `canEnter`
-- **前端**：`canEnter === true` 才可点进入；SEO 工厂路由走 `ensureProjectEnterable`
+- **前端**：`canEnter === true` 才可点进入；SEO 工厂路由走 `ensureProjectRouteAccess`（`meta.seoPermission` + 项目 `effectivePermissions`）
 
 ## 平台账号隔离（企业侧不可见）
 
@@ -47,7 +52,7 @@ alwaysApply: false
 
 ## 谁能授什么权
 
-- **企业管理员**：`TENANT_GRANTABLE_PERMISSION_IDS`（无 `console:*`）
+- **企业管理员**：`TENANT_GRANTABLE_PERMISSION_IDS`（仅 `org:*` + `project:*`，无 `console:*` / `seo:*` / `org:billing:manage`）
 - **超级管理员**：可授 `console:*` 给平台管理员
 - **项目**：`listGrantablePermissionsForProjectType(projectType)`
 

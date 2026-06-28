@@ -9,6 +9,8 @@ export const E2E_API_BASE_URL = (process.env.E2E_API_BASE_URL ?? 'http://127.0.0
 
 export const E2E_DEV_EMAIL = process.env.E2E_DEV_EMAIL ?? 'admin@dev.local';
 export const E2E_DEV_PASSWORD = process.env.E2E_DEV_PASSWORD ?? 'admin123';
+export const E2E_OUTSIDER_EMAIL = process.env.E2E_OUTSIDER_EMAIL ?? 'outsider@dev.local';
+export const E2E_OUTSIDER_PASSWORD = process.env.E2E_OUTSIDER_PASSWORD ?? 'outsider123';
 export const E2E_PROJECT_ID =
   process.env.E2E_PROJECT_ID ?? '00000000-0000-4000-8000-000000000002';
 

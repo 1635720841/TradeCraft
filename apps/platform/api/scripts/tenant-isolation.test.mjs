@@ -36,6 +36,8 @@ const JOB_ROW = {
   serpData: {},
   briefData: {},
   draftData: {},
+  siteId: '00000000-0000-4000-8000-000000000401',
+  site: { domain: 'example.com', cmsType: null, cmsConfig: null },
   createdAt: new Date('2026-01-01T00:00:00.000Z'),
   updatedAt: new Date('2026-01-01T00:00:00.000Z'),
 };
@@ -154,10 +156,8 @@ describe('ArticleJobService tenant isolation', () => {
     const own = await service.findMany(ORG_A, PROJECT_A, 1, 20);
     assert.equal(own.total, 1);
     assert.equal(own.items.length, 1);
-    assert.deepEqual(prisma.calls.findMany[0], {
-      organizationId: ORG_A,
-      projectId: PROJECT_A,
-    });
+    assert.equal(prisma.calls.findMany[0].organizationId, ORG_A);
+    assert.equal(prisma.calls.findMany[0].projectId, PROJECT_A);
 
     const otherOrg = await service.findMany(ORG_B, PROJECT_A, 1, 20);
     assert.equal(otherOrg.total, 0);

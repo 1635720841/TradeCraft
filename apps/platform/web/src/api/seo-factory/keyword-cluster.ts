@@ -3,6 +3,7 @@
  */
 
 import { http } from "@/utils/http";
+import { seoFactoryApiPath } from "./paths";
 import type { WmApiResponse } from "./types";
 
 export interface KeywordClusterItem {
@@ -20,7 +21,7 @@ export interface KeywordClusterItem {
 }
 
 function projectBase(projectId: string) {
-  return `/api/v1/projects/${projectId}/keyword-clusters`;
+  return seoFactoryApiPath(projectId, "keyword-clusters");
 }
 
 export async function listKeywordClusters(

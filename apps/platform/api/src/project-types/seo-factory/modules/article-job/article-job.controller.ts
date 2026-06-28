@@ -50,6 +50,7 @@ import { PatchInternalLinksDto } from './dto/patch-internal-links.dto';
 import { ArticleJobService } from './article-job.service';
 import { CmsPublishService } from '../export/cms-publish.service';
 import { PublishArticleJobDto } from '../export/dto/publish-article-job.dto';
+import { seoFactoryRoutes } from '../../constants/seo-factory-routes';
 import {
   BatchDeleteArticleJobsDto,
   BatchPublishArticleJobsDto,
@@ -61,7 +62,7 @@ import { RefreshArticleJobSerpDto } from './dto/refresh-article-job-serp.dto';
 import { BatchExportArticleJobsDto } from './dto/batch-export-article-jobs.dto';
 import { ExportService } from '../export/export.service';
 
-@Controller('api/v1/projects/:projectId/article-jobs')
+@Controller(seoFactoryRoutes('article-jobs'))
 export class ArticleJobController {
   constructor(
     private readonly articleJobService: ArticleJobService,
@@ -83,7 +84,7 @@ export class ArticleJobController {
     @Param('projectId') projectId: string,
     @Body() dto: CreateArticleJobDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const job = await this.articleJobService.create(ctx.organizationId, projectId, dto);
     return { data: job, meta: { traceId: job.traceId } };
   }
@@ -95,7 +96,7 @@ export class ArticleJobController {
     @Param('projectId') projectId: string,
     @Body() dto: CreateBatchArticleJobsDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const result = await this.articleJobService.createBatch(ctx.organizationId, projectId, dto);
     const traceId = result.jobs[0]?.traceId ?? `tr_batch_${projectId}`;
     return { data: result, meta: { traceId } };
@@ -107,7 +108,7 @@ export class ArticleJobController {
     @Param('projectId') projectId: string,
     @Query('siteId') siteId?: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
     const data = await this.articleJobService.getProjectStats(
       ctx.organizationId,
       projectId,
@@ -123,7 +124,7 @@ export class ArticleJobController {
     @Param('projectId') projectId: string,
     @Body() dto: BatchRetryArticleJobsDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.articleJobService.batchRetry(
       ctx.organizationId,
       projectId,
@@ -139,7 +140,7 @@ export class ArticleJobController {
     @Param('projectId') projectId: string,
     @Body() dto: BatchDeleteArticleJobsDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.articleJobService.batchRemove(
       ctx.organizationId,
       projectId,
@@ -156,7 +157,7 @@ export class ArticleJobController {
     @Param('projectId') projectId: string,
     @Body() dto: BatchRetryArticleJobsDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.articleJobBriefService.batchApproveBrief(
       ctx,
       ctx.organizationId,
@@ -173,7 +174,7 @@ export class ArticleJobController {
     @Param('projectId') projectId: string,
     @Body() dto: BatchPublishArticleJobsDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.cmsPublishService.batchPublish(
       ctx.organizationId,
       projectId,
@@ -191,7 +192,7 @@ export class ArticleJobController {
     @Body() dto: BatchExportArticleJobsDto,
     @Res() res: Response,
   ): Promise<void> {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const pack = await this.exportService.buildBatchExportPackage(
       ctx.organizationId,
       projectId,
@@ -226,7 +227,7 @@ export class ArticleJobController {
     @Query('status') status?: string,
     @Query('siteId') siteId?: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
     const result = await this.articleJobService.findMany(
       ctx.organizationId,
       projectId,
@@ -263,7 +264,7 @@ export class ArticleJobController {
     @Param('projectId') projectId: string,
     @Param('id') id: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
     const job = await this.articleJobService.findOne(ctx.organizationId, projectId, id);
     return { data: job, meta: { traceId: job.traceId } };
   }
@@ -275,7 +276,7 @@ export class ArticleJobController {
     @Param('projectId') projectId: string,
     @Param('id') id: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.articleJobService.remove(
       ctx.organizationId,
       projectId,
@@ -292,7 +293,7 @@ export class ArticleJobController {
     @Param('projectId') projectId: string,
     @Param('id') id: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const job = await this.articleJobService.retry(ctx.organizationId, projectId, id);
     return { data: job, meta: { traceId: job.traceId } };
   }
@@ -304,7 +305,7 @@ export class ArticleJobController {
     @Param('projectId') projectId: string,
     @Param('id') id: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const job = await this.articleJobService.triggerSemrushCheck(ctx.organizationId, projectId, id);
     return { data: job, meta: { traceId: job.traceId } };
   }
@@ -315,7 +316,7 @@ export class ArticleJobController {
     @Param('projectId') projectId: string,
     @Param('id') id: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const job = await this.articleJobService.cancelSemrushCheck(ctx.organizationId, projectId, id);
     return { data: job, meta: { traceId: job.traceId } };
   }
@@ -328,7 +329,7 @@ export class ArticleJobController {
     @Param('id') id: string,
     @Body() dto: RefreshArticleJobSerpDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const job = await this.articleJobService.refreshSerp(
       ctx.organizationId,
       projectId,
@@ -346,7 +347,7 @@ export class ArticleJobController {
     @Param('id') id: string,
     @Body() dto: RerunArticleOptimizationDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const job = await this.articleJobService.rerunOptimization(
       ctx.organizationId,
       projectId,
@@ -363,7 +364,7 @@ export class ArticleJobController {
     @Param('projectId') projectId: string,
     @Param('id') id: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const job = await this.articleJobService.rerunParaphrase(ctx.organizationId, projectId, id);
     return { data: job, meta: { traceId: job.traceId } };
   }
@@ -376,7 +377,7 @@ export class ArticleJobController {
     @Param('id') id: string,
     @Body() dto: RewriteArticleJobDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const job = await this.articleJobRewriteService.triggerRewrite(
       ctx.organizationId,
       projectId,
@@ -393,7 +394,7 @@ export class ArticleJobController {
     @Param('id') id: string,
     @Body() dto: AcceptRewriteArticleJobDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const job = await this.articleJobRewriteService.acceptRewrite(
       ctx.organizationId,
       projectId,
@@ -409,7 +410,7 @@ export class ArticleJobController {
     @Param('projectId') projectId: string,
     @Param('id') id: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const job = await this.articleJobRewriteService.discardRewrite(
       ctx.organizationId,
       projectId,
@@ -425,7 +426,7 @@ export class ArticleJobController {
     @Param('id') id: string,
     @Body() dto: PatchArticleDraftDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const job = await this.articleJobDraftEditService.patchDraft(
       ctx,
       ctx.organizationId,
@@ -442,7 +443,7 @@ export class ArticleJobController {
     @Param('projectId') projectId: string,
     @Param('id') id: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
     const result = await this.articleJobDraftEditService.listEditHistory(
       ctx.organizationId,
       projectId,
@@ -458,7 +459,7 @@ export class ArticleJobController {
     @Param('id') id: string,
     @Body() dto: RollbackArticleDraftDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const job = await this.articleJobDraftEditService.rollbackDraft(
       ctx,
       ctx.organizationId,
@@ -476,7 +477,7 @@ export class ArticleJobController {
     @Param('id') id: string,
     @Body() dto: ResolveDraftStaleDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const job = await this.articleJobDraftEditService.resolveStaleAction(
       ctx,
       ctx.organizationId,
@@ -500,7 +501,7 @@ export class ArticleJobController {
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File | undefined,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.articleJobDraftImageService.uploadDraftImage(
       ctx.organizationId,
       projectId,
@@ -543,7 +544,7 @@ export class ArticleJobController {
     @Param('id') id: string,
     @Body() dto: ReviewArticleJobDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const job = await this.articleJobReviewService.approve(
       ctx,
       ctx.organizationId,
@@ -561,7 +562,7 @@ export class ArticleJobController {
     @Param('id') id: string,
     @Body() dto: ReviewArticleJobDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const job = await this.articleJobReviewService.reject(
       ctx,
       ctx.organizationId,
@@ -580,7 +581,7 @@ export class ArticleJobController {
     @Param('id') id: string,
     @Body() dto: PublishArticleJobDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.cmsPublishService.publishJob(
       ctx.organizationId,
       projectId,
@@ -598,7 +599,7 @@ export class ArticleJobController {
     @Param('id') id: string,
     @Body() dto: PatchInternalLinksDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.articleJobInternalLinksService.patchInternalLinks(
       ctx.organizationId,
       projectId,
@@ -615,7 +616,7 @@ export class ArticleJobController {
     @Param('projectId') projectId: string,
     @Param('id') id: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.articleJobInternalLinksService.reapplyInternalLinks(
       ctx.organizationId,
       projectId,
@@ -631,7 +632,7 @@ export class ArticleJobController {
     @Param('id') id: string,
     @Body() dto: PatchArticleBriefDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.articleJobBriefService.patchBrief(
       ctx.organizationId,
       projectId,
@@ -648,7 +649,7 @@ export class ArticleJobController {
     @Param('projectId') projectId: string,
     @Param('id') id: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.articleJobBriefService.approveBrief(
       ctx,
       ctx.organizationId,
@@ -665,7 +666,7 @@ export class ArticleJobController {
     @Param('projectId') projectId: string,
     @Param('id') id: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.articleJobBriefService.regenerateBrief(
       ctx.organizationId,
       projectId,

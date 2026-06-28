@@ -44,6 +44,18 @@ export const refreshTokenApi = (data?: object) => {
   return http.request<RefreshTokenResult>("post", "/api/v1/auth/refresh-token", { data });
 };
 
+export interface AuthAccessMeta {
+  permissionCatalog: Array<{
+    id: string;
+    name: string;
+    module: string;
+    description?: string;
+    sortOrder: number;
+  }>;
+  roleDefaultPermissions: Record<string, string[]>;
+  permissionImplies: Record<string, string[]>;
+}
+
 export interface AuthProfile {
   id: string;
   email: string;
@@ -54,6 +66,7 @@ export interface AuthProfile {
   permissions: string[];
   grants: string[];
   visibleMenuKeys: string[];
+  accessMeta?: AuthAccessMeta;
 }
 
 export type AuthProfileResult = {

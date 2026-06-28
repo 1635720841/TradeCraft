@@ -26,26 +26,20 @@
       </div>
     </div>
 
-    <section class="overview-metrics" aria-label="SEO 内容工厂关键指标">
-      <article
-        v-for="metric in overviewMetrics"
-        :key="metric.label"
-        class="overview-metric"
-      >
-        <div class="overview-metric__label">
-          <span>{{ metric.label }}</span>
-          <IconifyIconOnline :icon="metric.icon" class="overview-metric__icon" />
-        </div>
-        <div class="overview-metric__value">{{ metric.value }}</div>
-        <div class="overview-metric__hint">{{ metric.hint }}</div>
-      </article>
-    </section>
+    <SetupChecklistPanel
+      v-if="!projectSetupAllDone"
+      v-loading="projectSetupLoading"
+      class="seo-overview__setup"
+      title="项目上手清单"
+      description="按顺序完成配置，产线即可稳定出稿。"
+      :items="projectSetupItems"
+    />
 
     <div class="overview-layout">
       <section v-loading="loading" class="overview-panel">
         <header class="overview-panel__head">
           <div>
-            <span class="overview-panel__kicker">Priority Queue</span>
+            <span class="overview-panel__kicker">优先处理</span>
             <h2 class="overview-panel__title">今日待办</h2>
             <p class="overview-panel__desc">
               把会阻塞发文、审核和搜索表现的数据放在这里，运营先处理这些。
@@ -92,7 +86,7 @@
       <section class="overview-panel">
         <header class="overview-panel__head">
           <div>
-            <span class="overview-panel__kicker">Next Action</span>
+            <span class="overview-panel__kicker">快速开始</span>
             <h2 class="overview-panel__title">快速开始</h2>
             <p class="overview-panel__desc">
               新项目先配置站点素材，再从关键词或任务入口开始排产。
@@ -114,7 +108,12 @@
             </el-button>
           </div>
           <div v-else class="quick-actions">
-            <el-button type="primary" class="quick-action" @click="goCreate">
+            <el-button
+              v-if="canCreateJob"
+              type="primary"
+              class="quick-action"
+              @click="goCreate"
+            >
               <IconifyIconOnline icon="ri:add-line" class="mr-1" />
               新建任务
             </el-button>
@@ -203,7 +202,7 @@
       <section class="overview-panel overview-guide">
         <header class="overview-panel__head">
           <div>
-            <span class="overview-panel__kicker">Operating Model</span>
+            <span class="overview-panel__kicker">运营流程</span>
             <h2 class="overview-panel__title">运营流程</h2>
             <p class="overview-panel__desc">
               推荐用法是先统一站点素材，再按主题排产，最后用搜索表现反哺改稿。
@@ -258,17 +257,25 @@ import { listKeywordClusters, type KeywordClusterItem } from "@/api/seo-factory/
 import { listSites } from "@/api/seo-factory/site";
 import type { SeoFactoryProjectStats, SiteItem } from "@/api/seo-factory/types";
 import { WORDPRESS_CMS_UI_ENABLED } from "@/constants/feature-flags";
-import { useUserStoreHook } from "@/store/modules/user";
+import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
+import { useProjectSetupChecklist } from "@/composables/seo-factory/useProjectSetupChecklist";
+import SetupChecklistPanel from "@/components/SetupChecklistPanel.vue";
 import { message } from "@/utils/message";
 
 defineOptions({ name: "WorkbenchOverviewView" });
 
 const route = useRoute();
 const router = useRouter();
-const userStore = useUserStoreHook();
 const projectId = route.params.projectId as string;
 
-const isAdmin = computed(() => userStore.roles.includes("admin"));
+const { can } = useProjectSeoAccess();
+const canCreateJob = computed(() => can("seo:job:create"));
+const canManageGsc = computed(() => can("seo:site:manage"));
+const {
+  loading: projectSetupLoading,
+  items: projectSetupItems,
+  allDone: projectSetupAllDone
+} = useProjectSetupChecklist(projectId);
 
 const loading = ref(false);
 const rerunningGscJobId = ref<string | null>(null);
@@ -287,40 +294,6 @@ const clusterHighlights = computed(() => {
     return (b.keywordCount ?? 0) - (a.keywordCount ?? 0);
   });
   return sorted.filter((item) => (item.keywordCount ?? 0) > 0).slice(0, 3);
-});
-
-const overviewMetrics = computed(() => {
-  const s = stats.value;
-  const completed = s?.completedJobs ?? 0;
-  const total = s?.totalJobs ?? 0;
-  const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
-
-  return [
-    {
-      label: "总任务",
-      value: total,
-      hint: `已完成 ${completed} 篇，完成率 ${completionRate}%`,
-      icon: "ri:file-list-3-line"
-    },
-    {
-      label: "进行中",
-      value: s?.activeJobs ?? 0,
-      hint: `队列 ${s?.queuedJobs ?? 0} · 优化中 ${s?.optimizingJobs ?? 0}`,
-      icon: "ri:loader-4-line"
-    },
-    {
-      label: "关键词资产",
-      value: s?.keywordTotalCount ?? 0,
-      hint: `可入队 ${s?.keywordQueueableCount ?? 0} · 未分组 ${s?.keywordUnclusteredCount ?? 0}`,
-      icon: "ri:search-eye-line"
-    },
-    {
-      label: "站点",
-      value: s?.siteCount ?? 0,
-      hint: `${s?.sitesMissingProfileCount ?? 0} 个站点待补充卖点`,
-      icon: "ri:global-line"
-    }
-  ];
 });
 
 interface PipelineStep {
@@ -502,7 +475,7 @@ const todoItems = computed<TodoItem[]>(() => {
     });
   }
 
-  if (isAdmin.value && s.gscPendingSyncCount > 0) {
+  if (canManageGsc.value && s.gscPendingSyncCount > 0) {
     items.push({
       id: "gsc-sync",
       tagLabel: "搜索",
@@ -514,7 +487,7 @@ const todoItems = computed<TodoItem[]>(() => {
     });
   }
 
-  if (isAdmin.value && s.gscStaleSyncCount > 0) {
+  if (canManageGsc.value && s.gscStaleSyncCount > 0) {
     items.push({
       id: "gsc-stale",
       tagLabel: "搜索",
@@ -527,6 +500,7 @@ const todoItems = computed<TodoItem[]>(() => {
   }
 
   if (
+    canManageGsc.value &&
     s.gscPendingSyncCount === 0 &&
     (s.gscUnderperformingJobs?.length ?? 0) > 0
   ) {

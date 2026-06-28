@@ -2,7 +2,7 @@
  * 根模块：组装平台层模块与项目类型插件。
  */
 
-import { Module } from '@nestjs/common';
+import { Module, Type } from '@nestjs/common';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { CoreModule } from './core/core.module';
 import { AccessModule } from './modules/access/access.module';
@@ -13,7 +13,12 @@ import { HealthModule } from './modules/health/health.module';
 import { OrganizationModule } from './modules/organization/organization.module';
 import { PromptModule } from './modules/prompt/prompt.module';
 import { ProjectModule } from './modules/project/project.module';
-import { SeoFactoryModule } from './project-types/seo-factory/seo-factory.module';
+import { NotificationModule } from './modules/notification/notification.module';
+import { getRegisteredProjectTypes } from './modules/project/project-type.registry';
+
+const projectTypeModules = getRegisteredProjectTypes().map(
+  (plugin) => plugin.register() as Type,
+);
 
 @Module({
   imports: [
@@ -27,7 +32,8 @@ import { SeoFactoryModule } from './project-types/seo-factory/seo-factory.module
     OrganizationModule,
     PromptModule,
     ProjectModule,
-    SeoFactoryModule,
+    NotificationModule,
+    ...projectTypeModules,
   ],
 })
 export class AppModule {}

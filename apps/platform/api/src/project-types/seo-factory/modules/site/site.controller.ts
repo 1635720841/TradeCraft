@@ -17,8 +17,9 @@ import { UpdateSiteDto } from './dto/update-site.dto';
 import { ListShopifyBlogsDto } from './dto/list-shopify-blogs.dto';
 import { SiteArticleCrawlerService } from './site-article-crawler.service';
 import { SiteService } from './site.service';
+import { seoFactoryRoutes } from '../../constants/seo-factory-routes';
 
-@Controller('api/v1/projects/:projectId/sites')
+@Controller(seoFactoryRoutes('sites'))
 export class SiteController {
   constructor(
     private readonly siteService: SiteService,
@@ -28,7 +29,7 @@ export class SiteController {
 
   @Get()
   async list(@ReqCtx() ctx: RequestContext, @Param('projectId') projectId: string) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoSiteRead(ctx.organizationId, projectId, ctx);
     const sites = await this.siteService.findMany(ctx.organizationId, projectId);
     return { data: sites, meta: { traceId: ctx.traceId } };
   }
@@ -39,7 +40,7 @@ export class SiteController {
     @Param('projectId') projectId: string,
     @Body() dto: CreateSiteDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoSiteManage(ctx.organizationId, projectId, ctx);
     const site = await this.siteService.create(ctx.organizationId, projectId, dto);
     return { data: site, meta: { traceId: ctx.traceId } };
   }
@@ -50,7 +51,7 @@ export class SiteController {
     @Param('projectId') projectId: string,
     @Body() dto: ListShopifyBlogsDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoSiteManage(ctx.organizationId, projectId, ctx);
     const data = await this.siteService.listShopifyBlogs(
       ctx.organizationId,
       projectId,
@@ -65,7 +66,7 @@ export class SiteController {
     @Param('projectId') projectId: string,
     @Body() dto: ListShopifyBlogsDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoSiteManage(ctx.organizationId, projectId, ctx);
     const data = await this.siteService.listShopifyProducts(
       ctx.organizationId,
       projectId,
@@ -81,7 +82,7 @@ export class SiteController {
     @Param('siteId') siteId: string,
     @Query('keyword') keyword?: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoSiteRead(ctx.organizationId, projectId, ctx);
     const conflicts = await this.siteService.findKeywordConflicts(
       ctx.organizationId,
       projectId,
@@ -97,7 +98,7 @@ export class SiteController {
     @Param('projectId') projectId: string,
     @Param('siteId') siteId: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoSiteRead(ctx.organizationId, projectId, ctx);
     const site = await this.siteService.findOne(ctx.organizationId, projectId, siteId);
     return { data: site, meta: { traceId: ctx.traceId } };
   }
@@ -109,7 +110,7 @@ export class SiteController {
     @Param('siteId') siteId: string,
     @Body() dto: UpdateSiteDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoSiteManage(ctx.organizationId, projectId, ctx);
     const site = await this.siteService.update(ctx.organizationId, projectId, siteId, dto);
     return { data: site, meta: { traceId: ctx.traceId } };
   }
@@ -120,7 +121,7 @@ export class SiteController {
     @Param('projectId') projectId: string,
     @Param('siteId') siteId: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoSiteManage(ctx.organizationId, projectId, ctx);
     const result = await this.siteService.clearSerpCache(
       ctx.organizationId,
       projectId,
@@ -137,7 +138,7 @@ export class SiteController {
     @Query('limit') limit?: string,
     @Query('seoArticlesOnly') seoArticlesOnly?: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoSiteRead(ctx.organizationId, projectId, ctx);
     const articles = await this.siteArticleCrawler.discoverForSite(
       ctx.organizationId,
       projectId,

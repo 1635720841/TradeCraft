@@ -9,6 +9,7 @@ import { PrismaService } from '../../core/database/prisma.service';
 import { BusinessException } from '../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../core/exceptions/error-codes';
 import { PermissionService } from './permission.service';
+import { sanitizeTenantUserGrants } from './permission.constants';
 
 @Injectable()
 export class AccessService {
@@ -37,10 +38,15 @@ export class AccessService {
       throw new BusinessException(ErrorCodes.NOT_FOUND, '用户不存在');
     }
 
-    const [grants, effectivePermissions] = await Promise.all([
+    const [rawGrants, effectivePermissions] = await Promise.all([
       this.permissionService.getUserPermissionIds(userId),
       this.permissionService.resolveUserPermissions(userId, user.role as Role),
     ]);
+
+    const grants =
+      user.role === PrismaRole.ADMIN || user.role === PrismaRole.MEMBER
+        ? sanitizeTenantUserGrants(rawGrants)
+        : rawGrants;
 
     return {
       user: {
@@ -94,9 +100,14 @@ export class AccessService {
       user.role as Role,
     );
 
+    const grantIds =
+      user.role === PrismaRole.ADMIN || user.role === PrismaRole.MEMBER
+        ? sanitizeTenantUserGrants(permissionIds)
+        : permissionIds;
+
     const grants = await this.permissionService.setUserGrants(
       targetUserId,
-      permissionIds,
+      grantIds,
       actorUserId,
     );
 

@@ -43,18 +43,6 @@ export interface SubscriptionPlan {
   isActive: boolean;
 }
 
-export interface QuotaTopUpResult {
-  organizationId: string;
-  articleQuotaBonus: number;
-  amount: number;
-}
-
-export interface RenewPeriodResult {
-  organizationId: string;
-  currentPeriodStart: string;
-  currentPeriodEnd: string;
-}
-
 /** 获取用量记录（分页） */
 export async function listBillingUsage(
   page = 1,
@@ -89,26 +77,4 @@ export async function listBillingPlans(): Promise<SubscriptionPlan[]> {
     "/api/v1/org/billing/plans"
   );
   return res.data ?? [];
-}
-
-/** 续期当前账期 */
-export async function renewBillingPeriod(): Promise<RenewPeriodResult> {
-  const res = await http.request<WmApiResponse<RenewPeriodResult>>(
-    "post",
-    "/api/v1/org/billing/renew"
-  );
-  return res.data;
-}
-
-/** 加购配额 */
-export async function addQuotaTopUp(
-  amount: number,
-  note?: string
-): Promise<QuotaTopUpResult> {
-  const res = await http.request<WmApiResponse<QuotaTopUpResult>>(
-    "post",
-    "/api/v1/org/billing/quota-topup",
-    { data: { amount, note } }
-  );
-  return res.data;
 }

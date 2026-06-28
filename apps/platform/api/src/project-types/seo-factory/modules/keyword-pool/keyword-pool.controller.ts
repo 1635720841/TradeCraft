@@ -20,9 +20,7 @@ import {
   Query,
 } from '@nestjs/common';
 import type { RequestContext } from '@wm/shared-core';
-import { Role } from '@wm/shared-core';
 import { ReqCtx } from '../../../../core/decorators/request-context.decorator';
-import { Roles } from '../../../../core/decorators/roles.decorator';
 import { ProjectService } from '../../../../modules/project/project.service';
 import { CreateJobFromKeywordDto } from './dto/create-job-from-keyword.dto';
 import { CreateJobsFromKeywordsDto } from './dto/create-jobs-from-keywords.dto';
@@ -32,8 +30,9 @@ import { GenerateKeywordSeedsDto } from './dto/generate-keyword-seeds.dto';
 import { ImportKeywordsDto } from './dto/import-keywords.dto';
 import { UpdateKeywordDto } from './dto/update-keyword.dto';
 import { KeywordPoolService } from './keyword-pool.service';
+import { seoFactoryRoutes } from '../../constants/seo-factory-routes';
 
-@Controller('api/v1/projects/:projectId/keywords')
+@Controller(seoFactoryRoutes('keywords'))
 export class KeywordPoolController {
   constructor(
     private readonly keywordPoolService: KeywordPoolService,
@@ -52,7 +51,7 @@ export class KeywordPoolController {
     @Query('unclustered') unclustered?: string,
     @Query('queueable') queueable?: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoKeywordRead(ctx.organizationId, projectId, ctx);
     const result = await this.keywordPoolService.findMany(ctx.organizationId, projectId, {
       page: page ? Number(page) : 1,
       limit: limit ? Number(limit) : 20,
@@ -77,25 +76,23 @@ export class KeywordPoolController {
   }
 
   @Post()
-  @Roles(Role.ADMIN)
   async create(
     @ReqCtx() ctx: RequestContext,
     @Param('projectId') projectId: string,
     @Body() dto: CreateKeywordDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoKeywordManage(ctx.organizationId, projectId, ctx);
     const data = await this.keywordPoolService.create(ctx.organizationId, projectId, dto);
     return { data, meta: { traceId: ctx.traceId } };
   }
 
   @Post('import')
-  @Roles(Role.ADMIN)
   async importBatch(
     @ReqCtx() ctx: RequestContext,
     @Param('projectId') projectId: string,
     @Body() dto: ImportKeywordsDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoKeywordManage(ctx.organizationId, projectId, ctx);
     const data = await this.keywordPoolService.importMany(
       ctx.organizationId,
       projectId,
@@ -105,13 +102,12 @@ export class KeywordPoolController {
   }
 
   @Post('generate-seeds')
-  @Roles(Role.ADMIN)
   async generateSeeds(
     @ReqCtx() ctx: RequestContext,
     @Param('projectId') projectId: string,
     @Body() dto: GenerateKeywordSeedsDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoKeywordManage(ctx.organizationId, projectId, ctx);
     const data = await this.keywordPoolService.generateSeeds(
       ctx.organizationId,
       projectId,
@@ -121,13 +117,12 @@ export class KeywordPoolController {
   }
 
   @Post('enrich-metrics')
-  @Roles(Role.ADMIN)
   async enrichMetrics(
     @ReqCtx() ctx: RequestContext,
     @Param('projectId') projectId: string,
     @Body() dto: EnrichKeywordMetricsDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoKeywordManage(ctx.organizationId, projectId, ctx);
     const data = await this.keywordPoolService.enrichMetrics(ctx.organizationId, projectId, {
       ids: dto.ids,
       allMissing: dto.allMissing ?? !dto.ids?.length,
@@ -142,7 +137,7 @@ export class KeywordPoolController {
     @Param('projectId') projectId: string,
     @Body() dto: CreateJobsFromKeywordsDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.keywordPoolService.createJobsFromKeywords(
       ctx.organizationId,
       projectId,
@@ -153,14 +148,13 @@ export class KeywordPoolController {
   }
 
   @Patch(':id')
-  @Roles(Role.ADMIN)
   async update(
     @ReqCtx() ctx: RequestContext,
     @Param('projectId') projectId: string,
     @Param('id') id: string,
     @Body() dto: UpdateKeywordDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoKeywordManage(ctx.organizationId, projectId, ctx);
     const data = await this.keywordPoolService.update(ctx.organizationId, projectId, id, dto);
     return { data, meta: { traceId: ctx.traceId } };
   }
@@ -173,7 +167,7 @@ export class KeywordPoolController {
     @Param('id') id: string,
     @Body() dto: CreateJobFromKeywordDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.keywordPoolService.createJobFromKeyword(
       ctx.organizationId,
       projectId,

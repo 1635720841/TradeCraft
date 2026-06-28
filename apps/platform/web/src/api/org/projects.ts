@@ -26,6 +26,7 @@ export interface OrgProjectItem {
   myAccessStatus: ProjectMyAccessStatus;
   canEnter: boolean;
   canManage: boolean;
+  effectivePermissions?: string[];
   createdAt: string;
 }
 
@@ -54,6 +55,7 @@ export interface OrgProjectDetail {
   myAccessStatus: ProjectMyAccessStatus;
   canEnter: boolean;
   canManage: boolean;
+  effectivePermissions?: string[];
   createdAt: string;
   updatedAt: string;
   members: OrgProjectMember[];
@@ -69,11 +71,22 @@ export interface ProjectMemberPermissions {
   grants: string[];
   effectivePermissions: string[];
   grantablePermissionIds: string[];
+  roleDefaultPermissionIds: string[];
+  grantablePermissions: Array<{
+    id: string;
+    name: string;
+    description?: string;
+  }>;
+}
+
+export interface ProjectTypeDescriptor {
+  type: string;
+  label: string;
 }
 
 export interface CreateOrgProjectPayload {
   name: string;
-  projectType: "seo-factory";
+  projectType: string;
   accessStart?: string | null;
   accessEnd?: string | null;
 }
@@ -99,16 +112,13 @@ export interface UpdateProjectMemberPayload {
   permissionIds?: string[];
 }
 
-const PROJECT_PERMISSION_LABELS: Record<string, string> = {
-  "project:read": "查看项目",
-  "project:update": "管理项目",
-  "seo:job:create": "创建任务",
-  "seo:job:read": "查看任务",
-  "seo:keyword:manage": "管理词库",
-  "seo:site:manage": "管理站点"
-};
-
-export { PROJECT_PERMISSION_LABELS };
+export async function listProjectTypeCatalog(): Promise<ProjectTypeDescriptor[]> {
+  const res = await http.request<WmApiResponse<ProjectTypeDescriptor[]>>(
+    "get",
+    "/api/v1/org/projects/types/catalog"
+  );
+  return res.data ?? [];
+}
 
 export async function listOrgProjects(
   page = 1,

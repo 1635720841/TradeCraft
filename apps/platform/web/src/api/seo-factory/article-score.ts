@@ -3,13 +3,13 @@
  */
 
 import { http } from "@/utils/http";
+import { seoFactoryApiPath } from "./paths";
 import type { ArticleJobContentScoreSnapshot } from "./types";
 import type { WmApiResponse } from "./types";
 
 export interface ArticleContentScoreResult {
   jobId: string;
   targetKeyword: string;
-  contentScore?: ArticleJobContentScoreSnapshot;
   contentScore?: ArticleJobContentScoreSnapshot;
   overall: number;
   passed: boolean;
@@ -68,7 +68,7 @@ export async function scoreArticleJobContent(
 ): Promise<ArticleContentScoreResult> {
   const res = await http.request<WmApiResponse<ArticleContentScoreResult>>(
     "post",
-    `/api/v1/projects/${projectId}/article-jobs/${jobId}/content-score`,
+    seoFactoryApiPath(projectId, `article-jobs/${jobId}/content-score`),
     { data: payload }
   );
   return res.data;
@@ -87,6 +87,6 @@ export async function scoreArticleContentTrial(
 ): Promise<Omit<ArticleContentScoreResult, "jobId" | "contentScore">> {
   const res = await http.request<
     WmApiResponse<Omit<ArticleContentScoreResult, "jobId" | "contentScore">>
-  >("post", `/api/v1/projects/${projectId}/content-score/trial`, { data: payload });
+  >("post", seoFactoryApiPath(projectId, "content-score/trial"), { data: payload });
   return res.data;
 }

@@ -8,6 +8,7 @@ import { Role, type RequestContext } from '@wm/shared-core';
 import { PrismaService } from '../../core/database/prisma.service';
 import { BusinessException } from '../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../core/exceptions/error-codes';
+import { PERMISSION_CATALOG } from '../access/permission.constants';
 import {
   isWithinAccessWindow,
   listGrantablePermissionsForProjectType,
@@ -54,7 +55,7 @@ export class ProjectAccessService {
 
     const member = await this.prisma.projectMember.findUnique({
       where: { projectId_userId: { projectId: project.id, userId: ctx.userId } },
-      select: { id: true, accessStart: true, accessEnd: true },
+      select: { id: true, role: true, accessStart: true, accessEnd: true },
     });
 
     if (!member) {
@@ -63,6 +64,36 @@ export class ProjectAccessService {
 
     if (!isWithinAccessWindow(member.accessStart, member.accessEnd)) {
       throw new BusinessException(ErrorCodes.PROJECT_ACCESS_EXPIRED, '您的项目访问权限已过期');
+    }
+  }
+
+  /** 校验项目成员是否具备任一指定权限（SUPER_ADMIN 跳过） */
+  async assertMemberHasAnyPermission(
+    ctx: Pick<RequestContext, 'userId' | 'role'>,
+    project: { id: string; projectType: string },
+    required: readonly string[],
+  ): Promise<void> {
+    if (ctx.role === Role.SUPER_ADMIN || required.length === 0) {
+      return;
+    }
+
+    const member = await this.prisma.projectMember.findUnique({
+      where: { projectId_userId: { projectId: project.id, userId: ctx.userId } },
+      select: { id: true, role: true },
+    });
+
+    if (!member) {
+      throw new BusinessException(ErrorCodes.FORBIDDEN, '您不是该项目成员');
+    }
+
+    const effective = await this.resolveMemberPermissions(
+      member.id,
+      member.role,
+      project.projectType,
+    );
+    const allowed = required.some((id) => effective.includes(id));
+    if (!allowed) {
+      throw new BusinessException(ErrorCodes.FORBIDDEN, '无权执行此操作');
     }
   }
 
@@ -102,6 +133,8 @@ export class ProjectAccessService {
       member.role,
       projectType,
     );
+    const grantableIds = listGrantablePermissionsForProjectType(projectType);
+    const catalogById = new Map(PERMISSION_CATALOG.map((item) => [item.id, item]));
 
     return {
       member: {
@@ -116,7 +149,16 @@ export class ProjectAccessService {
       },
       grants,
       effectivePermissions,
-      grantablePermissionIds: listGrantablePermissionsForProjectType(projectType),
+      grantablePermissionIds: grantableIds,
+      roleDefaultPermissionIds: resolveProjectMemberRoleDefaults(member.role, projectType),
+      grantablePermissions: grantableIds.map((id) => {
+        const def = catalogById.get(id);
+        return {
+          id,
+          name: def?.name ?? id,
+          description: def?.description,
+        };
+      }),
     };
   }
 

@@ -42,7 +42,7 @@
           </div>
           <div class="job-detail-top__actions">
             <el-button
-              v-if="canRetry"
+              v-if="canRetry && canWriteJob"
               type="primary"
               size="small"
               :loading="retrying"
@@ -60,7 +60,7 @@
               下载 HTML
             </el-button>
             <el-button
-              v-if="cmsUiEnabled && canPublishToCms"
+              v-if="cmsUiEnabled && canPublishToCms && canWriteJob"
               type="success"
               size="small"
               plain
@@ -69,7 +69,14 @@
             >
               {{ cmsPublishButtonLabel }}
             </el-button>
-            <el-button type="danger" size="small" plain :loading="deleting" @click="handleDelete">
+            <el-button
+              v-if="canWriteJob"
+              type="danger"
+              size="small"
+              plain
+              :loading="deleting"
+              @click="handleDelete"
+            >
               删除
             </el-button>
           </div>
@@ -113,7 +120,12 @@
           <strong>{{ nextStep.title }}</strong>
           <span v-if="nextStep.description">{{ nextStep.description }}</span>
         </div>
-        <el-button size="small" :type="nextStep.buttonType" @click="nextStep.handler">
+        <el-button
+          v-if="canWriteJob"
+          size="small"
+          :type="nextStep.buttonType"
+          @click="nextStep.handler"
+        >
           {{ nextStep.label }}
         </el-button>
       </section>
@@ -553,6 +565,7 @@ import { jobStatusDict, keywordIntentDict } from "@/constants/dicts/seo-factory"
 import { LOCAL_SEO_PASS_THRESHOLD, SEMRUSH_PASS_THRESHOLD } from "@/constants/seo-factory";
 import { dictLabel, dictTagType } from "@/utils/dict";
 import { canPublishJobToCms, cmsPublishActionLabel } from "@/utils/seo-factory/cms-publish-status";
+import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
 import { workflowStepLabel } from "@/utils/seo-factory/workflow-progress";
 import { isBriefPending } from "@/utils/seo-factory/job-progress";
 import { resolveEffectiveLocalSeoScore } from "@/utils/seo-factory/local-seo-display";
@@ -588,6 +601,8 @@ const activeTab = ref("seo");
 
 const projectId = computed(() => route.params.projectId as string);
 const jobId = computed(() => route.params.jobId as string);
+const { can } = useProjectSeoAccess();
+const canWriteJob = computed(() => can("seo:job:create"));
 
 const { job, loading, polling, fetchOnce, startPolling } = useArticleJobPolling(
   projectId,
@@ -652,7 +667,11 @@ const draftEditBlockedReason = computed(() => {
 });
 
 const canSaveDraftEdit = computed(
-  () => hasDraftContent.value && !draftEditBlockedReason.value && !draftSaving.value
+  () =>
+    canWriteJob.value &&
+    hasDraftContent.value &&
+    !draftEditBlockedReason.value &&
+    !draftSaving.value
 );
 
 watch(draftViewMode, (mode) => {
@@ -906,7 +925,9 @@ const canTriggerRewrite = computed(
     !isSemrushChecking.value
 );
 
-const canRetry = computed(() => job.value?.status === "FAILED" && !retrying.value);
+const canRetry = computed(
+  () => canWriteJob.value && job.value?.status === "FAILED" && !retrying.value
+);
 
 const briefPending = computed(() => (job.value ? isBriefPending(job.value) : false));
 

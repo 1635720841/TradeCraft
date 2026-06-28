@@ -75,6 +75,17 @@ export default {
       }
     },
     {
+      path: "/console/health",
+      name: "ConsoleHealth",
+      component: () => import("@/views/console/ConsoleHealthView.vue"),
+      meta: {
+        title: "系统健康",
+        menuKey: "console:health",
+        permission: "console:tenant:read",
+        roles: ["super_admin", "platform_operator"]
+      }
+    },
+    {
       path: "/console/audit",
       name: "ConsoleAudit",
       component: () => import("@/views/console/ConsoleAuditView.vue"),

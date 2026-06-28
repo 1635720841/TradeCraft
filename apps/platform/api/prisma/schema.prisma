@@ -277,6 +277,7 @@ model CreditUsage {
   tokensOrCount  Int          @default(0)
   estimatedCost  Float        @default(0)
   traceId        String?
+  breakdown      Json?
   createdAt      DateTime     @default(now())
 
   @@index([organizationId, createdAt])
@@ -377,9 +378,39 @@ model ArticleJob {
   errorMessage   String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+  comments       ArticleJobComment[]
+  assignees      ArticleJobAssignee[]
 
   @@index([organizationId, projectId, status])
   @@index([organizationId, projectId, createdAt])
+}
+
+model ArticleJobComment {
+  id             String   @id @default(uuid())
+  organizationId String
+  projectId      String
+  jobId          String
+  job            ArticleJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  authorUserId   String
+  body           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId, projectId, jobId, createdAt])
+}
+
+model ArticleJobAssignee {
+  id             String   @id @default(uuid())
+  organizationId String
+  projectId      String
+  jobId          String
+  job            ArticleJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userId         String
+  assignedById   String?
+  createdAt      DateTime @default(now())
+
+  @@unique([jobId, userId])
+  @@index([organizationId, projectId, userId])
 }
 
 enum JobStatus {

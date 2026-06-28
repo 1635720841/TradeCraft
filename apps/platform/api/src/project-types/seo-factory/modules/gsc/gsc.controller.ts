@@ -16,8 +16,9 @@ import { Public } from '../../../../core/decorators/public.decorator';
 import { ReqCtx } from '../../../../core/decorators/request-context.decorator';
 import { ProjectService } from '../../../../modules/project/project.service';
 import { GscService } from './gsc.service';
+import { seoFactoryRoutes } from '../../constants/seo-factory-routes';
 
-@Controller('api/v1/projects/:projectId/sites/:siteId/gsc')
+@Controller(seoFactoryRoutes('sites/:siteId/gsc'))
 export class GscController {
   constructor(
     private readonly gscService: GscService,
@@ -30,7 +31,7 @@ export class GscController {
     @Param('projectId') projectId: string,
     @Param('siteId') siteId: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoSiteRead(ctx.organizationId, projectId, ctx);
     const data = await this.gscService.getStatus(ctx.organizationId, projectId, siteId);
     return { data, meta: { traceId: ctx.traceId } };
   }
@@ -41,7 +42,7 @@ export class GscController {
     @Param('projectId') projectId: string,
     @Param('siteId') siteId: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoSiteRead(ctx.organizationId, projectId, ctx);
     const data = await this.gscService.createConnectUrl(
       ctx.organizationId,
       projectId,
@@ -56,7 +57,7 @@ export class GscController {
     @Param('projectId') projectId: string,
     @Param('siteId') siteId: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoSiteManage(ctx.organizationId, projectId, ctx);
     const data = await this.gscService.sync(ctx.organizationId, projectId, siteId);
     return { data, meta: { traceId: ctx.traceId } };
   }
@@ -67,13 +68,13 @@ export class GscController {
     @Param('projectId') projectId: string,
     @Param('siteId') siteId: string,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoSiteManage(ctx.organizationId, projectId, ctx);
     const data = await this.gscService.disconnect(ctx.organizationId, projectId, siteId);
     return { data, meta: { traceId: ctx.traceId } };
   }
 }
 
-@Controller('api/v1/projects/:projectId/gsc')
+@Controller(seoFactoryRoutes('gsc'))
 export class GscProjectController {
   constructor(
     private readonly gscService: GscService,
@@ -82,7 +83,7 @@ export class GscProjectController {
 
   @Get('overview')
   async overview(@ReqCtx() ctx: RequestContext, @Param('projectId') projectId: string) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoSiteRead(ctx.organizationId, projectId, ctx);
     const data = await this.gscService.getProjectOverview(ctx.organizationId, projectId);
     return { data, meta: { traceId: ctx.traceId } };
   }
@@ -103,7 +104,7 @@ export class GscOAuthController {
     const webOrigin = process.env.WEB_APP_ORIGIN?.trim() || 'http://localhost:5173';
 
     if (error || !code || !state) {
-      res.redirect(`${webOrigin}/platform/projects?gsc=error`);
+      res.redirect(`${webOrigin}/welcome?gsc=error`);
       return;
     }
 
@@ -111,7 +112,7 @@ export class GscOAuthController {
       const redirectUrl = await this.gscService.handleOAuthCallback(code, state);
       res.redirect(redirectUrl);
     } catch {
-      res.redirect(`${webOrigin}/platform/projects?gsc=error`);
+      res.redirect(`${webOrigin}/welcome?gsc=error`);
     }
   }
 }

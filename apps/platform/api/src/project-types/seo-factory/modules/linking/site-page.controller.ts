@@ -28,10 +28,9 @@ import { ProjectService } from '../../../../modules/project/project.service';
 
 import { SitePageService } from './site-page.service';
 import { PatchSitePageDto } from './dto/patch-site-page.dto';
+import { seoFactoryRoutes } from '../../constants/seo-factory-routes';
 
-
-
-@Controller('api/v1/projects/:projectId/sites/:siteId/pages')
+@Controller(seoFactoryRoutes('sites/:siteId/pages'))
 
 export class SitePageController {
 
@@ -57,7 +56,7 @@ export class SitePageController {
 
   ) {
 
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
 
     const pages = await this.sitePageService.listForSite(ctx.organizationId, projectId, siteId);
 
@@ -81,7 +80,7 @@ export class SitePageController {
 
   ) {
 
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
 
     const result = await this.sitePageService.syncFromSitemap(
 
@@ -105,7 +104,7 @@ export class SitePageController {
     @Param('pageId') pageId: string,
     @Body() dto: PatchSitePageDto,
   ) {
-    await this.projectService.assertAccessible(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const page = await this.sitePageService.patchPage(
       ctx.organizationId,
       projectId,

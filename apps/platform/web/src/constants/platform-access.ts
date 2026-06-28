@@ -1,40 +1,7 @@
 /**
- * 平台权限 UI 常量（与后端 permission.constants.ts 对齐）。
+ * 平台 Console 权限 UI 常量（Console 访问控制页专用）。
+ * 租户侧权限目录与角色默认见 auth/me accessMeta。
  */
-
-/** 角色默认权限 ID */
-export const ROLE_DEFAULT_PERMISSION_IDS: Record<string, string[]> = {
-  ADMIN: [
-    "org:profile:read",
-    "org:profile:update",
-    "org:member:list",
-    "org:member:create",
-    "org:member:update",
-    "org:member:grant",
-    "org:billing:read",
-    "org:billing:manage",
-    "project:create",
-    "project:read",
-    "project:update",
-    "seo:job:create",
-    "seo:job:read",
-    "seo:keyword:manage",
-    "seo:site:manage"
-  ],
-  PLATFORM_OPERATOR: [
-    "console:tenant:list",
-    "console:tenant:read",
-    "console:tenant:create",
-    "console:tenant:update",
-    "console:audit:read"
-  ],
-  MEMBER: [
-    "org:profile:read",
-    "project:read",
-    "seo:job:create",
-    "seo:job:read"
-  ]
-};
 
 /** 权限模块分组标签 */
 export const PERMISSION_MODULE_LABELS: Record<string, string> = {
@@ -66,18 +33,6 @@ export const ORG_PERMISSION_SECTIONS: Array<{
     match: id => id.startsWith("org:billing:")
   }
 ];
-
-/** 勾选「管理」时自动附带「查看」 */
-export const PERMISSION_IMPLIES: Record<string, string[]> = {
-  "org:billing:manage": ["org:billing:read"],
-  "org:member:grant": ["org:member:list"],
-  "org:member:create": ["org:member:list"],
-  "org:member:update": ["org:member:list"],
-  "org:profile:update": ["org:profile:read"],
-  "console:tenant:create": ["console:tenant:list"],
-  "console:tenant:update": ["console:tenant:list", "console:tenant:read"],
-  "console:prompt:manage": ["console:prompt:read"]
-};
 
 /** 平台运营可授予的权限 ID（与后端 PLATFORM_GRANTABLE_PERMISSION_IDS 对齐） */
 export const PLATFORM_GRANTABLE_PERMISSION_IDS = [

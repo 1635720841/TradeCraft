@@ -20,6 +20,7 @@ import { PrismaService } from '../../../../core/database/prisma.service';
 import { LoggerService } from '../../../../core/logger/logger.service';
 import { StorageService } from '../../../../core/storage/storage.service';
 import { ARTICLE_JOB_QUEUE, PLAYWRIGHT_QUEUE } from '../../../../core/queue/queue.constants';
+import { OrgQueueLimiterService } from '../../../../core/queue/org-queue-limiter.service';
 import type {
   ArticleJobQueuePayload,
   ArticleJobScraperOptions,
@@ -75,7 +76,16 @@ export class ArticleJobService {
     private readonly storage: StorageService,
     @InjectQueue(ARTICLE_JOB_QUEUE) private readonly articleJobQueue: Queue<ArticleJobQueuePayload>,
     @InjectQueue(PLAYWRIGHT_QUEUE) private readonly playwrightQueue: Queue<PlaywrightJobPayload>,
+    private readonly orgQueueLimiter: OrgQueueLimiterService,
   ) {}
+
+  private async enqueueArticleJob(
+    payload: ArticleJobQueuePayload,
+    bullJobId: string,
+  ): Promise<void> {
+    await this.orgQueueLimiter.assertCanEnqueue(payload.organizationId);
+    await this.articleJobQueue.add('generate', payload, { jobId: bullJobId });
+  }
 
   async create(organizationId: string, projectId: string, dto: CreateArticleJobDto) {
     await this.billingService.assertArticleQuota(organizationId, 1);
@@ -125,8 +135,7 @@ export class ArticleJobService {
 
     const scraperOptions = this.buildScraperOptions(dto);
 
-    await this.articleJobQueue.add(
-      'generate',
+    await this.enqueueArticleJob(
       {
         jobId: job.id,
         traceId,
@@ -134,7 +143,7 @@ export class ArticleJobService {
         projectId,
         scraperOptions,
       },
-      { jobId: traceId },
+      traceId,
     );
 
     this.logger.info('Article job created and enqueued', {
@@ -1002,8 +1011,7 @@ export class ArticleJobService {
       },
     });
 
-    await this.articleJobQueue.add(
-      'generate',
+    await this.enqueueArticleJob(
       {
         jobId: job.id,
         traceId: retryTraceId,
@@ -1011,7 +1019,7 @@ export class ArticleJobService {
         projectId,
         resumeFrom: 'optimizing',
       },
-      { jobId: `rerun_opt_${job.id}_${Date.now()}` },
+      `rerun_opt_${job.id}_${Date.now()}`,
     );
 
     this.logger.info('Article job optimization rerun enqueued', {
@@ -1090,8 +1098,7 @@ export class ArticleJobService {
       },
     });
 
-    await this.articleJobQueue.add(
-      'generate',
+    await this.enqueueArticleJob(
       {
         jobId: job.id,
         traceId: retryTraceId,
@@ -1099,7 +1106,7 @@ export class ArticleJobService {
         projectId,
         resumeFrom: 'paraphrasing',
       },
-      { jobId: `rerun_para_${job.id}_${Date.now()}` },
+      `rerun_para_${job.id}_${Date.now()}`,
     );
 
     this.logger.info('Article job paraphrase rerun enqueued', {
@@ -1167,8 +1174,7 @@ export class ArticleJobService {
       },
     });
 
-    await this.articleJobQueue.add(
-      'generate',
+    await this.enqueueArticleJob(
       {
         jobId: job.id,
         traceId: retryTraceId,
@@ -1176,7 +1182,7 @@ export class ArticleJobService {
         projectId,
         resumeFrom,
       },
-      { jobId: `retry_${job.id}_${Date.now()}` },
+      `retry_${job.id}_${Date.now()}`,
     );
 
     this.logger.info('Article job retry enqueued', {

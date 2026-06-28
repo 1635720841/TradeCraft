@@ -2,12 +2,11 @@
  * 租户计费用量 HTTP 入口。
  */
 
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import type { RequestContext } from '@wm/shared-core';
 import { ReqCtx } from '../../core/decorators/request-context.decorator';
 import { Permissions } from '../../core/decorators/permissions.decorator';
 import { BillingService } from './billing.service';
-import { AddQuotaTopUpDto } from './dto/add-quota-topup.dto';
 import { SubscriptionPlanService } from './subscription-plan.service';
 
 @Controller('api/v1/org/billing')
@@ -52,25 +51,4 @@ export class OrgBillingController {
     return { data, meta: { traceId: ctx.traceId } };
   }
 
-  @Post('quota-topup')
-  @Permissions('org:billing:manage')
-  async addQuotaTopUp(@ReqCtx() ctx: RequestContext, @Body() dto: AddQuotaTopUpDto) {
-    const data = await this.subscriptionPlanService.addQuotaTopUp(
-      ctx.organizationId,
-      dto.amount,
-      dto.note,
-    );
-    return { data, meta: { traceId: ctx.traceId } };
-  }
-
-  @Post('renew')
-  @Permissions('org:billing:manage')
-  async renewPeriod(@ReqCtx() ctx: RequestContext) {
-    const data = await this.subscriptionPlanService.renewCurrentPeriod(ctx.organizationId);
-    return { data, meta: { traceId: ctx.traceId } };
-  }
 }
-
-/** @deprecated */
-@Controller('api/v1/platform/billing')
-export class LegacyBillingController extends OrgBillingController {}

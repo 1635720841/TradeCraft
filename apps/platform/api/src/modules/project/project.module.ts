@@ -6,11 +6,10 @@ import { Module } from '@nestjs/common';
 import { OrgProjectController } from './org-project.controller';
 import { ProjectAccessService } from './project-access.service';
 import { ProjectAdminService } from './project-admin.service';
-import { ProjectController } from './project.controller';
 import { ProjectService } from './project.service';
 
 @Module({
-  controllers: [ProjectController, OrgProjectController],
+  controllers: [OrgProjectController],
   providers: [ProjectService, ProjectAccessService, ProjectAdminService],
   exports: [ProjectService, ProjectAccessService],
 })

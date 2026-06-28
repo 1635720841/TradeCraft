@@ -4,10 +4,13 @@
 
 import { Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../core/database/prisma.service';
 import {
   ARTICLE_COMPLETED_EVENT,
+  ORG_QUOTA_LOW_EVENT,
   type ArticleCompletedPayload,
+  type OrgQuotaLowPayload,
 } from '../../core/event-bus/events';
 import { BusinessException } from '../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../core/exceptions/error-codes';
@@ -39,6 +42,7 @@ export class BillingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly logger: LoggerService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   @OnEvent(ARTICLE_COMPLETED_EVENT)
@@ -70,6 +74,7 @@ export class BillingService {
         tokensOrCount: 1,
         estimatedCost: 0,
         traceId: payload.traceId,
+        breakdown: { articleCompleted: 1 },
       },
     });
 
@@ -80,6 +85,33 @@ export class BillingService {
       jobId: payload.jobId,
       action: 'billing.article_recorded',
     });
+
+    await this.maybeEmitQuotaLow(payload.organizationId);
+  }
+
+  private async maybeEmitQuotaLow(organizationId: string): Promise<void> {
+    try {
+      const summary = await this.getQuotaSummary(organizationId);
+      const { remaining, periodQuota } = summary;
+      if (periodQuota <= 0) return;
+
+      const percentRemaining = Math.round((remaining / periodQuota) * 100);
+      const isLow = remaining < 10 || percentRemaining < 20;
+      if (!isLow) return;
+
+      const quotaPayload: OrgQuotaLowPayload = {
+        organizationId,
+        remaining,
+        monthlyQuota: periodQuota,
+        percentRemaining,
+      };
+      this.eventEmitter.emit(ORG_QUOTA_LOW_EVENT, quotaPayload);
+    } catch (err) {
+      this.logger.warn('Quota low check failed', {
+        organizationId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   async listUsage(organizationId: string, page: number, limit: number) {

@@ -8,6 +8,7 @@ import BackTopIcon from "@/assets/svg/back_top.svg?component";
 import { h, computed, Transition, defineComponent } from "vue";
 import { useRoute } from "vue-router";
 import { usePermissionStoreHook } from "@/store/modules/permission";
+import OrgSubscriptionBanner from "../OrgSubscriptionBanner.vue";
 
 const props = defineProps({
   fixedHeader: Boolean
@@ -122,6 +123,7 @@ const transitionMain = defineComponent({
     ]"
     :style="getSectionStyle"
   >
+    <OrgSubscriptionBanner />
     <router-view>
       <template #default="{ Component, route }">
         <LayFrame :currComp="Component" :currRoute="route">

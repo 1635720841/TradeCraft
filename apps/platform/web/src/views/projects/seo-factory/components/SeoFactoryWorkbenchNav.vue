@@ -31,7 +31,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { useUserStoreHook } from "@/store/modules/user";
+import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
 
 defineOptions({ name: "SeoFactoryWorkbenchNav" });
 
@@ -43,7 +43,7 @@ const NAV_ITEMS: Array<{
   description: string;
   icon: string;
   route: string;
-  roles: string[];
+  seoPermission: string | string[];
 }> = [
   {
     key: "overview",
@@ -51,7 +51,7 @@ const NAV_ITEMS: Array<{
     description: "产线状态",
     icon: "ri:dashboard-3-line",
     route: "SeoFactoryOverview",
-    roles: ["admin", "common"]
+    seoPermission: "seo:job:read"
   },
   {
     key: "jobs",
@@ -59,7 +59,7 @@ const NAV_ITEMS: Array<{
     description: "生成与发布",
     icon: "ri:article-line",
     route: "SeoFactoryJobs",
-    roles: ["admin", "common"]
+    seoPermission: "seo:job:read"
   },
   {
     key: "keywords",
@@ -67,7 +67,7 @@ const NAV_ITEMS: Array<{
     description: "选题与排产",
     icon: "ri:search-2-line",
     route: "SeoFactoryKeywords",
-    roles: ["admin", "common"]
+    seoPermission: "seo:job:read"
   },
   {
     key: "sites",
@@ -75,7 +75,7 @@ const NAV_ITEMS: Array<{
     description: "品牌素材",
     icon: "ri:global-line",
     route: "SeoFactorySites",
-    roles: ["admin", "common"]
+    seoPermission: "seo:job:read"
   },
   {
     key: "settings",
@@ -83,7 +83,7 @@ const NAV_ITEMS: Array<{
     description: "集成与实验",
     icon: "ri:settings-3-line",
     route: "SeoFactorySettings",
-    roles: ["admin"]
+    seoPermission: "seo:site:manage"
   }
 ];
 
@@ -104,11 +104,11 @@ const SETTINGS_ROUTE_NAMES = new Set([
 
 const route = useRoute();
 const router = useRouter();
-const userStore = useUserStoreHook();
 const projectId = computed(() => route.params.projectId as string);
+const { can } = useProjectSeoAccess();
 
 const visibleNavItems = computed(() =>
-  NAV_ITEMS.filter((item) => item.roles.some((role) => userStore.roles.includes(role)))
+  NAV_ITEMS.filter(item => can(item.seoPermission))
 );
 
 const activeNav = computed((): NavKey => {
@@ -122,7 +122,7 @@ const activeNav = computed((): NavKey => {
 });
 
 function onNavSelect(key: NavKey) {
-  const item = NAV_ITEMS.find((nav) => nav.key === key);
+  const item = NAV_ITEMS.find(nav => nav.key === key);
   if (!item || activeNav.value === item.key) return;
   router.push({ name: item.route, params: { projectId: projectId.value } });
 }

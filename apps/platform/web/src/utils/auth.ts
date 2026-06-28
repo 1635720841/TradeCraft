@@ -21,6 +21,8 @@ export interface DataInfo<T> {
   permissions?: Array<string>;
   /** 后端下发的可见菜单 key（与 router meta.menuKey 对齐） */
   visibleMenuKeys?: Array<string>;
+  /** 权限目录与角色默认（auth/me accessMeta） */
+  accessMeta?: import("@/api/user").AuthAccessMeta | null;
 }
 
 export const userKey = "user-info";

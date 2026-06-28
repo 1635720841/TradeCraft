@@ -10,6 +10,7 @@ import {
 import {
   type UserResult,
   type RefreshTokenResult,
+  type AuthAccessMeta,
   getAuthProfile,
   getLogin,
   refreshTokenApi
@@ -46,6 +47,8 @@ export const useUserStore = defineStore("pure-user", {
       storageLocal().getItem<DataInfo<number>>(userKey)?.permissions ?? [],
     visibleMenuKeys:
       storageLocal().getItem<DataInfo<number>>(userKey)?.visibleMenuKeys ?? [],
+    accessMeta:
+      storageLocal().getItem<DataInfo<number>>(userKey)?.accessMeta ?? null,
     // 是否勾选了登录页的免登录
     isRemembered: false,
     // 登录页的免登录存储几天，默认7天
@@ -75,6 +78,26 @@ export const useUserStore = defineStore("pure-user", {
     /** 存储可见菜单 key */
     SET_VISIBLE_MENU_KEYS(keys: Array<string>) {
       this.visibleMenuKeys = keys;
+    },
+    /** 存储访问元数据（权限目录等） */
+    SET_ACCESS_META(meta: AuthAccessMeta | null) {
+      this.accessMeta = meta;
+    },
+    /** 合并 accessMeta 并写入 localStorage（旧会话补全用） */
+    patchAccessMeta(partial: Partial<AuthAccessMeta>) {
+      const next: AuthAccessMeta = {
+        permissionCatalog:
+          partial.permissionCatalog ?? this.accessMeta?.permissionCatalog ?? [],
+        roleDefaultPermissions:
+          partial.roleDefaultPermissions ??
+          this.accessMeta?.roleDefaultPermissions ??
+          {},
+        permissionImplies:
+          partial.permissionImplies ?? this.accessMeta?.permissionImplies ?? {}
+      };
+      this.SET_ACCESS_META(next);
+      const cached = storageLocal().getItem<DataInfo<number>>(userKey) ?? {};
+      storageLocal().setItem(userKey, { ...cached, accessMeta: next });
     },
     /** 存储是否勾选了登录页的免登录 */
     SET_ISREMEMBERED(bool: boolean) {
@@ -121,6 +144,7 @@ export const useUserStore = defineStore("pure-user", {
         this.SET_ROLES([role]);
         this.SET_PERMS(permissions);
         this.SET_VISIBLE_MENU_KEYS(visibleMenuKeys);
+        this.SET_ACCESS_META(profile.accessMeta ?? null);
 
         const cached = storageLocal().getItem<DataInfo<number>>(userKey) ?? {};
         storageLocal().setItem(userKey, {
@@ -129,7 +153,8 @@ export const useUserStore = defineStore("pure-user", {
           nickname: profile.name ?? profile.email,
           roles: [role],
           permissions,
-          visibleMenuKeys
+          visibleMenuKeys,
+          accessMeta: profile.accessMeta ?? null
         });
 
         usePermissionStoreHook().handleWholeMenus([]);
@@ -137,12 +162,22 @@ export const useUserStore = defineStore("pure-user", {
         // 未登录或 token 失效时由 HTTP 拦截器处理
       }
     },
+    /** 旧会话缺少 accessMeta 时从 /auth/me 补全 */
+    async ensureAuthProfile() {
+      const meta = this.accessMeta;
+      const hasRoleDefaults =
+        meta?.roleDefaultPermissions &&
+        Object.keys(meta.roleDefaultPermissions).length > 0;
+      if (hasRoleDefaults) return;
+      await this.syncAuthProfile();
+    },
     /** 前端登出（不调用接口） */
     logOut() {
       this.username = "";
       this.roles = [];
       this.permissions = [];
       this.visibleMenuKeys = [];
+      this.accessMeta = null;
       removeToken();
       useMultiTagsStoreHook().handleTags("equal", [...routerArrays]);
       resetRouter();

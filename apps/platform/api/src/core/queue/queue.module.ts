@@ -10,6 +10,7 @@
 
 import { BullModule } from '@nestjs/bullmq';
 import { Global, Module } from '@nestjs/common';
+import { OrgQueueLimiterService } from './org-queue-limiter.service';
 
 @Global()
 @Module({
@@ -20,6 +21,7 @@ import { Global, Module } from '@nestjs/common';
       },
     }),
   ],
-  exports: [BullModule],
+  providers: [OrgQueueLimiterService],
+  exports: [BullModule, OrgQueueLimiterService],
 })
 export class QueueModule {}

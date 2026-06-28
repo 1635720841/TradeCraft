@@ -148,7 +148,9 @@ pnpm dev:web    # http://localhost:5173
 | 地址 | 预期 |
 |------|------|
 | http://localhost:5173 | 前端登录页（Mock：admin / 任意密码） |
-| http://localhost:5173/#/platform/projects | 项目列表（需登录，调真实 API） |
+| http://localhost:5173/#/welcome | 登录后工作台（项目入口） |
+| http://localhost:5173/#/org/projects | 企业管理 — 项目列表 |
+| http://localhost:5173/#/console/overview | 平台运营 Console（超管/平台管理员） |
 | http://localhost:3000/api/v1/health | API 健康检查 |
 
 ### 前端说明（pure-admin-thin）

@@ -11,7 +11,10 @@ import {
   PERMISSION_CATALOG,
   ROLE_DEFAULT_PERMISSIONS,
   TENANT_GRANTABLE_PERMISSION_IDS,
+  buildTenantAccessMeta,
   expandPermissionGrants,
+  listTenantPermissionCatalog,
+  sanitizeTenantUserGrants,
 } from './permission.constants';
 
 const WILDCARD = '*:*:*';
@@ -22,6 +25,14 @@ export class PermissionService {
 
   listCatalog() {
     return PERMISSION_CATALOG.map((item) => ({ ...item }));
+  }
+
+  listTenantCatalog() {
+    return listTenantPermissionCatalog();
+  }
+
+  buildTenantAccessMeta() {
+    return buildTenantAccessMeta();
   }
 
   async syncCatalogToDb(): Promise<void> {
@@ -59,7 +70,10 @@ export class PermissionService {
     }
 
     const defaults = ROLE_DEFAULT_PERMISSIONS[role] ?? [];
-    const grants = await this.getUserPermissionIds(userId);
+    let grants = await this.getUserPermissionIds(userId);
+    if (role === Role.ADMIN || role === Role.MEMBER) {
+      grants = sanitizeTenantUserGrants(grants);
+    }
     return [...new Set([...defaults, ...grants])];
   }
 

@@ -1,4 +1,5 @@
 import type { RouteRecordName } from "vue-router";
+import type { AuthAccessMeta } from "@/api/user";
 
 export type cacheType = {
   mode: string;
@@ -43,6 +44,7 @@ export type userType = {
   roles?: Array<string>;
   permissions?: Array<string>;
   visibleMenuKeys?: Array<string>;
+  accessMeta?: AuthAccessMeta | null;
   isRemembered?: boolean;
   loginDay?: number;
 };

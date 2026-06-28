@@ -3,6 +3,7 @@
  */
 
 import { http } from "@/utils/http";
+import { seoFactoryApiPath } from "./paths";
 import type {
   DiscoveredSeoArticle,
   SiteItem,
@@ -19,7 +20,7 @@ import type {
 export async function listSites(projectId: string): Promise<SiteItem[]> {
   const res = await http.request<WmApiResponse<SiteItem[]>>(
     "get",
-    `/api/v1/projects/${projectId}/sites`
+    seoFactoryApiPath(projectId, "sites")
   );
   return res.data ?? [];
 }
@@ -31,7 +32,7 @@ export async function createSite(
 ): Promise<SiteItem> {
   const res = await http.request<WmApiResponse<SiteItem>>(
     "post",
-    `/api/v1/projects/${projectId}/sites`,
+    seoFactoryApiPath(projectId, "sites"),
     { data: payload }
   );
   return res.data;
@@ -45,7 +46,7 @@ export async function updateSite(
 ): Promise<SiteItem> {
   const res = await http.request<WmApiResponse<SiteItem>>(
     "patch",
-    `/api/v1/projects/${projectId}/sites/${siteId}`,
+    seoFactoryApiPath(projectId, `sites/${siteId}`),
     { data: payload }
   );
   return res.data;
@@ -58,7 +59,7 @@ export async function clearSiteSerpCache(
 ): Promise<{ deleted: number }> {
   const res = await http.request<WmApiResponse<{ deleted: number }>>(
     "post",
-    `/api/v1/projects/${projectId}/sites/${siteId}/serp-cache/clear`
+    seoFactoryApiPath(projectId, `sites/${siteId}/serp-cache/clear`)
   );
   return res.data ?? { deleted: 0 };
 }
@@ -72,7 +73,7 @@ export async function listSiteSeoArticles(
 ): Promise<DiscoveredSeoArticle[]> {
   const res = await http.request<WmApiResponse<DiscoveredSeoArticle[]>>(
     "get",
-    `/api/v1/projects/${projectId}/sites/${siteId}/seo-articles`,
+    seoFactoryApiPath(projectId, `sites/${siteId}/seo-articles`),
     { params: { limit, seoArticlesOnly } }
   );
   return res.data ?? [];
@@ -89,7 +90,7 @@ export async function listShopifyBlogs(
 ): Promise<ShopifyBlogItem[]> {
   const res = await http.request<WmApiResponse<ShopifyBlogItem[]>>(
     "post",
-    `/api/v1/projects/${projectId}/sites/shopify/blogs`,
+    seoFactoryApiPath(projectId, "sites/shopify/blogs"),
     { data: payload }
   );
   return res.data ?? [];
@@ -106,7 +107,7 @@ export async function listShopifyProducts(
 ): Promise<ShopifyProductItem[]> {
   const res = await http.request<WmApiResponse<ShopifyProductItem[]>>(
     "post",
-    `/api/v1/projects/${projectId}/sites/shopify/products`,
+    seoFactoryApiPath(projectId, "sites/shopify/products"),
     { data: payload }
   );
   return res.data ?? [];
@@ -119,7 +120,7 @@ export async function listSitePages(
 ): Promise<SitePageItem[]> {
   const res = await http.request<WmApiResponse<SitePageItem[]>>(
     "get",
-    `/api/v1/projects/${projectId}/sites/${siteId}/pages`
+    seoFactoryApiPath(projectId, `sites/${siteId}/pages`)
   );
   return res.data ?? [];
 }
@@ -131,7 +132,7 @@ export async function syncSitePages(
 ): Promise<SitePageSyncResult> {
   const res = await http.request<WmApiResponse<SitePageSyncResult>>(
     "post",
-    `/api/v1/projects/${projectId}/sites/${siteId}/pages/sync`
+    seoFactoryApiPath(projectId, `sites/${siteId}/pages/sync`)
   );
   return res.data ?? { discovered: 0, upserted: 0 };
 }
@@ -144,7 +145,7 @@ export async function patchSitePage(
 ): Promise<SitePageItem> {
   const res = await http.request<WmApiResponse<SitePageItem>>(
     "patch",
-    `/api/v1/projects/${projectId}/sites/${siteId}/pages/${pageId}`,
+    seoFactoryApiPath(projectId, `sites/${siteId}/pages/${pageId}`),
     { data: payload }
   );
   return res.data;

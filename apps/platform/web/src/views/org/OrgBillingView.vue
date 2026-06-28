@@ -1,5 +1,5 @@
 <!--
-  订阅与用量页：配额摘要、用量明细与续期操作。
+  订阅与用量页：配额摘要与用量明细（只读；续期/加购由平台 Console 操作）。
 -->
 <template>
   <div class="p-4 space-y-4">
@@ -7,23 +7,16 @@
       <template #header>
         <div class="flex flex-wrap items-center justify-between gap-2">
           <span class="font-medium">订阅与配额</span>
-          <div class="flex gap-2">
-            <el-button v-if="canManage" @click="openTopUp">加购配额</el-button>
-            <el-button v-if="canManage" type="primary" @click="handleRenew">
-              续期
-            </el-button>
-            <el-button link type="primary" @click="refreshQuota">刷新</el-button>
-          </div>
+          <el-button link type="primary" @click="refreshQuota">刷新</el-button>
         </div>
       </template>
 
       <el-alert
-        v-if="canRead && !canManage"
         class="mb-4"
         type="info"
         :closable="false"
         show-icon
-        title="当前仅有查看权限，续期与加购需「管理订阅与配额」权限。"
+        title="续期与加购配额由平台管理员在「平台管理 → 租户管理」中操作；企业侧仅可查看订阅与用量。"
       />
 
       <template v-if="profile">
@@ -34,6 +27,15 @@
           :closable="false"
           show-icon
           title="企业有效期已过，请联系平台管理员续期后继续使用。"
+        />
+
+        <el-alert
+          v-else-if="quotaLowWarning"
+          class="mb-4"
+          type="warning"
+          :closable="false"
+          show-icon
+          :title="quotaLowWarning"
         />
 
         <div class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -57,6 +59,16 @@
             :value="profile.quota.remaining"
             suffix="篇"
           />
+        </div>
+
+        <div class="mb-4 rounded-lg border border-gray-100 bg-gray-50/80 px-4 py-3">
+          <div class="text-sm text-gray-500">套餐能力（只读）</div>
+          <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-700">
+            <li>试用版：基础 SEO 工作台 + 按月篇数配额</li>
+            <li>标准版：完整工作流 + CMS 发布 + GSC 嵌入</li>
+            <li>企业版：更高配额 + Console 人工续期与加购</li>
+          </ul>
+          <p class="mt-2 text-xs text-gray-500">续期与加购请联系平台管理员，租户侧不可自助变更套餐。</p>
         </div>
 
         <div class="mb-4 rounded-lg border border-gray-100 bg-gray-50/80 px-4 py-3">
@@ -123,60 +135,30 @@
         />
       </div>
     </el-card>
-
-    <el-dialog v-model="topUpVisible" title="加购配额" width="400px" destroy-on-close>
-      <el-form label-width="80px">
-        <el-form-item label="加购数量">
-          <el-input-number v-model="topUpAmount" :min="1" :max="100000" class="w-full" />
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="topUpNote" maxlength="200" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="topUpVisible = false">取消</el-button>
-        <el-button type="primary" :loading="topUpSaving" @click="submitTopUp">确认</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { ElMessageBox } from "element-plus";
 import { getOrganizationProfile, type OrganizationProfile } from "@/api/org/organization";
-import {
-  addQuotaTopUp,
-  listBillingUsage,
-  renewBillingPeriod,
-  type CreditUsageItem
-} from "@/api/org/billing";
+import { listBillingUsage, type CreditUsageItem } from "@/api/org/billing";
 import { billingServiceTypeDict } from "@/constants/dicts/billing";
 import {
   planNameDict,
   subscriptionStatusDict
 } from "@/constants/dicts/platform";
 import { dictLabel, dictTagType } from "@/utils/dict";
-import { hasPerms } from "@/utils/auth";
 import { formatPeriodWindow } from "@/utils/period";
-import { message } from "@/utils/message";
 
 defineOptions({ name: "OrgBillingView" });
 
 const loadingQuota = ref(false);
 const loadingUsage = ref(false);
-const topUpSaving = ref(false);
 const profile = ref<OrganizationProfile | null>(null);
 const items = ref<CreditUsageItem[]>([]);
 const page = ref(1);
 const limit = ref(20);
 const total = ref(0);
-const topUpVisible = ref(false);
-const topUpAmount = ref(100);
-const topUpNote = ref("");
-
-const canRead = computed(() => hasPerms("org:billing:read"));
-const canManage = computed(() => hasPerms("org:billing:manage"));
 
 const quotaPercent = computed(() => {
   const quota = profile.value?.quota;
@@ -185,6 +167,19 @@ const quotaPercent = computed(() => {
     100,
     Math.round((quota.reservedTotal / quota.periodQuota) * 100)
   );
+});
+
+const quotaLowWarning = computed(() => {
+  const quota = profile.value?.quota;
+  if (!quota || quota.subscriptionActive === false) return "";
+  const total = quota.periodQuota;
+  if (total <= 0) return "";
+  const remaining = quota.remaining;
+  const percent = Math.round((remaining / total) * 100);
+  if (remaining < 10 || percent < 20) {
+    return `本月内容配额即将用尽（剩余 ${remaining} 篇，约 ${percent}%），请联系平台管理员续期或加购。`;
+  }
+  return "";
 });
 
 function formatTime(iso: string) {
@@ -216,48 +211,6 @@ async function fetchUsage() {
 function onSizeChange() {
   page.value = 1;
   void fetchUsage();
-}
-
-function openTopUp() {
-  topUpAmount.value = 100;
-  topUpNote.value = "";
-  topUpVisible.value = true;
-}
-
-async function submitTopUp() {
-  try {
-    await ElMessageBox.confirm(
-      `确认为本账期加购 ${topUpAmount.value} 篇文章配额？`,
-      "加购配额",
-      { type: "warning", confirmButtonText: "确认加购", cancelButtonText: "取消" }
-    );
-  } catch {
-    return;
-  }
-  topUpSaving.value = true;
-  try {
-    await addQuotaTopUp(topUpAmount.value, topUpNote.value.trim() || undefined);
-    message("配额加购成功", { type: "success" });
-    topUpVisible.value = false;
-    await refreshQuota();
-  } finally {
-    topUpSaving.value = false;
-  }
-}
-
-async function handleRenew() {
-  try {
-    await ElMessageBox.confirm(
-      "确认续期当前账期？续期后将重置本账期用量统计。",
-      "续期账期",
-      { type: "warning", confirmButtonText: "确认续期", cancelButtonText: "取消" }
-    );
-  } catch {
-    return;
-  }
-  await renewBillingPeriod();
-  message("账期已续期", { type: "success" });
-  await refreshQuota();
 }
 
 onMounted(async () => {

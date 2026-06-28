@@ -11,6 +11,7 @@ import { ErrorCodes } from '../../core/exceptions/error-codes';
 import { tenantVisibleProjectMemberUserFilter } from '../access/tenant-member-visibility';
 import { AuditService } from '../access/audit.service';
 import { ProjectAccessService } from './project-access.service';
+import { listProjectTypeDescriptors } from './project-type.descriptors';
 import type { CreateProjectDto } from './dto/create-project.dto';
 
 @Injectable()
@@ -88,6 +89,10 @@ export class ProjectService {
     });
 
     return new Map(rows.map((row) => [row.projectId, row._count._all]));
+  }
+
+  listProjectTypes() {
+    return listProjectTypeDescriptors();
   }
 
   async create(
@@ -228,7 +233,8 @@ export class ProjectService {
   async assertAccessible(
     organizationId: string,
     projectId: string,
-    actor?: Pick<RequestContext, 'userId' | 'role' | 'permissions'>,
+    actor?: Pick<RequestContext, 'userId' | 'role'>,
+    options?: { anyOf?: readonly string[] },
   ) {
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, organizationId },
@@ -251,8 +257,75 @@ export class ProjectService {
 
     if (actor) {
       await this.projectAccessService.assertUserCanUseProject(actor, project);
+      if (options?.anyOf?.length) {
+        await this.projectAccessService.assertMemberHasAnyPermission(
+          actor,
+          project,
+          options.anyOf,
+        );
+      }
     }
 
     return project;
+  }
+
+  assertSeoJobRead(
+    organizationId: string,
+    projectId: string,
+    actor: Pick<RequestContext, 'userId' | 'role'>,
+  ) {
+    return this.assertAccessible(organizationId, projectId, actor, {
+      anyOf: ['seo:job:read'],
+    });
+  }
+
+  assertSeoJobWrite(
+    organizationId: string,
+    projectId: string,
+    actor: Pick<RequestContext, 'userId' | 'role'>,
+  ) {
+    return this.assertAccessible(organizationId, projectId, actor, {
+      anyOf: ['seo:job:create'],
+    });
+  }
+
+  assertSeoKeywordRead(
+    organizationId: string,
+    projectId: string,
+    actor: Pick<RequestContext, 'userId' | 'role'>,
+  ) {
+    return this.assertAccessible(organizationId, projectId, actor, {
+      anyOf: ['seo:job:read', 'seo:keyword:manage'],
+    });
+  }
+
+  assertSeoKeywordManage(
+    organizationId: string,
+    projectId: string,
+    actor: Pick<RequestContext, 'userId' | 'role'>,
+  ) {
+    return this.assertAccessible(organizationId, projectId, actor, {
+      anyOf: ['seo:keyword:manage'],
+    });
+  }
+
+  assertSeoSiteRead(
+    organizationId: string,
+    projectId: string,
+    actor: Pick<RequestContext, 'userId' | 'role'>,
+  ) {
+    return this.assertAccessible(organizationId, projectId, actor, {
+      anyOf: ['seo:job:read', 'seo:site:manage'],
+    });
+  }
+
+  assertSeoSiteManage(
+    organizationId: string,
+    projectId: string,
+    actor: Pick<RequestContext, 'userId' | 'role'>,
+  ) {
+    return this.assertAccessible(organizationId, projectId, actor, {
+      anyOf: ['seo:site:manage'],
+    });
   }
 }

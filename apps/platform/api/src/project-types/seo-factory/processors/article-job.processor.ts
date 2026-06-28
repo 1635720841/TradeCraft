@@ -11,6 +11,7 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { ARTICLE_JOB_QUEUE } from '../../../core/queue/queue.constants';
+import { OrgQueueLimiterService } from '../../../core/queue/org-queue-limiter.service';
 import type { WorkflowResumeStep } from '../constants/workflow-resume';
 import { WorkflowService } from '../modules/workflow/workflow.service';
 
@@ -30,13 +31,17 @@ export interface ArticleJobQueuePayload {
 
 @Processor(ARTICLE_JOB_QUEUE)
 export class ArticleJobProcessor extends WorkerHost {
-  constructor(private readonly workflowService: WorkflowService) {
+  constructor(
+    private readonly workflowService: WorkflowService,
+    private readonly orgQueueLimiter: OrgQueueLimiterService,
+  ) {
     super();
   }
 
   async process(job: Job<ArticleJobQueuePayload>): Promise<void> {
     const { jobId, traceId, organizationId, projectId, resumeFrom, scraperOptions } = job.data;
 
+    await this.orgQueueLimiter.onJobActive(organizationId);
     try {
       await this.workflowService.runPhase1(
         jobId,
@@ -50,6 +55,8 @@ export class ArticleJobProcessor extends WorkerHost {
       const message = error instanceof Error ? error.message : '工作流执行失败';
       await this.workflowService.markFailed(jobId, traceId, organizationId, projectId, message);
       throw error;
+    } finally {
+      await this.orgQueueLimiter.onJobFinished(organizationId);
     }
   }
 }

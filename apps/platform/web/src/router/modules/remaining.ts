@@ -1,7 +1,19 @@
 import { $t } from "@/plugins/i18n";
-import { ensureProjectEnterable } from "../guards/project-access";
+import { ensureProjectRouteAccess } from "../guards/project-access";
+import { storageLocal } from "@pureadmin/utils";
+import { userKey } from "@/utils/auth";
+import { resolveConsoleEntryPath, resolveEntryPath } from "../utils";
 
 const Layout = () => import("@/layout/index.vue");
+
+function legacyOrgOrConsoleRedirect(orgPath: string) {
+  const userInfo = storageLocal().getItem(userKey);
+  const roles = userInfo?.roles ?? [];
+  if (roles.includes("platform_operator")) {
+    return resolveConsoleEntryPath(userInfo?.visibleMenuKeys);
+  }
+  return orgPath;
+}
 
 export default [
   {
@@ -24,12 +36,68 @@ export default [
   },
   {
     path: "/access-denied",
-    name: "AccessDenied",
-    component: () => import("@/views/error/403.vue"),
-    meta: {
-      title: $t("menus.pureAccessDenied"),
-      showLink: false
-    }
+    redirect: "/error/403",
+    meta: { title: $t("menus.pureAccessDenied"), showLink: false }
+  },
+  {
+    path: "/platform/billing",
+    redirect: () => legacyOrgOrConsoleRedirect("/org/billing"),
+    meta: { title: "用量统计", showLink: false }
+  },
+  {
+    path: "/platform/organization",
+    redirect: () => legacyOrgOrConsoleRedirect("/org/profile"),
+    meta: { title: "企业设置", showLink: false }
+  },
+  {
+    path: "/platform/prompts",
+    redirect: "/console/prompts",
+    meta: { title: "Prompt 运营台", showLink: false }
+  },
+  {
+    path: "/platform/tenants",
+    redirect: "/console/tenants",
+    meta: { title: "租户管理", showLink: false }
+  },
+  {
+    path: "/platform/overview",
+    redirect: "/console/overview",
+    meta: { title: "运营概览", showLink: false }
+  },
+  {
+    path: "/platform/audit",
+    redirect: "/console/audit",
+    meta: { title: "操作审计", showLink: false }
+  },
+  {
+    path: "/platform/access",
+    redirect: "/console/access",
+    meta: { title: "访问控制", showLink: false }
+  },
+  {
+    path: "/platform/menus",
+    redirect: "/console/access",
+    meta: { title: "菜单管理", showLink: false }
+  },
+  {
+    path: "/platform/projects",
+    redirect: () => {
+      const userInfo = storageLocal().getItem(userKey);
+      const roles = userInfo?.roles ?? [];
+      if (roles.includes("admin")) return "/org/projects";
+      if (roles.includes("platform_operator") || roles.includes("super_admin")) {
+        return resolveConsoleEntryPath(userInfo?.visibleMenuKeys);
+      }
+      return resolveEntryPath(userInfo);
+    },
+    meta: { title: "项目列表", showLink: false }
+  },
+  {
+    path: "/platform/projects/:projectId",
+    redirect: to => ({
+      path: `/projects/${to.params.projectId}/seo-factory/overview`
+    }),
+    meta: { title: "项目详情", showLink: false }
   },
   {
     path: "/server-error",
@@ -64,9 +132,9 @@ export default [
       showLink: false
     },
     beforeEnter: async (to) => {
-      const allowed = await ensureProjectEnterable(to.params.projectId);
+      const allowed = await ensureProjectRouteAccess(to);
       if (!allowed) {
-        return { path: "/access-denied" };
+        return { path: "/error/403" };
       }
     },
     children: [
@@ -82,7 +150,7 @@ export default [
               import("@/views/projects/seo-factory/WorkbenchOverviewView.vue"),
             meta: {
               title: "概览",
-              roles: ["admin", "common"],
+              seoPermission: "seo:job:read",
               showLink: false
             }
           },
@@ -92,7 +160,7 @@ export default [
             component: () => import("@/views/projects/seo-factory/JobListView.vue"),
             meta: {
               title: "任务",
-              roles: ["admin", "common"],
+              seoPermission: "seo:job:read",
               showLink: false
             }
           },
@@ -102,7 +170,7 @@ export default [
             component: () => import("@/views/projects/seo-factory/JobCreateView.vue"),
             meta: {
               title: "新建任务",
-              roles: ["admin", "common"],
+              seoPermission: "seo:job:create",
               showLink: false
             }
           },
@@ -112,7 +180,7 @@ export default [
             component: () => import("@/views/projects/seo-factory/JobDetailView.vue"),
             meta: {
               title: "任务详情",
-              roles: ["admin", "common"],
+              seoPermission: "seo:job:read",
               showLink: false
             }
           },
@@ -136,7 +204,7 @@ export default [
                 component: () => import("@/views/projects/seo-factory/KeywordPoolView.vue"),
                 meta: {
                   title: "关键词池",
-                  roles: ["admin", "common"],
+                  seoPermission: "seo:job:read",
                   showLink: false
                 }
               },
@@ -146,7 +214,7 @@ export default [
                 component: () => import("@/views/projects/seo-factory/TopicClusterView.vue"),
                 meta: {
                   title: "主题集群",
-                  roles: ["admin", "common"],
+                  seoPermission: "seo:job:read",
                   showLink: false
                 }
               }
@@ -158,7 +226,7 @@ export default [
             component: () => import("@/views/projects/seo-factory/SiteManageView.vue"),
             meta: {
               title: "站点",
-              roles: ["admin", "common"],
+              seoPermission: "seo:job:read",
               showLink: false
             }
           },
@@ -169,7 +237,7 @@ export default [
               import("@/views/projects/seo-factory/ScoreCalibrationLabView.vue"),
             meta: {
               title: "评分校准实验室",
-              roles: ["admin"],
+              seoPermission: "seo:job:create",
               showLink: false
             }
           },
@@ -180,7 +248,7 @@ export default [
               import("@/views/projects/seo-factory/ArticleContentScoreTrialView.vue"),
             meta: {
               title: "内容评分",
-              roles: ["admin"],
+              seoPermission: "seo:job:read",
               showLink: false
             }
           },
@@ -197,7 +265,7 @@ export default [
             component: () => import("@/views/projects/seo-factory/ProjectSettingsView.vue"),
             meta: {
               title: "设置",
-              roles: ["admin"],
+              seoPermission: "seo:site:manage",
               showLink: false
             }
           },
@@ -207,7 +275,7 @@ export default [
             component: () => import("@/views/projects/seo-factory/GscRedirectView.vue"),
             meta: {
               title: "搜索表现",
-              roles: ["admin"],
+              seoPermission: "seo:site:manage",
               showLink: false
             }
           },

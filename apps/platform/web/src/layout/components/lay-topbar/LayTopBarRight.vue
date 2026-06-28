@@ -19,6 +19,10 @@ const userStore = useUserStoreHook();
 
 const orgName = ref("我的企业");
 
+const isPlatformOperator = computed(() =>
+  userStore.roles.includes("platform_operator")
+);
+
 const roleLabel = computed(() => {
   if (userStore.roles.includes("super_admin")) {
     return dictLabel(memberRoleDict, "SUPER_ADMIN");
@@ -33,6 +37,7 @@ const roleLabel = computed(() => {
 });
 
 onMounted(async () => {
+  if (isPlatformOperator.value) return;
   try {
     const profile = await getOrganizationProfile();
     orgName.value = profile.name || "我的企业";
@@ -51,6 +56,7 @@ function goOrganization() {
     <LaySearch id="header-search" />
     <LayNotice id="header-notice" />
     <button
+      v-if="!isPlatformOperator"
       type="button"
       class="shell-topbar-action shell-topbar-workspace"
       @click="goOrganization"

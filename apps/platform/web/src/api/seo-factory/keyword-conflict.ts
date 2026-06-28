@@ -1,5 +1,6 @@
 import { http } from "@/utils/http";
-import type { WmApiResponse } from "@/api/types";
+import { seoFactoryApiPath } from "./paths";
+import type { WmApiResponse } from "./types";
 
 export type KeywordConflictReason = "exact" | "substring" | "similar";
 
@@ -26,7 +27,7 @@ export async function getSiteKeywordConflicts(
 ): Promise<KeywordConflictItem[]> {
   const res = await http.request<WmApiResponse<{ conflicts: KeywordConflictItem[] }>>(
     "get",
-    `/api/v1/projects/${projectId}/sites/${siteId}/keyword-conflicts`,
+    seoFactoryApiPath(projectId, `sites/${siteId}/keyword-conflicts`),
     { params: { keyword } }
   );
   return res.data.conflicts;

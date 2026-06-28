@@ -3,12 +3,12 @@
  */
 
 import { Module } from '@nestjs/common';
-import { OrgBillingController, LegacyBillingController } from './org-billing.controller';
+import { OrgBillingController } from './org-billing.controller';
 import { BillingService } from './billing.service';
 import { SubscriptionPlanService } from './subscription-plan.service';
 
 @Module({
-  controllers: [OrgBillingController, LegacyBillingController],
+  controllers: [OrgBillingController],
   providers: [BillingService, SubscriptionPlanService],
   exports: [BillingService, SubscriptionPlanService],
 })

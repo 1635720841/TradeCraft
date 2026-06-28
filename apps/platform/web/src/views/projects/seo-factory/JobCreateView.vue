@@ -11,7 +11,16 @@
         <span class="font-medium">新建文章任务</span>
       </template>
 
-      <el-tabs v-model="activeTab">
+      <el-alert
+        v-if="!canCreateJob"
+        type="warning"
+        :closable="false"
+        show-icon
+        title="您没有创建任务的权限，请联系项目管理员授权"
+        class="mb-4"
+      />
+
+      <el-tabs v-model="activeTab" :class="{ 'pointer-events-none opacity-60': !canCreateJob }">
         <el-tab-pane label="单条关键词" name="single">
           <el-alert
             v-if="!sitesLoading && sites.length === 0"
@@ -149,7 +158,7 @@
               <el-button
                 type="primary"
                 :loading="submitting"
-                :disabled="sites.length === 0"
+                :disabled="sites.length === 0 || !canCreateJob"
                 @click="handleSingleSubmit"
               >
                 提交任务
@@ -297,12 +306,15 @@ import {
 } from "@/constants/dicts/seo-factory";
 import { dictDescription } from "@/utils/dict";
 import { message } from "@/utils/message";
+import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
 
 defineOptions({ name: "JobCreateView" });
 
 const route = useRoute();
 const router = useRouter();
 const projectId = route.params.projectId as string;
+const { can } = useProjectSeoAccess();
+const canCreateJob = computed(() => can("seo:job:create"));
 
 const activeTab = ref<"single" | "batch">("single");
 const singleFormRef = ref<FormInstance>();

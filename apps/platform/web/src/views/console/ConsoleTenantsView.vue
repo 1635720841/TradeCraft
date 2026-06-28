@@ -16,7 +16,7 @@
               @keyup.enter="search"
             />
             <el-button @click="search">搜索</el-button>
-            <el-button type="primary" @click="openCreate">新建租户</el-button>
+            <el-button v-if="canCreateTenant" type="primary" @click="openCreate">新建租户</el-button>
           </div>
         </div>
       </template>
@@ -50,8 +50,8 @@
             >
               详情
             </router-link>
-            <el-button type="primary" link @click="openEdit(row as TenantItem)">编辑</el-button>
-            <el-button type="primary" link @click="openTopUp(row as TenantItem)">加购</el-button>
+            <el-button v-if="canManageTenant" type="primary" link @click="openEdit(row as TenantItem)">编辑</el-button>
+            <el-button v-if="canManageTenant" type="primary" link @click="openTopUp(row as TenantItem)">加购</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -188,8 +188,8 @@
       </el-form>
       <template #footer>
         <el-button @click="editVisible = false">取消</el-button>
-        <el-button @click="handleRenew">续期</el-button>
-        <el-button type="primary" :loading="saving" @click="submitEdit">保存</el-button>
+        <el-button v-if="canManageTenant" @click="handleRenew">续期</el-button>
+        <el-button v-if="canManageTenant" type="primary" :loading="saving" @click="submitEdit">保存</el-button>
       </template>
     </el-dialog>
 
@@ -214,7 +214,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import type { FormInstance, FormRules } from "element-plus";
 import { ElMessageBox } from "element-plus";
 import {
@@ -231,10 +231,14 @@ import {
   subscriptionStatusDict
 } from "@/constants/dicts/platform";
 import { dictLabel, dictTagType } from "@/utils/dict";
+import { hasPerms } from "@/utils/auth";
 import { formatPeriodEnd } from "@/utils/period";
 import { message } from "@/utils/message";
 
 defineOptions({ name: "ConsoleTenantsView" });
+
+const canCreateTenant = computed(() => hasPerms("console:tenant:create"));
+const canManageTenant = computed(() => hasPerms("console:tenant:update"));
 
 const loading = ref(false);
 const saving = ref(false);
