@@ -37,13 +37,33 @@
           <div class="mt-0.5 whitespace-pre-wrap">{{ c.body }}</div>
         </div>
       </div>
-      <el-input
-        v-model="commentText"
-        type="textarea"
-        :rows="2"
-        placeholder="添加评论…"
-        :disabled="!canWrite"
-      />
+      <div class="relative">
+        <el-input
+          ref="commentInputRef"
+          v-model="commentText"
+          type="textarea"
+          :rows="2"
+          placeholder="添加评论…输入 @ 可提及成员"
+          :disabled="!canWrite"
+          @input="onCommentInput"
+          @keydown="onCommentKeydown"
+        />
+        <div
+          v-if="mentionOpen && mentionCandidates.length"
+          class="absolute bottom-full left-0 z-10 mb-1 max-h-32 w-full overflow-y-auto rounded border border-gray-200 bg-white shadow"
+        >
+          <button
+            v-for="member in mentionCandidates"
+            :key="member.userId"
+            type="button"
+            class="block w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
+            @mousedown.prevent="insertMention(member)"
+          >
+            {{ member.name || member.email }}
+            <span class="text-xs text-gray-400">{{ member.email }}</span>
+          </button>
+        </div>
+      </div>
       <el-button
         class="mt-2"
         size="small"
@@ -59,7 +79,8 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
+import type { InputInstance } from "element-plus";
 import {
   addJobComment,
   assignJobUser,
@@ -82,9 +103,64 @@ const comments = ref<JobComment[]>([]);
 const selectedAssignee = ref("");
 const commentText = ref("");
 const posting = ref(false);
+const mentionOpen = ref(false);
+const mentionQuery = ref("");
+const commentInputRef = ref<InputInstance>();
 
 function formatTime(iso: string) {
   return new Date(iso).toLocaleString("zh-CN");
+}
+
+const mentionCandidates = computed(() => {
+  const q = mentionQuery.value.trim().toLowerCase();
+  if (!q) return members.value.slice(0, 8);
+  return members.value
+    .filter((member) => {
+      const email = member.email.toLowerCase();
+      const name = (member.name ?? "").toLowerCase();
+      return email.includes(q) || name.includes(q);
+    })
+    .slice(0, 8);
+});
+
+function updateMentionState() {
+  const text = commentText.value;
+  const cursor = text.length;
+  const beforeCursor = text.slice(0, cursor);
+  const atIndex = beforeCursor.lastIndexOf("@");
+  if (atIndex < 0) {
+    mentionOpen.value = false;
+    mentionQuery.value = "";
+    return;
+  }
+  const fragment = beforeCursor.slice(atIndex + 1);
+  if (/\s/.test(fragment)) {
+    mentionOpen.value = false;
+    mentionQuery.value = "";
+    return;
+  }
+  mentionOpen.value = true;
+  mentionQuery.value = fragment;
+}
+
+function onCommentInput() {
+  updateMentionState();
+}
+
+function onCommentKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape") {
+    mentionOpen.value = false;
+  }
+}
+
+function insertMention(member: OrgProjectMember) {
+  const text = commentText.value;
+  const atIndex = text.lastIndexOf("@");
+  if (atIndex < 0) return;
+  commentText.value = `${text.slice(0, atIndex)}@${member.email} `;
+  mentionOpen.value = false;
+  mentionQuery.value = "";
+  commentInputRef.value?.focus();
 }
 
 async function refresh() {
@@ -117,6 +193,7 @@ async function submitComment() {
   try {
     await addJobComment(props.projectId, props.jobId, body);
     commentText.value = "";
+    mentionOpen.value = false;
     comments.value = await listJobComments(props.projectId, props.jobId);
   } finally {
     posting.value = false;

@@ -8,13 +8,26 @@ import { ReqCtx } from '../../../../core/decorators/request-context.decorator';
 import { ProjectService } from '../../../../modules/project/project.service';
 import { seoFactoryRoutes } from '../../constants/seo-factory-routes';
 import { ArticleJobCollabService } from './article-job-collab.service';
+import { ArticleJobActivityService } from './article-job-activity.service';
 
 @Controller(seoFactoryRoutes('article-jobs'))
 export class ArticleJobCollabController {
   constructor(
     private readonly collabService: ArticleJobCollabService,
     private readonly projectService: ProjectService,
+    private readonly activityService: ArticleJobActivityService,
   ) {}
+
+  @Get(':jobId/activity')
+  async listActivity(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('jobId') jobId: string,
+  ) {
+    await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
+    const data = await this.activityService.list(ctx.organizationId, projectId, jobId);
+    return { data, meta: { traceId: ctx.traceId } };
+  }
 
   @Get(':jobId/comments')
   async listComments(

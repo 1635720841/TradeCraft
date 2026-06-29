@@ -56,4 +56,9 @@ export class UpdateSiteDto {
   @ValidateNested()
   @Type(() => SiteSerpResearchSettingsDto)
   serpResearch?: SiteSerpResearchSettingsDto;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  ownerUserId?: string | null;
 }

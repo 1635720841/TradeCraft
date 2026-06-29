@@ -391,12 +391,36 @@ const todoItems = computed<TodoItem[]>(() => {
     return items;
   }
 
+  if ((s.myAssignedCount ?? 0) > 0) {
+    items.push({
+      id: "assigned-me",
+      tagLabel: "我的",
+      tagType: "warning",
+      text: `${s.myAssignedCount} 篇任务指派给您，请及时处理`,
+      actionLabel: "查看",
+      buttonType: "primary",
+      action: goAssignedToMe
+    });
+  }
+
+  if (s.canReviewInProject && (s.myReviewPendingCount ?? 0) > 0) {
+    items.push({
+      id: "review-me",
+      tagLabel: "审核",
+      tagType: "warning",
+      text: `${s.myReviewPendingCount} 篇待您确认大纲或敏感审核`,
+      actionLabel: "去处理",
+      buttonType: "warning",
+      action: goMyReviewPending
+    });
+  }
+
   if (s.sitesMissingProfileCount > 0) {
     items.push({
       id: "profile",
       tagLabel: "站点",
       tagType: "warning",
-      text: `${s.sitesMissingProfileCount} 个站点未填公司卖点，文章可能缺少行业信息、产品线或询盘引导`,
+      text: `${s.sitesMissingProfileCount} 个站点未填最少写作素材（行业 + 至少 1 条卖点）`,
       actionLabel: "去填写",
       buttonType: "warning",
       action: goSitesMissingProfile
@@ -627,6 +651,24 @@ function goReviews() {
     name: "SeoFactoryJobs",
     params: { projectId },
     query: navQuery({ stage: "reviewPending" })
+  });
+}
+
+function goAssignedToMe() {
+  router.push({
+    name: "SeoFactoryJobs",
+    params: { projectId },
+    query: navQuery({ assignedToMe: "1" })
+  });
+}
+
+function goMyReviewPending() {
+  const s = stats.value;
+  const stage = s && s.pendingBriefCount > 0 ? "outlinePending" : "reviewPending";
+  router.push({
+    name: "SeoFactoryJobs",
+    params: { projectId },
+    query: navQuery({ stage })
   });
 }
 

@@ -4,10 +4,11 @@
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { DRAFT_IMAGE_SIG_TTL_MS } from '../../constants/draft-image';
+import { seoFactoryApiPath } from '../../constants/seo-factory-routes';
 
 const DRAFT_IMAGE_FILENAME_RE = /^[0-9a-f-]{36}\.(jpe?g|png|webp|gif)$/i;
 const DRAFT_IMAGE_API_RE =
-  /\/api\/v1\/projects\/([^/]+)\/article-jobs\/([^/]+)\/draft\/images\/([^/?#]+)/i;
+  /\/api\/v1\/projects\/([^/]+)\/(?:seo-factory\/)?article-jobs\/([^/]+)\/draft\/images\/([^/?#]+)/i;
 
 export function buildDraftImageStorageKey(
   organizationId: string,
@@ -23,7 +24,7 @@ export function buildDraftImageApiPath(
   jobId: string,
   filename: string,
 ): string {
-  return `/api/v1/projects/${projectId}/article-jobs/${jobId}/draft/images/${filename}`;
+  return seoFactoryApiPath(projectId, `article-jobs/${jobId}/draft/images/${filename}`);
 }
 
 export function assertDraftImageFilename(filename: string): void {

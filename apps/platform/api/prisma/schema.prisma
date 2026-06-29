@@ -279,6 +279,34 @@ model WebhookDeliveryLog {
   @@index([organizationId, webhookId, createdAt])
 }
 
+/// 钉钉/飞书机器人通知通道
+model OrgRobotChannel {
+  id             String   @id @default(uuid())
+  organizationId String
+  channelType    String   /// dingtalk | feishu
+  webhookUrl     String   @db.VarChar(500)
+  isActive       Boolean  @default(true)
+  events         String[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId, isActive])
+}
+
+/// 用户通知偏好（按企业）
+model UserNotificationPreference {
+  id             String   @id @default(uuid())
+  userId         String
+  organizationId String
+  emailEnabled   Boolean  @default(true)
+  mutedTypes     String[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, organizationId])
+  @@index([organizationId, userId])
+}
+
 /// Prompt 模板版本库（M12）：平台全局，seo-factory LLM 热更新
 model PromptTemplate {
   id          String   @id @default(uuid())
@@ -496,6 +524,7 @@ model ArticleJob {
   updatedAt      DateTime  @updatedAt
   comments       ArticleJobComment[]
   assignees      ArticleJobAssignee[]
+  activities     ArticleJobActivity[]
 
   @@index([organizationId, projectId, status])
   @@index([organizationId, projectId, createdAt])
@@ -527,6 +556,21 @@ model ArticleJobAssignee {
 
   @@unique([jobId, userId])
   @@index([organizationId, projectId, userId])
+}
+
+model ArticleJobActivity {
+  id             String   @id @default(uuid())
+  organizationId String
+  projectId      String
+  jobId          String
+  job            ArticleJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  type           String
+  actorUserId    String
+  summary        String
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, projectId, jobId, createdAt])
 }
 
 enum JobStatus {

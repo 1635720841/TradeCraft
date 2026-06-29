@@ -248,7 +248,7 @@ export default [
               import("@/views/projects/seo-factory/ScoreCalibrationLabView.vue"),
             meta: {
               title: "评分校准实验室",
-              seoPermission: "seo:job:create",
+              seoPermission: "seo:site:manage",
               showLink: false
             }
           },

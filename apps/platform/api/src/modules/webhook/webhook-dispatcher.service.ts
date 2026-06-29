@@ -2,38 +2,69 @@
  * 出站 Webhook：配置与事件投递。
  */
 
-import { createHmac } from 'node:crypto';
+import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
+import { Queue } from 'bullmq';
 import {
   ARTICLE_COMPLETED_EVENT,
   ARTICLE_FAILED_EVENT,
+  ARTICLE_BRIEF_PENDING_EVENT,
+  ARTICLE_ASSIGNED_EVENT,
+  ARTICLE_COMMENT_ADDED_EVENT,
   ORG_QUOTA_LOW_EVENT,
   type ArticleCompletedPayload,
   type ArticleFailedPayload,
+  type ArticleBriefPendingPayload,
+  type ArticleAssignedPayload,
+  type ArticleCommentAddedPayload,
   type OrgQuotaLowPayload,
 } from '../../core/event-bus/events';
+import { runAfterCommit } from '../../core/event-bus/run-after-commit';
+import { WEBHOOK_DELIVER_QUEUE } from '../../core/queue/queue.constants';
 import { PrismaService } from '../../core/database/prisma.service';
+import type { WebhookDeliverJobData } from './webhook-delivery.processor';
 
 @Injectable()
 export class WebhookDispatcherService {
   private readonly logger = new Logger(WebhookDispatcherService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @InjectQueue(WEBHOOK_DELIVER_QUEUE)
+    private readonly webhookQueue: Queue<WebhookDeliverJobData>,
+  ) {}
 
   @OnEvent(ARTICLE_COMPLETED_EVENT)
-  async onCompleted(payload: ArticleCompletedPayload) {
-    await this.dispatch(payload.organizationId, 'article.completed', payload);
+  onCompleted(payload: ArticleCompletedPayload) {
+    runAfterCommit(() => this.dispatch(payload.organizationId, 'article.completed', payload));
   }
 
   @OnEvent(ARTICLE_FAILED_EVENT)
-  async onFailed(payload: ArticleFailedPayload) {
-    await this.dispatch(payload.organizationId, 'article.failed', payload);
+  onFailed(payload: ArticleFailedPayload) {
+    runAfterCommit(() => this.dispatch(payload.organizationId, 'article.failed', payload));
+  }
+
+  @OnEvent(ARTICLE_BRIEF_PENDING_EVENT)
+  onBriefPending(payload: ArticleBriefPendingPayload) {
+    runAfterCommit(() => this.dispatch(payload.organizationId, 'article.brief_pending', payload));
+  }
+
+  @OnEvent(ARTICLE_ASSIGNED_EVENT)
+  onAssigned(payload: ArticleAssignedPayload) {
+    runAfterCommit(() => this.dispatch(payload.organizationId, 'article.assigned', payload));
+  }
+
+  @OnEvent(ARTICLE_COMMENT_ADDED_EVENT)
+  onCommentAdded(payload: ArticleCommentAddedPayload) {
+    runAfterCommit(() =>
+      this.dispatch(payload.organizationId, 'article.comment_added', payload),
+    );
   }
 
   @OnEvent(ORG_QUOTA_LOW_EVENT)
-  async onQuotaLow(payload: OrgQuotaLowPayload) {
-    await this.dispatch(payload.organizationId, 'org.quota_low', payload);
+  onQuotaLow(payload: OrgQuotaLowPayload) {
+    runAfterCommit(() => this.dispatch(payload.organizationId, 'org.quota_low', payload));
   }
 
   async dispatch(organizationId: string, event: string, payload: unknown) {
@@ -42,58 +73,28 @@ export class WebhookDispatcherService {
     });
 
     for (const hook of hooks) {
-      await this.deliver(hook, event, payload);
-    }
-  }
-
-  private async deliver(
-    hook: { id: string; organizationId: string; url: string; secret: string },
-    event: string,
-    payload: unknown,
-  ) {
-    const body = JSON.stringify({ event, payload, timestamp: new Date().toISOString() });
-    const signature = createHmac('sha256', hook.secret).update(body).digest('hex');
-
-    for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const res = await fetch(hook.url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-MW-Signature': signature,
-            'X-MW-Event': event,
-          },
-          body,
-          signal: AbortSignal.timeout(10_000),
-        });
-
-        await this.prisma.webhookDeliveryLog.create({
-          data: {
-            organizationId: hook.organizationId,
+        await this.webhookQueue.add(
+          'deliver',
+          {
             webhookId: hook.id,
+            organizationId: hook.organizationId,
+            url: hook.url,
+            secret: hook.secret,
             event,
-            statusCode: res.status,
-            success: res.ok,
-            errorMessage: res.ok ? null : await res.text().catch(() => 'HTTP error'),
+            payload,
           },
-        });
-
-        if (res.ok) return;
+          {
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 1000 },
+            removeOnComplete: true,
+            removeOnFail: 100,
+          },
+        );
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        await this.prisma.webhookDeliveryLog.create({
-          data: {
-            organizationId: hook.organizationId,
-            webhookId: hook.id,
-            event,
-            success: false,
-            errorMessage: message.slice(0, 500),
-          },
-        });
-        this.logger.warn(`Webhook delivery failed (${attempt + 1}/3): ${message}`);
+        this.logger.warn(`Webhook enqueue failed: ${message}`);
       }
-
-      await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt));
     }
   }
 }

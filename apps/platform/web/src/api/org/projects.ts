@@ -246,6 +246,7 @@ export async function setProjectMemberPermissions(
 export interface PermissionPreset {
   id: string;
   label: string;
+  description?: string;
   permissions: string[];
 }
 

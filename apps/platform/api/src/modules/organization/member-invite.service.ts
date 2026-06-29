@@ -81,19 +81,25 @@ export class MemberInviteService {
         });
       }
 
-      await tx.memberInvite.updateMany({
-        where: { organizationId, email, revokedAt: null, acceptedAt: null },
-        data: { revokedAt: new Date() },
-      });
-
-      return tx.memberInvite.create({
-        data: {
+      return tx.memberInvite.upsert({
+        where: {
+          organizationId_email: { organizationId, email },
+        },
+        create: {
           organizationId,
           email,
           role,
           tokenHash,
           invitedById: actorUserId,
           expiresAt,
+        },
+        update: {
+          role,
+          tokenHash,
+          invitedById: actorUserId,
+          expiresAt,
+          revokedAt: null,
+          acceptedAt: null,
         },
       });
     });

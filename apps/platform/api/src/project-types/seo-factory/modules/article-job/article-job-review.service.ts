@@ -15,6 +15,8 @@ import { PrismaService } from '../../../../core/database/prisma.service';
 import { BusinessException } from '../../../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { LoggerService } from '../../../../core/logger/logger.service';
+import { AuditService } from '../../../../modules/access/audit.service';
+import { ArticleJobActivityService } from './article-job-activity.service';
 import {
   getYmylReview,
   isPendingHumanReview,
@@ -30,6 +32,8 @@ export class ArticleJobReviewService {
     private readonly prisma: PrismaService,
     private readonly exportService: ExportService,
     private readonly logger: LoggerService,
+    private readonly auditService: AuditService,
+    private readonly activityService: ArticleJobActivityService,
   ) {}
 
   async approve(
@@ -95,6 +99,25 @@ export class ArticleJobReviewService {
       outputUrl,
     });
 
+    await this.auditService.log({
+      organizationId,
+      actorUserId: ctx.userId,
+      action: 'content_review.approve',
+      targetType: 'ArticleJob',
+      targetId: jobId,
+      metadata: { note: dto.note?.trim() || undefined, outputUrl },
+      traceId: ctx.traceId,
+    });
+    await this.activityService.record({
+      organizationId,
+      projectId,
+      jobId,
+      type: 'review_approved',
+      actorUserId: ctx.userId,
+      summary: '内容审核通过',
+      metadata: { note: dto.note?.trim() || undefined },
+    });
+
     return updated;
   }
 
@@ -133,6 +156,25 @@ export class ArticleJobReviewService {
       jobId,
       action: 'content_review.reject',
       userId: ctx.userId,
+    });
+
+    await this.auditService.log({
+      organizationId,
+      actorUserId: ctx.userId,
+      action: 'content_review.reject',
+      targetType: 'ArticleJob',
+      targetId: jobId,
+      metadata: { note: dto.note?.trim() || undefined },
+      traceId: ctx.traceId,
+    });
+    await this.activityService.record({
+      organizationId,
+      projectId,
+      jobId,
+      type: 'review_rejected',
+      actorUserId: ctx.userId,
+      summary: '内容审核驳回',
+      metadata: { note: dto.note?.trim() || undefined },
     });
 
     return updated;

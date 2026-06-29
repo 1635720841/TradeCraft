@@ -154,11 +154,25 @@
               </template>
             </el-alert>
 
+            <el-alert
+              v-if="!quotaCanConsume(1)"
+              class="mb-4"
+              type="error"
+              :closable="false"
+              show-icon
+              :title="quotaPreview.previewText(1)"
+            >
+              <template #default>
+                <router-link to="/org/billing">查看用量与续期</router-link>
+              </template>
+            </el-alert>
+            <p v-else class="text-sm text-gray-500 mb-3">{{ quotaPreview.previewText(1) }}</p>
+
             <el-form-item>
               <el-button
                 type="primary"
                 :loading="submitting"
-                :disabled="sites.length === 0 || !canCreateJob"
+                :disabled="sites.length === 0 || !canCreateJob || !quotaCanConsume(1)"
                 @click="handleSingleSubmit"
               >
                 提交任务
@@ -272,8 +286,23 @@
               </el-collapse-item>
             </el-collapse>
 
+            <p class="text-sm text-gray-500 mb-3">{{ quotaPreview.previewText(batchJobCount) }}</p>
+            <el-alert
+              v-if="!quotaCanConsume(batchJobCount)"
+              class="mb-4"
+              type="error"
+              :closable="false"
+              show-icon
+              title="配额不足，无法批量提交"
+            />
+
             <el-form-item>
-              <el-button type="primary" :loading="submitting" @click="handleBatchSubmit">
+              <el-button
+                type="primary"
+                :loading="submitting"
+                :disabled="!quotaCanConsume(batchJobCount)"
+                @click="handleBatchSubmit"
+              >
                 批量提交
               </el-button>
               <el-button @click="goBack">返回列表</el-button>
@@ -307,6 +336,7 @@ import {
 import { dictDescription } from "@/utils/dict";
 import { message } from "@/utils/message";
 import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
+import { useArticleQuotaPreview } from "@/composables/useArticleQuotaPreview";
 
 defineOptions({ name: "JobCreateView" });
 
@@ -314,7 +344,12 @@ const route = useRoute();
 const router = useRouter();
 const projectId = route.params.projectId as string;
 const { can } = useProjectSeoAccess();
+const quotaPreview = useArticleQuotaPreview();
 const canCreateJob = computed(() => can("seo:job:create"));
+
+function quotaCanConsume(count: number) {
+  return quotaPreview.canConsume(count);
+}
 
 const activeTab = ref<"single" | "batch">("single");
 const singleFormRef = ref<FormInstance>();
@@ -382,6 +417,16 @@ let keywordConflictTimer: ReturnType<typeof setTimeout> | null = null;
 const selectedSingleSite = computed(() =>
   sites.value.find((site) => site.id === singleForm.siteId)
 );
+
+const batchJobCount = computed(() => {
+  if (batchForm.source === "keywords") {
+    return batchForm.keywordsText
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean).length;
+  }
+  return batchForm.limit;
+});
 const selectedBatchSite = computed(() =>
   sites.value.find((site) => site.id === batchForm.siteId)
 );
@@ -522,6 +567,10 @@ async function handleSingleSubmit() {
   const valid = await singleFormRef.value?.validate().catch(() => false);
   if (!valid) return;
   if (!(await confirmKeywordConflictsIfNeeded())) return;
+  if (!quotaCanConsume(1)) {
+    message("本账期配额不足", { type: "warning" });
+    return;
+  }
 
   submitting.value = true;
   try {
@@ -549,6 +598,10 @@ async function handleSingleSubmit() {
 async function handleBatchSubmit() {
   const valid = await batchFormRef.value?.validate().catch(() => false);
   if (!valid) return;
+  if (!quotaCanConsume(batchJobCount.value)) {
+    message("本账期配额不足", { type: "warning" });
+    return;
+  }
 
   submitting.value = true;
   try {
@@ -588,5 +641,6 @@ function goSites() {
 
 onMounted(() => {
   void loadSites();
+  void quotaPreview.refreshQuota();
 });
 </script>

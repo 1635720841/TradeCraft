@@ -15,7 +15,7 @@
               class="w-52"
             />
             <el-button v-if="canCreate" type="primary" @click="openCreate">
-              邀请成员
+              添加成员
             </el-button>
           </div>
         </div>
@@ -51,7 +51,7 @@
         <el-table-column prop="createdAt" label="加入时间" min-width="170">
           <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="240" fixed="right">
+        <el-table-column label="操作" width="300" fixed="right">
           <template #default="{ row }">
             <el-button
               v-if="canCreate && row.status === 'INVITED'"
@@ -85,6 +85,22 @@
             >
               配置权限
             </el-button>
+            <el-button
+              v-if="canUpdate && row.status === 'ACTIVE' && row.role !== 'SUPER_ADMIN' && row.role !== 'PLATFORM_OPERATOR'"
+              type="warning"
+              link
+              @click="toggleMemberStatus(row as OrganizationMember, 'DISABLED')"
+            >
+              禁用
+            </el-button>
+            <el-button
+              v-if="canUpdate && row.status === 'DISABLED'"
+              type="success"
+              link
+              @click="toggleMemberStatus(row as OrganizationMember, 'ACTIVE')"
+            >
+              启用
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -92,13 +108,39 @@
 
     <el-dialog
       v-model="dialogVisible"
-      :title="editingId ? '编辑成员' : '邀请成员'"
+      :title="editingId ? '编辑成员' : '添加成员'"
       width="460px"
       destroy-on-close
     >
       <el-form ref="formRef" :model="form" :rules="rules" label-width="72px">
+        <el-form-item v-if="!editingId" label="方式">
+          <el-radio-group v-model="createMode">
+            <el-radio value="direct">直接添加</el-radio>
+            <el-radio value="invite">邮件邀请</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-alert
+          v-if="!editingId && createMode === 'invite'"
+          class="mb-4"
+          type="info"
+          :closable="false"
+          show-icon
+          title="需配置 SMTP 后才能发送邀请邮件；未配置时可改用「直接添加」并设置初始密码。"
+        />
         <el-form-item v-if="!editingId" label="邮箱" prop="email">
           <el-input v-model="form.email" placeholder="user@company.com" />
+        </el-form-item>
+        <el-form-item
+          v-if="!editingId && createMode === 'direct'"
+          label="密码"
+          prop="password"
+        >
+          <el-input
+            v-model="form.password"
+            type="password"
+            show-password
+            placeholder="6-64 位，成员可用此密码登录"
+          />
         </el-form-item>
         <el-form-item label="姓名" prop="name">
           <el-input v-model="form.name" maxlength="64" />
@@ -243,6 +285,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import type { FormInstance, FormRules } from "element-plus";
+import { ElMessageBox } from "element-plus";
 import {
   getMemberPermissions,
   listPermissionCatalog,
@@ -250,11 +293,13 @@ import {
   type PermissionDefinition
 } from "@/api/org/access";
 import {
+  createOrganizationMember,
   inviteOrganizationMember,
   listOrganizationMembers,
   resendMemberInvite,
   revokeMemberInvite,
   updateOrganizationMember,
+  updateOrganizationMemberStatus,
   type OrganizationMember
 } from "@/api/org/organization";
 import { memberRoleDict } from "@/constants/dicts/platform";
@@ -281,6 +326,7 @@ const keyword = ref("");
 const catalog = ref<PermissionDefinition[]>([]);
 const dialogVisible = ref(false);
 const editingId = ref("");
+const createMode = ref<"direct" | "invite">("direct");
 const formRef = ref<FormInstance>();
 
 const permDrawerVisible = ref(false);
@@ -290,6 +336,7 @@ const effectivePermissions = ref<string[]>([]);
 
 const form = reactive({
   email: "",
+  password: "",
   name: "",
   role: "MEMBER" as "ADMIN" | "MEMBER"
 });
@@ -359,6 +406,13 @@ const defaultPermHint = computed(() => {
 
 const rules = computed<FormRules>(() => ({
   email: editingId.value ? [] : [{ required: true, message: "请输入邮箱", trigger: "blur" }],
+  password:
+    !editingId.value && createMode.value === "direct"
+      ? [
+          { required: true, message: "请输入初始密码", trigger: "blur" },
+          { min: 6, max: 64, message: "密码长度 6-64 位", trigger: "blur" }
+        ]
+      : [],
   role: [{ required: true, message: "请选择角色", trigger: "change" }]
 }));
 
@@ -385,6 +439,16 @@ async function loadMembers() {
   }
 }
 
+async function toggleMemberStatus(member: OrganizationMember, status: "ACTIVE" | "DISABLED") {
+  const action = status === "DISABLED" ? "禁用" : "启用";
+  await ElMessageBox.confirm(`确定${action}成员 ${member.email}？`, `${action}成员`, {
+    type: "warning"
+  });
+  await updateOrganizationMemberStatus(member.id, status);
+  message(`已${action}`, { type: "success" });
+  await loadMembers();
+}
+
 async function loadCatalog() {
   await userStore.ensureAuthProfile();
   const fromStore = userStore.accessMeta?.permissionCatalog;
@@ -404,8 +468,10 @@ async function loadCatalog() {
 
 function resetForm() {
   form.email = "";
+  form.password = "";
   form.name = "";
   form.role = "MEMBER";
+  createMode.value = "direct";
 }
 
 function openCreate() {
@@ -451,6 +517,14 @@ async function submitForm() {
           role: form.role
         });
         message("成员已更新", { type: "success" });
+      } else if (createMode.value === "direct") {
+        await createOrganizationMember({
+          email: form.email.trim(),
+          password: form.password,
+          name: form.name.trim() || undefined,
+          role: form.role
+        });
+        message("成员已添加，可使用邮箱和密码登录", { type: "success" });
       } else {
         await inviteOrganizationMember({
           email: form.email.trim(),

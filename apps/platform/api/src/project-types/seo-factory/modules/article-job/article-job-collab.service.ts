@@ -13,12 +13,24 @@ import {
   type ArticleAssignedPayload,
   type ArticleCommentAddedPayload,
 } from '../../../../core/event-bus/events';
+import { ArticleJobActivityService } from './article-job-activity.service';
+
+const MENTION_EMAIL_REGEX = /@([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+
+function parseMentionedEmails(body: string): string[] {
+  const emails = new Set<string>();
+  for (const match of body.matchAll(MENTION_EMAIL_REGEX)) {
+    emails.add(match[1].toLowerCase());
+  }
+  return [...emails];
+}
 
 @Injectable()
 export class ArticleJobCollabService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly activityService: ArticleJobActivityService,
   ) {}
 
   private async assertJob(organizationId: string, projectId: string, jobId: string) {
@@ -39,6 +51,30 @@ export class ArticleJobCollabService {
     if (!member) {
       throw new BusinessException(ErrorCodes.FORBIDDEN, '用户不是项目成员');
     }
+  }
+
+  private async resolveMentionedUserIds(projectId: string, body: string): Promise<string[]> {
+    const emails = parseMentionedEmails(body);
+    if (emails.length === 0) return [];
+
+    const members = await this.prisma.projectMember.findMany({
+      where: { projectId },
+      select: { userId: true, user: { select: { email: true } } },
+    });
+
+    const emailToUserId = new Map<string, string>();
+    for (const member of members) {
+      if (member.user.email) {
+        emailToUserId.set(member.user.email.toLowerCase(), member.userId);
+      }
+    }
+
+    const userIds = new Set<string>();
+    for (const email of emails) {
+      const userId = emailToUserId.get(email);
+      if (userId) userIds.add(userId);
+    }
+    return [...userIds];
   }
 
   async listComments(organizationId: string, projectId: string, jobId: string) {
@@ -85,6 +121,7 @@ export class ArticleJobCollabService {
       where: { jobId },
       select: { userId: true },
     });
+    const mentionedUserIds = await this.resolveMentionedUserIds(projectId, text);
 
     this.eventEmitter.emit(ARTICLE_COMMENT_ADDED_EVENT, {
       organizationId,
@@ -94,7 +131,18 @@ export class ArticleJobCollabService {
       commentId: comment.id,
       authorUserId,
       assigneeUserIds: assignees.map((a) => a.userId),
+      mentionedUserIds,
     } satisfies ArticleCommentAddedPayload);
+
+    await this.activityService.record({
+      organizationId,
+      projectId,
+      jobId,
+      type: 'comment_added',
+      actorUserId: authorUserId,
+      summary: '添加了评论',
+      metadata: { commentId: comment.id, mentionedUserIds },
+    });
 
     return comment;
   }
@@ -167,6 +215,20 @@ export class ArticleJobCollabService {
       assigneeUserId: userId,
       assignedById,
     } satisfies ArticleAssignedPayload);
+
+    const assignee = await this.prisma.user.findFirst({
+      where: { id: userId },
+      select: { email: true, name: true },
+    });
+    await this.activityService.record({
+      organizationId,
+      projectId,
+      jobId,
+      type: 'assigned',
+      actorUserId: assignedById,
+      summary: `指派给 ${assignee?.name || assignee?.email || '成员'}`,
+      metadata: { assigneeUserId: userId },
+    });
 
     return row;
   }

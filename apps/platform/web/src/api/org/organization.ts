@@ -154,3 +154,16 @@ export async function updateOrganizationMember(
   );
   return res.data;
 }
+
+/** 禁用/启用成员 */
+export async function updateOrganizationMemberStatus(
+  userId: string,
+  status: "ACTIVE" | "DISABLED"
+): Promise<OrganizationMember> {
+  const res = await http.request<WmApiResponse<OrganizationMember>>(
+    "patch",
+    `/api/v1/org/members/${userId}/status`,
+    { data: { status } }
+  );
+  return res.data;
+}

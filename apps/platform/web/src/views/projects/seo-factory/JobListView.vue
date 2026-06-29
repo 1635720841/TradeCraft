@@ -41,6 +41,12 @@
                 :value="site.id"
               />
             </el-select>
+            <el-checkbox
+              :model-value="siteOwnerMeFilter"
+              @change="toggleSiteOwnerFilter"
+            >
+              我负责的站点
+            </el-checkbox>
             <el-tag v-if="polling" type="info" size="small">自动刷新中</el-tag>
             <el-button @click="goContentScore">内容评分</el-button>
             <el-button @click="goSites">站点</el-button>
@@ -52,15 +58,15 @@
         </div>
       </template>
 
-      <div v-if="stageAlert" class="mb-4">
+      <div v-if="stageAlert || assignedToMeAlert || siteOwnerMeAlert" class="mb-4">
         <el-alert
-          :type="stageAlert.type"
+          :type="(siteOwnerMeAlert ?? assignedToMeAlert ?? stageAlert)!.type"
           :closable="false"
           show-icon
-          :title="stageAlert.title"
+          :title="(siteOwnerMeAlert ?? assignedToMeAlert ?? stageAlert)!.title"
         >
-          <template v-if="stageAlert.description" #default>
-            {{ stageAlert.description }}
+          <template v-if="(siteOwnerMeAlert ?? assignedToMeAlert ?? stageAlert)?.description" #default>
+            {{ (siteOwnerMeAlert ?? assignedToMeAlert ?? stageAlert)!.description }}
             <el-button link type="primary" @click="clearListFilter">查看全部任务</el-button>
           </template>
         </el-alert>
@@ -177,7 +183,7 @@
           <template #default="{ row }">
             <el-button type="primary" link @click="goDetail(row.id)">详情</el-button>
             <el-button
-              v-if="isBriefPending(row as ArticleJobItem)"
+              v-if="canReviewJob && isBriefPending(row as ArticleJobItem)"
               type="success"
               link
               :loading="approvingBriefId === (row as ArticleJobItem).id"
@@ -186,7 +192,7 @@
               确认大纲
             </el-button>
             <el-button
-              v-if="isReviewPending(row as ArticleJobItem)"
+              v-if="canReviewJob && isReviewPending(row as ArticleJobItem)"
               type="success"
               link
               :loading="actingReviewId === (row as ArticleJobItem).id && actingReviewType === 'approve'"
@@ -195,7 +201,7 @@
               通过
             </el-button>
             <el-button
-              v-if="isReviewPending(row as ArticleJobItem)"
+              v-if="canReviewJob && isReviewPending(row as ArticleJobItem)"
               type="danger"
               link
               :loading="actingReviewId === (row as ArticleJobItem).id && actingReviewType === 'reject'"
@@ -319,8 +325,9 @@ const route = useRoute();
 const router = useRouter();
 const projectId = route.params.projectId as string;
 
-const { can } = useProjectSeoAccess();
+const { can, canReview } = useProjectSeoAccess();
 const canCreateJob = computed(() => can("seo:job:create"));
+const canReviewJob = computed(() => canReview());
 
 const tableRef = ref<TableInstance>();
 const loading = ref(false);
@@ -422,6 +429,30 @@ const failedFilter = computed(() => listFilter.value === "failed");
 const publishPendingFilter = computed(() => listFilter.value === "publishPending");
 const staleDraftFilter = computed(() => listFilter.value === "staleDraft");
 const publishFailedFilter = computed(() => listFilter.value === "publishFailed");
+const assignedToMeFilter = computed(
+  () => route.query.assignedToMe === "1" || route.query.assignedToMe === "true"
+);
+const siteOwnerMeFilter = computed(() => route.query.siteOwner === "me");
+
+const assignedToMeAlert = computed(() =>
+  assignedToMeFilter.value
+    ? {
+        type: "info" as const,
+        title: "仅显示指派给您的任务",
+        description: "可在详情中查看进度、改稿或发布。"
+      }
+    : null
+);
+
+const siteOwnerMeAlert = computed(() =>
+  siteOwnerMeFilter.value
+    ? {
+        type: "info" as const,
+        title: "仅显示您负责站点的任务",
+        description: "站点负责人在「站点管理」中配置。"
+      }
+    : null
+);
 
 const hasActiveJobs = computed(() =>
   jobs.value.some(
@@ -463,6 +494,8 @@ async function fetchJobs(showLoading = true) {
       cmsPublishFailed: publishFailedFilter.value,
       cmsPublishPending: publishPendingFilter.value,
       staleDraft: staleDraftFilter.value,
+      assignedToMe: assignedToMeFilter.value,
+      siteOwner: siteOwnerMeFilter.value ? "me" : undefined,
       status: failedFilter.value ? "FAILED" : undefined,
       siteId: filterSiteId.value || undefined
     });
@@ -750,7 +783,19 @@ function clearListFilter() {
 function buildJobsQuery(extra: Record<string, string> = {}) {
   const query: Record<string, string> = { ...extra };
   if (filterSiteId.value) query.siteId = filterSiteId.value;
+  if (assignedToMeFilter.value) query.assignedToMe = "1";
+  if (siteOwnerMeFilter.value) query.siteOwner = "me";
   return query;
+}
+
+function toggleSiteOwnerFilter(checked: boolean | string | number) {
+  page.value = 1;
+  const query = buildJobsQuery();
+  if (checked) query.siteOwner = "me";
+  else delete query.siteOwner;
+  const stage = stageQueryValue(listFilter.value);
+  if (stage) query.stage = stage;
+  router.replace({ name: "SeoFactoryJobs", params: { projectId }, query });
 }
 
 function stageQueryValue(stage: JobListStage): string | undefined {
@@ -864,7 +909,7 @@ function goContentScore() {
 }
 
 watch(
-  () => [route.query.stage, route.query.siteId],
+  () => [route.query.stage, route.query.siteId, route.query.assignedToMe, route.query.siteOwner],
   () => {
     syncListFilterFromRoute();
     page.value = 1;

@@ -52,9 +52,18 @@ describe('site-settings', () => {
     assert.match(text, /ISO factory/);
   });
 
-  it('siteHasWritingProfile true when only advanced fields set', () => {
+  it('siteHasWritingProfile requires industry and at least one selling point', () => {
+    assert.equal(siteHasWritingProfile({ contentProfile: { productLines: 'Ball valves' } }), false);
     assert.equal(
-      siteHasWritingProfile({ contentProfile: { productLines: 'Ball valves' } }),
+      siteHasWritingProfile({
+        contentProfile: { industry: 'Valves', productLines: 'Ball valves' },
+      }),
+      true,
+    );
+    assert.equal(
+      siteHasWritingProfile({
+        contentProfile: { industry: 'Valves', differentiators: ['OEM'] },
+      }),
       true,
     );
   });

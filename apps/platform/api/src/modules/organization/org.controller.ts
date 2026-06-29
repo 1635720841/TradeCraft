@@ -10,17 +10,20 @@ import { SetUserPermissionsDto } from '../console/dto/set-user-permissions.dto';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
+import { UpdateMemberStatusDto } from './dto/update-member-status.dto';
 import { UpdateOrgProfileDto } from './dto/update-org-profile.dto';
 import { PermissionService } from '../access/permission.service';
 import { AuditService } from '../access/audit.service';
 import { AccessRequestService } from '../project/access-request.service';
 import { MemberInviteService } from './member-invite.service';
 import { OrganizationService } from './organization.service';
+import { OrgProductionService } from './org-production.service';
 
 @Controller('api/v1/org')
 export class OrgController {
   constructor(
     private readonly organizationService: OrganizationService,
+    private readonly orgProductionService: OrgProductionService,
     private readonly permissionService: PermissionService,
     private readonly memberInviteService: MemberInviteService,
     private readonly auditService: AuditService,
@@ -136,6 +139,23 @@ export class OrgController {
     return { data, meta: { traceId: ctx.traceId } };
   }
 
+  @Patch('members/:userId/status')
+  @Permissions('org:member:update')
+  async updateMemberStatus(
+    @ReqCtx() ctx: RequestContext,
+    @Param('userId') userId: string,
+    @Body() dto: UpdateMemberStatusDto,
+  ) {
+    const data = await this.organizationService.updateMemberStatus(
+      ctx.organizationId,
+      ctx.userId,
+      ctx.traceId,
+      userId,
+      dto.status,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
   @Get('members/:userId/permissions')
   @Permissions('org:member:grant')
   async getMemberPermissions(
@@ -166,6 +186,13 @@ export class OrgController {
       dto.permissionIds,
       ctx.traceId,
     );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Get('production/summary')
+  @Permissions('project:read')
+  async getProductionSummary(@ReqCtx() ctx: RequestContext) {
+    const data = await this.orgProductionService.getSummary(ctx);
     return { data, meta: { traceId: ctx.traceId } };
   }
 

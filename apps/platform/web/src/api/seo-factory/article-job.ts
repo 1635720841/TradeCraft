@@ -65,6 +65,8 @@ export async function listArticleJobs(
     cmsPublishPending?: boolean;
     staleDraft?: boolean;
     reviewPending?: boolean;
+    assignedToMe?: boolean;
+    siteOwner?: "me";
     status?: "FAILED";
     siteId?: string;
   } = {}
@@ -76,6 +78,8 @@ export async function listArticleJobs(
   if (options.cmsPublishPending) params.cmsPublishPending = "1";
   if (options.staleDraft) params.staleDraft = "1";
   if (options.reviewPending) params.reviewPending = "1";
+  if (options.assignedToMe) params.assignedToMe = "1";
+  if (options.siteOwner === "me") params.siteOwner = "me";
   if (options.status === "FAILED") params.status = "FAILED";
   if (options.siteId) params.siteId = options.siteId;
   return http.request<WmApiResponse<ArticleJobItem[]>>(

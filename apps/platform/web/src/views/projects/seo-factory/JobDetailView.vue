@@ -60,7 +60,7 @@
               下载 HTML
             </el-button>
             <el-button
-              v-if="cmsUiEnabled && canPublishToCms && canWriteJob"
+              v-if="cmsUiEnabled && canPublishToCms && canPublishJob"
               type="success"
               size="small"
               plain
@@ -299,8 +299,19 @@
             @go-edit="activeTab = 'draft'"
           />
 
+          <p v-if="gscPerformanceLine" class="mt-2 text-sm text-gray-500">
+            {{ gscPerformanceLine }}
+          </p>
+
           <div class="job-detail-panel">
             <el-collapse>
+              <el-collapse-item title="活动" name="activity">
+                <ArticleJobActivityTimeline
+                  v-if="job"
+                  :project-id="projectId"
+                  :job-id="job.id"
+                />
+              </el-collapse-item>
               <el-collapse-item title="协作" name="collab">
                 <ArticleJobCollabPanel
                   v-if="job"
@@ -580,6 +591,7 @@ import { resolveEffectiveLocalSeoScore } from "@/utils/seo-factory/local-seo-dis
 import { resolveJobDisplayErrorMessage } from "@/utils/seo-factory/job-error-display";
 import ArticleJobBriefPanel from "./components/ArticleJobBriefPanel.vue";
 import ArticleJobCollabPanel from "./components/ArticleJobCollabPanel.vue";
+import ArticleJobActivityTimeline from "./components/ArticleJobActivityTimeline.vue";
 import ArticleJobBriefReviewPanel from "./components/ArticleJobBriefReviewPanel.vue";
 import ArticleJobProgressStepper from "./components/ArticleJobProgressStepper.vue";
 import ArticleJobDraftEditor from "./components/ArticleJobDraftEditor.vue";
@@ -610,8 +622,10 @@ const activeTab = ref("seo");
 
 const projectId = computed(() => route.params.projectId as string);
 const jobId = computed(() => route.params.jobId as string);
-const { can } = useProjectSeoAccess();
+const { can, canReview, canPublish } = useProjectSeoAccess();
 const canWriteJob = computed(() => can("seo:job:create"));
+const canReviewJob = computed(() => canReview());
+const canPublishJob = computed(() => canPublish());
 
 const { job, loading, polling, fetchOnce, startPolling } = useArticleJobPolling(
   projectId,
@@ -843,6 +857,12 @@ const pendingYmylReReview = computed(() => {
 
 const internalLinkCount = computed(() => job.value?.draftData?.internalLinks?.length ?? 0);
 const articleImageCount = computed(() => job.value?.draftData?.articleImages?.length ?? 0);
+
+const gscPerformanceLine = computed(() => {
+  const perf = job.value?.gscPerformance;
+  if (!perf) return "";
+  return `搜索表现（近 ${perf.periodDays} 天）：展示 ${perf.impressions} · 点击 ${perf.clicks} · 平均排名 ${perf.position.toFixed(1)}`;
+});
 
 const localScoreDisplay = computed(() => {
   if (effectiveLocalSeoScore.value == null) return "—";

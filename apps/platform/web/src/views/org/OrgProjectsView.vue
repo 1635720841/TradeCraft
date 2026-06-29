@@ -54,7 +54,29 @@
         <el-table-column v-if="canCreate || canUpdate" prop="projectType" label="类型" width="120" />
         <el-table-column label="我的访问" width="110">
           <template #default="{ row }">
-            <el-tag :type="dictTagType(projectMyAccessStatusDict, row.myAccessStatus)" size="small">
+            <el-tooltip
+              v-if="row.myAccessStatus === 'not_member'"
+              content="您尚未加入该项目，可点击「管理」将自己加入"
+              placement="top"
+            >
+              <el-tag :type="dictTagType(projectMyAccessStatusDict, row.myAccessStatus)" size="small">
+                {{ dictLabel(projectMyAccessStatusDict, row.myAccessStatus) }}
+              </el-tag>
+            </el-tooltip>
+            <el-tooltip
+              v-else-if="row.myAccessStatus === 'not_open'"
+              content="项目尚未到开放时间，请在管理中调整访问期"
+              placement="top"
+            >
+              <el-tag :type="dictTagType(projectMyAccessStatusDict, row.myAccessStatus)" size="small">
+                {{ dictLabel(projectMyAccessStatusDict, row.myAccessStatus) }}
+              </el-tag>
+            </el-tooltip>
+            <el-tag
+              v-else
+              :type="dictTagType(projectMyAccessStatusDict, row.myAccessStatus)"
+              size="small"
+            >
               {{ dictLabel(projectMyAccessStatusDict, row.myAccessStatus) }}
             </el-tag>
           </template>
@@ -156,6 +178,12 @@
             class="w-full"
           />
         </el-form-item>
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          title="创建后您将自动成为项目负责人，可立即进入工作台（访问期留空即长期开放）。"
+        />
       </el-form>
       <template #footer>
         <el-button @click="createVisible = false">取消</el-button>
@@ -207,6 +235,28 @@
             :title="accessHint(detail.myAccessStatus)"
           />
 
+          <el-alert
+            v-if="detail?.canManage && detail.myAccessStatus !== 'usable'"
+            class="mb-4"
+            type="info"
+            :closable="false"
+            show-icon
+            title="您可管理本项目，但尚未加入成员列表"
+          >
+            <template #default>
+              加入后即可进入 SEO 工作台操作任务。
+              <el-button
+                class="ml-2"
+                type="primary"
+                size="small"
+                :loading="joiningSelf"
+                @click="joinSelfToProject"
+              >
+                将自己加入项目
+              </el-button>
+            </template>
+          </el-alert>
+
           <div v-if="detail?.canManage" class="mb-3 flex items-center justify-between">
             <span class="font-medium">项目成员</span>
             <el-button v-if="canUpdate" type="primary" size="small" @click="openAddMember">
@@ -226,9 +276,13 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="访问期" min-width="180">
+            <el-table-column label="访问状态" min-width="200">
               <template #default="{ row }">
-                {{ formatAccessWindow(row.accessStart, row.accessEnd) }}
+                <div class="flex flex-wrap items-center gap-1">
+                  <span class="text-sm">{{ formatAccessWindow(row.accessStart, row.accessEnd) }}</span>
+                  <el-tag v-if="row.accessActive === false" type="danger" size="small">已过期</el-tag>
+                  <el-tag v-else type="success" size="small">有效</el-tag>
+                </div>
               </template>
             </el-table-column>
             <el-table-column label="操作" width="140" fixed="right">
@@ -331,52 +385,45 @@
           title="须先加入项目且访问期有效，方可进入 SEO 工作台。此处配置的是项目内操作权限。"
         />
 
-        <el-alert
-          v-if="effectivePermissions.length"
-          class="mb-4"
-          type="success"
-          :closable="false"
-          show-icon
-        >
-          <template #title>最终生效权限（{{ effectivePermissions.length }} 项）</template>
-          <div class="mt-1 flex flex-wrap gap-1">
-            <el-tag
-              v-for="permId in effectivePermissions"
-              :key="permId"
-              size="small"
-              type="info"
+        <div class="mb-4 space-y-2">
+          <div class="text-sm font-medium text-gray-700">岗位预设</div>
+          <div class="flex flex-col gap-2">
+            <el-button
+              v-for="preset in permissionPresets"
+              :key="preset.id"
+              class="!justify-start !h-auto !py-2"
+              @click="applyPreset(preset.permissions)"
+              style="margin-left: 0px;"
             >
-              {{ permissionLabelMap[permId] ?? permId }}
-            </el-tag>
+              <div class="text-left">
+                <div>{{ preset.label }}</div>
+                <div v-if="preset.description" class="text-xs font-normal text-gray-500">
+                  {{ preset.description }}
+                </div>
+              </div>
+            </el-button>
           </div>
-        </el-alert>
-
-        <div class="mb-3 flex flex-wrap gap-2">
-          <el-button
-            v-for="preset in permissionPresets"
-            :key="preset.id"
-            size="small"
-            @click="applyPreset(preset.permissions)"
-          >
-            {{ preset.label }}
-          </el-button>
         </div>
 
-        <el-checkbox-group :model-value="selectedGrantIds" @change="onGrantChange">
-          <div class="space-y-2">
-            <el-checkbox
-              v-for="perm in grantablePermissions"
-              :key="perm.id"
-              :value="perm.id"
-              :disabled="isDefaultPermission(perm.id)"
-            >
-              <span>{{ perm.name }}</span>
-              <span v-if="perm.description" class="ml-1 text-xs text-gray-400">
-                — {{ perm.description }}
-              </span>
-            </el-checkbox>
-          </div>
-        </el-checkbox-group>
+        <el-collapse>
+          <el-collapse-item title="高级：自定义权限" name="custom">
+            <el-checkbox-group :model-value="selectedGrantIds" @change="onGrantChange">
+              <div class="space-y-2">
+                <el-checkbox
+                  v-for="perm in grantablePermissions"
+                  :key="perm.id"
+                  :value="perm.id"
+                  :disabled="isDefaultPermission(perm.id)"
+                >
+                  <span>{{ perm.name }}</span>
+                  <span v-if="perm.description" class="ml-1 text-xs text-gray-400">
+                    — {{ perm.description }}
+                  </span>
+                </el-checkbox>
+              </div>
+            </el-checkbox-group>
+          </el-collapse-item>
+        </el-collapse>
       </div>
       <template #footer>
         <el-button @click="permDrawerVisible = false">取消</el-button>
@@ -416,6 +463,7 @@ import {
   type AccessRequestItem
 } from "@/api/org/access";
 import { listOrganizationMembers, type OrganizationMember } from "@/api/org/organization";
+import { getAuthProfile } from "@/api/user";
 import { projectMemberRoleDict, projectMyAccessStatusDict, projectStatusDict } from "@/constants/dicts/platform";
 import { useUserStoreHook } from "@/store/modules/user";
 import { usePermissionGrantExpand } from "@/composables/usePermissionGrantExpand";
@@ -455,8 +503,9 @@ const grantablePermissions = ref<
   Array<{ id: string; name: string; description?: string }>
 >([]);
 const roleDefaultPermissionIds = ref<string[]>([]);
-const permissionPresets = ref<Array<{ id: string; label: string; permissions: string[] }>>([]);
+const permissionPresets = ref<Array<{ id: string; label: string; description?: string; permissions: string[] }>>([]);
 const accessRequests = ref<AccessRequestItem[]>([]);
+const joiningSelf = ref(false);
 
 const permissionLabelMap = computed(() =>
   Object.fromEntries(grantablePermissions.value.map(item => [item.id, item.name]))
@@ -581,6 +630,22 @@ async function loadDetail(projectId: string) {
   }
 }
 
+async function joinSelfToProject() {
+  if (!activeProjectId.value) return;
+  joiningSelf.value = true;
+  try {
+    const profile = await getAuthProfile();
+    await addProjectMember(activeProjectId.value, {
+      userId: profile.data.id,
+      role: "OWNER"
+    });
+    message("已加入项目，现在可以进入工作台", { type: "success" });
+    await Promise.all([loadDetail(activeProjectId.value), loadProjects()]);
+  } finally {
+    joiningSelf.value = false;
+  }
+}
+
 function openCreate() {
   createForm.name = "";
   createForm.projectType = "seo-factory";
@@ -594,15 +659,29 @@ async function submitCreate() {
   await createFormRef.value.validate();
   saving.value = true;
   try {
-    await createOrgProject({
+    const project = await createOrgProject({
       name: createForm.name,
       projectType: createForm.projectType,
       accessStart: createForm.accessStart,
       accessEnd: createForm.accessEnd
     });
     createVisible.value = false;
-    message("项目已创建", { type: "success" });
+    invalidateProjectAccessCache(project.id);
     await loadProjects();
+    if (project.projectType === "seo-factory") {
+      try {
+        await ElMessageBox.confirm(
+          "项目已创建，您已自动成为项目负责人。是否进入 SEO 工作台？",
+          "创建成功",
+          { confirmButtonText: "进入工作台", cancelButtonText: "继续管理", type: "success" }
+        );
+        enterProject(project.id);
+      } catch {
+        message("项目已创建", { type: "success" });
+      }
+    } else {
+      message("项目已创建", { type: "success" });
+    }
   } finally {
     saving.value = false;
   }
@@ -746,7 +825,7 @@ async function loadAccessRequests() {
 }
 
 async function onApproveRequest(id: string) {
-  await approveAccessRequest(id, "content_editor");
+  await approveAccessRequest(id, "executor");
   message("已批准访问申请", { type: "success" });
   await loadAccessRequests();
   await loadProjects();

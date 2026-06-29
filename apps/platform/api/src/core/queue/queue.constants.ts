@@ -14,3 +14,9 @@ export const PLAYWRIGHT_QUEUE = 'seo-factory-playwright';
 
 /** seo-factory GSC 过期数据定时同步 */
 export const GSC_SYNC_QUEUE = 'seo-factory-gsc-sync';
+
+/** 平台出站 Webhook 投递 */
+export const WEBHOOK_DELIVER_QUEUE = 'platform-webhook-deliver';
+
+/** 平台审核超时升级通知 */
+export const REVIEW_ESCALATION_QUEUE = 'platform-review-escalation';

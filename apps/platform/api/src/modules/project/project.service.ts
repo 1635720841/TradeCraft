@@ -238,7 +238,7 @@ export class ProjectService {
     organizationId: string,
     projectId: string,
     actor?: Pick<RequestContext, 'userId' | 'role'>,
-    options?: { anyOf?: readonly string[] },
+    options?: { anyOf?: readonly string[]; expectedProjectType?: string },
   ) {
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, organizationId },
@@ -252,6 +252,13 @@ export class ProjectService {
     });
 
     if (!project) {
+      throw new BusinessException(ErrorCodes.NOT_FOUND, '项目不存在');
+    }
+
+    if (
+      options?.expectedProjectType &&
+      project.projectType !== options.expectedProjectType
+    ) {
       throw new BusinessException(ErrorCodes.NOT_FOUND, '项目不存在');
     }
 
@@ -279,6 +286,7 @@ export class ProjectService {
     actor: Pick<RequestContext, 'userId' | 'role'>,
   ) {
     return this.assertAccessible(organizationId, projectId, actor, {
+      expectedProjectType: 'seo-factory',
       anyOf: ['seo:job:read'],
     });
   }
@@ -289,7 +297,32 @@ export class ProjectService {
     actor: Pick<RequestContext, 'userId' | 'role'>,
   ) {
     return this.assertAccessible(organizationId, projectId, actor, {
+      expectedProjectType: 'seo-factory',
       anyOf: ['seo:job:create'],
+    });
+  }
+
+  /** 大纲确认、敏感审核等（审核岗或站点管理员） */
+  assertSeoJobReview(
+    organizationId: string,
+    projectId: string,
+    actor: Pick<RequestContext, 'userId' | 'role'>,
+  ) {
+    return this.assertAccessible(organizationId, projectId, actor, {
+      expectedProjectType: 'seo-factory',
+      anyOf: ['seo:job:review', 'seo:site:manage'],
+    });
+  }
+
+  /** CMS 发布（执行岗或站点管理员） */
+  assertSeoJobPublish(
+    organizationId: string,
+    projectId: string,
+    actor: Pick<RequestContext, 'userId' | 'role'>,
+  ) {
+    return this.assertAccessible(organizationId, projectId, actor, {
+      expectedProjectType: 'seo-factory',
+      anyOf: ['seo:job:create', 'seo:site:manage'],
     });
   }
 
@@ -299,6 +332,7 @@ export class ProjectService {
     actor: Pick<RequestContext, 'userId' | 'role'>,
   ) {
     return this.assertAccessible(organizationId, projectId, actor, {
+      expectedProjectType: 'seo-factory',
       anyOf: ['seo:job:read', 'seo:keyword:manage'],
     });
   }
@@ -309,6 +343,7 @@ export class ProjectService {
     actor: Pick<RequestContext, 'userId' | 'role'>,
   ) {
     return this.assertAccessible(organizationId, projectId, actor, {
+      expectedProjectType: 'seo-factory',
       anyOf: ['seo:keyword:manage'],
     });
   }
@@ -319,6 +354,7 @@ export class ProjectService {
     actor: Pick<RequestContext, 'userId' | 'role'>,
   ) {
     return this.assertAccessible(organizationId, projectId, actor, {
+      expectedProjectType: 'seo-factory',
       anyOf: ['seo:job:read', 'seo:site:manage'],
     });
   }
@@ -329,6 +365,7 @@ export class ProjectService {
     actor: Pick<RequestContext, 'userId' | 'role'>,
   ) {
     return this.assertAccessible(organizationId, projectId, actor, {
+      expectedProjectType: 'seo-factory',
       anyOf: ['seo:site:manage'],
     });
   }

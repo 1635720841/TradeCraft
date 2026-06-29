@@ -2,10 +2,11 @@
  * 站内通知 HTTP 入口。
  */
 
-import { Controller, Get, Param, Patch, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Query } from '@nestjs/common';
 import type { RequestContext } from '@wm/shared-core';
 import { ReqCtx } from '../../core/decorators/request-context.decorator';
 import { InAppNotificationService } from './in-app-notification.service';
+import { UserNotificationPreferenceService } from './user-notification-preference.service';
 
 @Controller('api/v1/org/notifications')
 export class OrgNotificationController {
@@ -42,6 +43,26 @@ export class OrgNotificationController {
   @Patch('read-all')
   async markAllRead(@ReqCtx() ctx: RequestContext) {
     const data = await this.notifications.markAllRead(ctx.userId, ctx.organizationId);
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+}
+
+@Controller('api/v1/org/me/notification-preferences')
+export class OrgNotificationPreferenceController {
+  constructor(private readonly preferences: UserNotificationPreferenceService) {}
+
+  @Get()
+  async get(@ReqCtx() ctx: RequestContext) {
+    const data = await this.preferences.get(ctx.userId, ctx.organizationId);
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Patch()
+  async update(
+    @ReqCtx() ctx: RequestContext,
+    @Body() body: { emailEnabled?: boolean; mutedTypes?: string[] },
+  ) {
+    const data = await this.preferences.update(ctx.userId, ctx.organizationId, body);
     return { data, meta: { traceId: ctx.traceId } };
   }
 }

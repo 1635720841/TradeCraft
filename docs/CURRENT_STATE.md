@@ -47,6 +47,17 @@
 - [x] **推送失败筛选**：`GET .../article-jobs?cmsPublishFailed=1`
 - [x] 前端 CMS UI 默认开启（`VITE_WORDPRESS_CMS_UI_ENABLED` 非 `false` 即显示）
 
+### 企业体验简化包 P4-UX（2026-06-29）
+
+- [x] **三档岗位预设**：执行 / 审核 / 只读（`project-permission-presets`）；审核 preset 含 `seo:job:create`；`content_editor` alias 兼容
+- [x] **审核权限断言**：`assertSeoJobReview`（`seo:job:create` \| `seo:site:manage`）用于大纲确认与敏感审核 API
+- [x] **项目成员授权 UI**：`OrgProjectsView` 岗位预设按钮 + 折叠「高级：自定义权限」；评分实验室路由需 `seo:site:manage`
+- [x] **管理员自助加入**：可管理但未加入时显示「将自己加入项目」
+- [x] **个人待办**：概览「指派给我 / 等我审核」；`stats/summary` 返回 `myAssignedCount` / `myReviewPendingCount` / `canReviewInProject`；任务列表 `?assignedToMe=1`
+- [x] **通知增强**：审核岗收件（OWNER \| create \| site:manage）；邮件含 `WEB_APP_ORIGIN` 直达链接；指派任务发邮件；Webhook `article.brief_pending` / `article.assigned`
+- [x] **任务详情 GSC 一行**：已发布且 GSC 有数据时展示展示/点击/平均排名（近 28 天）
+- [x] **站点最少素材**：`siteHasWritingProfile` = 行业 +（产品线 **或** ≥1 条卖点）；概览/站点页文案同步
+
 ### 产品壳（前端）
 
 - [x] **SEO 工作台左侧导航**：概览 / 任务 / 词库 / 站点 + 设置（admin）
@@ -124,7 +135,11 @@ SERP → Brief → [人工确认?] → 初稿 → 内链 → 配图 → Semrush 
 | 内链编辑 | `article-job-internal-links.service.ts`、`ArticleJobInternalLinksPanel.vue` |
 | CMS 发布/更新 | `cms-publish.service.ts`、`shopify-files.service.ts` |
 | 批量导出 | `export.service.ts` → `buildBatchExportPackage` |
-| 任务列表筛选 | `?stage=outlinePending|reviewPending|...`、`?briefPending=1`、`?reviewPending=1`、`?siteId=` |
+| 任务列表筛选 | `?stage=outlinePending|reviewPending|...`、`?briefPending=1`、`?reviewPending=1`、`?siteId=`、`?assignedToMe=1`、`?siteOwner=me` |
+| 三档岗位预设 | `project-permission-presets.ts`、`OrgProjectsView.vue` 权限抽屉 |
+| 个人待办统计 | `getProjectStats` → `myAssignedCount` / `myReviewPendingCount` |
+| 任务 GSC 一行 | `gsc.service.ts` → `getJobPagePerformance`、`JobDetailView.vue` |
+| 通知直达链接 | `notification-link.util.ts`（`WEB_APP_ORIGIN`） |
 | 主题集群 | `keyword-cluster.service.ts`、`TopicClusterView.vue`（含 `POST .../create-jobs`） |
 | GSC 搜索表现 | `gsc.service.ts`、`ProjectSettingsView.vue`（嵌入 GSC、自动同步） |
 | GSC 偏弱改稿待办 | `gsc-underperform.util.ts`、`WorkbenchOverviewView.vue` |
@@ -134,6 +149,26 @@ SERP → Brief → [人工确认?] → 初稿 → 内链 → 配图 → Semrush 
 | 导出 FAQ JSON-LD | `article-json-ld.util.ts`、`export.service.ts` |
 | 竞品浏览器回退 | `competitor-browser.scraper.ts`（`SCRAPER_COMPETITOR_BROWSER_ENABLED`） |
 | 前端功能开关 | `apps/platform/web/src/constants/feature-flags.ts` |
+| 企业 UX Full Pack | 见下方 P5-ENTERPRISE |
+
+### P5-ENTERPRISE 企业 UX Full Pack（2026-06-29）
+
+- [x] **`seo:job:review` 独立权限**：审核与创建/发布分离；preset 执行/审核/只读；迁移 `20260629180000`
+- [x] **创建项目 UX**：创建后「进入工作台」、checklist、访问期默认长期开放
+- [x] **组织生产看板**：`GET /api/v1/org/production/summary` + `ProjectHomeView`
+- [x] **配额预览**：`useArticleQuotaPreview`（JobCreate / KeywordPool / TopicCluster）
+- [x] **审计**：CMS 发布 / 审核 / 大纲操作写审计；`OrgAuditView` 中文映射
+- [x] **任务时间线**：`ArticleJobActivity` 模型/API + `ArticleJobActivityTimeline.vue`
+- [x] **评论 @提及**：`article-job-collab` + `ArticleJobCollabPanel.vue`
+- [x] **钉钉/飞书机器人**：`OrgRobotChannel` + `OrgProfileView` 配置
+- [x] **通知偏好**：`UserNotificationPreference` API + 邮件发送前检查
+- [x] **审核超时 24h 升级**：BullMQ `review-escalation`
+- [x] **Webhook**：投递日志 UI、SSRF 防护、BullMQ 异步投递、`article.comment_added`
+- [x] **顶栏搜索**：`SearchModal` 调用 `searchOrg`（≥2 字）
+- [x] **成员禁用/启用**：`PATCH /org/members/:userId/status` + `OrgMembersView`
+- [x] **技术债**：`expectedProjectType: seo-factory`、`afterCommit`、成员访问状态 UI
+- [x] **UTM 归因 CSV**：`GET .../sites/:id/attribution-export` + `SiteManageView`
+- [x] **站点负责人**：`Site.settings.ownerUserId` + `?siteOwner=me` 筛选
 
 ## 本地验证
 
@@ -151,4 +186,4 @@ pnpm dev:web
 | 完成功能 | 更新本文件 + `task.md` 对应 `[x]` |
 | 工作流变更 | 同步 `workflow-resume.ts` 与本节表格 |
 
-*最后更新：2026-06-14（P0 + P1 落地，Brief 稳定性与竞品浏览器回退）*
+*最后更新：2026-06-29（P5-ENTERPRISE 企业 UX Full Pack 全量落地）*

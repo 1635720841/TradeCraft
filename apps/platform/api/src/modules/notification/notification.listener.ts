@@ -22,11 +22,13 @@ import {
   type MemberInvitedPayload,
   type OrgQuotaLowPayload,
 } from '../../core/event-bus/events';
+import { runAfterCommit } from '../../core/event-bus/run-after-commit';
 import { PrismaService } from '../../core/database/prisma.service';
 import { RedisService } from '../../core/redis/redis.service';
 import { EmailNotificationService } from './email-notification.service';
 import { InAppNotificationService } from './in-app-notification.service';
 import { NotificationRecipientService } from './notification-recipient.service';
+import { appendNotificationLink } from './notification-link.util';
 
 const QUOTA_ALERT_TTL_SEC = 86_400;
 
@@ -41,7 +43,11 @@ export class NotificationListener {
   ) {}
 
   @OnEvent(ARTICLE_BRIEF_PENDING_EVENT)
-  async onBriefPending(payload: ArticleBriefPendingPayload): Promise<void> {
+  onBriefPending(payload: ArticleBriefPendingPayload): void {
+    runAfterCommit(() => this.handleBriefPending(payload));
+  }
+
+  private async handleBriefPending(payload: ArticleBriefPendingPayload): Promise<void> {
     const userIds = await this.recipients.listProjectJobNotifiableUserIds(
       payload.organizationId,
       payload.projectId,
@@ -64,19 +70,23 @@ export class NotificationListener {
     await this.email.send({
       to,
       subject: `[MW] 大纲待确认：${payload.targetKeyword}`,
-      text: [
-        '有一篇文章的大纲等待您确认后再生成正文。',
-        '',
-        `关键词：${payload.targetKeyword}`,
-        `任务 ID：${payload.jobId}`,
-        '',
-        '请登录工作台，在任务列表筛选「待确认大纲」进行处理。',
-      ].join('\n'),
+      text: appendNotificationLink(
+        [
+          '有一篇文章的大纲等待您确认后再生成正文。',
+          '',
+          `关键词：${payload.targetKeyword}`,
+        ],
+        linkPath,
+      ),
     });
   }
 
   @OnEvent(ARTICLE_FAILED_EVENT)
-  async onArticleFailed(payload: ArticleFailedPayload): Promise<void> {
+  onArticleFailed(payload: ArticleFailedPayload): void {
+    runAfterCommit(() => this.handleArticleFailed(payload));
+  }
+
+  private async handleArticleFailed(payload: ArticleFailedPayload): Promise<void> {
     const userIds = await this.recipients.listProjectJobNotifiableUserIds(
       payload.organizationId,
       payload.projectId,
@@ -98,17 +108,24 @@ export class NotificationListener {
     await this.email.send({
       to,
       subject: `[MW] 文章任务失败：${payload.targetKeyword}`,
-      text: [
-        '有一篇文章任务生成失败，需要您查看并处理。',
-        '',
-        `关键词：${payload.targetKeyword}`,
-        `原因：${payload.errorMessage}`,
-      ].join('\n'),
+      text: appendNotificationLink(
+        [
+          '有一篇文章任务生成失败，需要您查看并处理。',
+          '',
+          `关键词：${payload.targetKeyword}`,
+          `原因：${payload.errorMessage}`,
+        ],
+        linkPath,
+      ),
     });
   }
 
   @OnEvent(ORG_QUOTA_LOW_EVENT)
-  async onQuotaLow(payload: OrgQuotaLowPayload): Promise<void> {
+  onQuotaLow(payload: OrgQuotaLowPayload): void {
+    runAfterCommit(() => this.handleQuotaLow(payload));
+  }
+
+  private async handleQuotaLow(payload: OrgQuotaLowPayload): Promise<void> {
     const dedupeKey = `notification:quota_low:${payload.organizationId}`;
     const client = this.redis.getClient();
     const set = await client.set(dedupeKey, '1', 'EX', QUOTA_ALERT_TTL_SEC, 'NX');
@@ -138,7 +155,11 @@ export class NotificationListener {
   }
 
   @OnEvent(ACCESS_REQUEST_CREATED_EVENT)
-  async onAccessRequest(payload: AccessRequestCreatedPayload): Promise<void> {
+  onAccessRequest(payload: AccessRequestCreatedPayload): void {
+    runAfterCommit(() => this.handleAccessRequest(payload));
+  }
+
+  private async handleAccessRequest(payload: AccessRequestCreatedPayload): Promise<void> {
     const adminIds = await this.recipients.listOrgAdminUserIds(payload.organizationId);
     await this.inApp.createForUsers({
       organizationId: payload.organizationId,
@@ -151,25 +172,58 @@ export class NotificationListener {
   }
 
   @OnEvent(MEMBER_INVITED_EVENT)
-  async onMemberInvited(_payload: MemberInvitedPayload): Promise<void> {
+  onMemberInvited(_payload: MemberInvitedPayload): void {
     // Email already sent by MemberInviteService
   }
 
   @OnEvent(ARTICLE_ASSIGNED_EVENT)
-  async onAssigned(payload: ArticleAssignedPayload): Promise<void> {
+  onAssigned(payload: ArticleAssignedPayload): void {
+    runAfterCommit(() => this.handleAssigned(payload));
+  }
+
+  private async handleAssigned(payload: ArticleAssignedPayload): Promise<void> {
     const linkPath = `/projects/${payload.projectId}/seo-factory/jobs/${payload.jobId}`;
     await this.inApp.createForUsers({
       organizationId: payload.organizationId,
       userIds: [payload.assigneeUserId],
       type: 'assigned',
       title: `您被指派任务：${payload.targetKeyword}`,
+      body: '请登录工作台查看并处理',
       linkPath,
     });
+
+    const assignee = await this.prisma.user.findFirst({
+      where: { id: payload.assigneeUserId },
+      select: { email: true, status: true },
+    });
+    if (assignee?.email && assignee.status === 'ACTIVE') {
+      await this.email.send({
+        to: [assignee.email],
+        subject: `[MW] 您被指派任务：${payload.targetKeyword}`,
+        text: appendNotificationLink(
+          [
+            '您被指派了一篇内容任务，请及时处理。',
+            '',
+            `关键词：${payload.targetKeyword}`,
+          ],
+          linkPath,
+        ),
+      });
+    }
   }
 
   @OnEvent(ARTICLE_COMMENT_ADDED_EVENT)
-  async onComment(payload: ArticleCommentAddedPayload): Promise<void> {
-    const recipients = payload.assigneeUserIds.filter((id) => id !== payload.authorUserId);
+  onComment(payload: ArticleCommentAddedPayload): void {
+    runAfterCommit(() => this.handleComment(payload));
+  }
+
+  private async handleComment(payload: ArticleCommentAddedPayload): Promise<void> {
+    const linkPath = `/projects/${payload.projectId}/seo-factory/jobs/${payload.jobId}`;
+    const recipientSet = new Set([
+      ...payload.assigneeUserIds,
+      ...(payload.mentionedUserIds ?? []),
+    ]);
+    const recipients = [...recipientSet].filter((id) => id !== payload.authorUserId);
     if (recipients.length === 0) return;
 
     await this.inApp.createForUsers({
@@ -177,12 +231,37 @@ export class NotificationListener {
       userIds: recipients,
       type: 'comment',
       title: `任务有新评论：${payload.targetKeyword}`,
-      linkPath: `/projects/${payload.projectId}/seo-factory/jobs/${payload.jobId}`,
+      linkPath,
+    });
+
+    const mentionedOnly = (payload.mentionedUserIds ?? []).filter(
+      (id) => id !== payload.authorUserId && !payload.assigneeUserIds.includes(id),
+    );
+    if (mentionedOnly.length === 0) return;
+
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: mentionedOnly }, status: 'ACTIVE' },
+      select: { id: true, email: true },
+    });
+    const emails = users.map((user) => user.email).filter(Boolean) as string[];
+    if (emails.length === 0) return;
+
+    await this.email.send({
+      to: emails,
+      subject: `[MW] 您在评论中被提及：${payload.targetKeyword}`,
+      text: appendNotificationLink(
+        ['有人在任务评论中 @ 了您，请及时查看。', '', `关键词：${payload.targetKeyword}`],
+        linkPath,
+      ),
     });
   }
 
   @OnEvent(BILLING_REQUEST_CREATED_EVENT)
-  async onBillingRequest(payload: BillingRequestCreatedPayload): Promise<void> {
+  onBillingRequest(payload: BillingRequestCreatedPayload): void {
+    runAfterCommit(() => this.handleBillingRequest(payload));
+  }
+
+  private async handleBillingRequest(payload: BillingRequestCreatedPayload): Promise<void> {
     const ops = await this.prisma.user.findMany({
       where: { role: { in: ['SUPER_ADMIN', 'PLATFORM_OPERATOR'] } },
       select: { id: true, organizationId: true },

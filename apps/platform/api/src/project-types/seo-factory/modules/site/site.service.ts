@@ -40,6 +40,10 @@ import {
 import { fetchWithRetry } from '../../../../core/http/http-fetch';
 import type { ListShopifyBlogsDto } from './dto/list-shopify-blogs.dto';
 import { findKeywordConflicts } from '../keyword-pool/keyword-cannibalization.util';
+import {
+  buildAttributionCsv,
+  resolveAttributionRows,
+} from './site-attribution-export.util';
 
 const siteSelect = {
   id: true,
@@ -60,14 +64,66 @@ export class SiteService {
     private readonly redis: RedisService,
   ) {}
 
-  async findMany(organizationId: string, projectId: string) {
+  async findMany(
+    organizationId: string,
+    projectId: string,
+    options?: { siteOwnerUserId?: string },
+  ) {
     const sites = await this.prisma.site.findMany({
       where: { organizationId, projectId },
       select: siteSelect,
       orderBy: { createdAt: 'desc' },
     });
 
-    return sites.map((site) => this.toPublicSite(site));
+    const filtered = options?.siteOwnerUserId
+      ? sites.filter(
+          (site) => parseSiteSettings(site.settings).ownerUserId === options.siteOwnerUserId,
+        )
+      : sites;
+
+    return filtered.map((site) => this.toPublicSite(site));
+  }
+
+  async listOwnedSiteIds(
+    organizationId: string,
+    projectId: string,
+    ownerUserId: string,
+  ): Promise<string[]> {
+    const sites = await this.prisma.site.findMany({
+      where: { organizationId, projectId },
+      select: { id: true, settings: true },
+    });
+    return sites
+      .filter((site) => parseSiteSettings(site.settings).ownerUserId === ownerUserId)
+      .map((site) => site.id);
+  }
+
+  async exportAttributionCsv(
+    organizationId: string,
+    projectId: string,
+    siteId: string,
+  ): Promise<string> {
+    const site = await this.prisma.site.findFirst({
+      where: { id: siteId, organizationId, projectId },
+      select: { settings: true },
+    });
+    if (!site) {
+      throw new BusinessException(ErrorCodes.SITE_NOT_FOUND, '站点不存在');
+    }
+
+    const jobs = await this.prisma.articleJob.findMany({
+      where: { organizationId, projectId, siteId, status: 'COMPLETED' },
+      select: {
+        id: true,
+        targetKeyword: true,
+        seoCheckData: true,
+        updatedAt: true,
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 5000,
+    });
+
+    return buildAttributionCsv(resolveAttributionRows(jobs, site.settings));
   }
 
   async findOne(organizationId: string, projectId: string, siteId: string) {
@@ -356,13 +412,23 @@ export class SiteService {
       }
     }
 
-    if (dto.workflow !== undefined || dto.contentProfile !== undefined || dto.serpResearch !== undefined) {
-      data.settings = this.buildSettingsForWrite(
+    if (
+      dto.workflow !== undefined ||
+      dto.contentProfile !== undefined ||
+      dto.serpResearch !== undefined ||
+      dto.ownerUserId !== undefined
+    ) {
+      const existing = parseSiteSettings(current.settings);
+      const baseSettings = this.buildSettingsForWrite(
         dto.workflow,
         dto.contentProfile,
         dto.serpResearch,
-        parseSiteSettings(current.settings),
-      );
+        existing,
+      ) as Record<string, unknown>;
+      if (dto.ownerUserId !== undefined) {
+        baseSettings.ownerUserId = dto.ownerUserId?.trim() || undefined;
+      }
+      data.settings = baseSettings as Prisma.InputJsonValue;
     }
 
     const site = await this.prisma.site.update({
@@ -517,6 +583,7 @@ export class SiteService {
     createdAt: Date;
   }) {
     const cms = sanitizeCmsForResponse(site.cmsType, site.cmsConfig);
+    const parsed = parseSiteSettings(site.settings);
     return {
       id: site.id,
       domain: site.domain,
@@ -525,12 +592,13 @@ export class SiteService {
       contentLanguage: site.contentLanguage,
       cmsType: cms.cmsType,
       cmsConfig: cms.cmsConfig,
+      ownerUserId: parsed.ownerUserId ?? null,
       workflow: {
         ...parseSiteWorkflowSettings(site.settings),
         ...resolveSiteSeoScoreConfig(site.settings),
       },
-      contentProfile: parseSiteSettings(site.settings).contentProfile,
-      serpResearch: parseSiteSettings(site.settings).serpResearch,
+      contentProfile: parsed.contentProfile,
+      serpResearch: parsed.serpResearch,
       createdAt: site.createdAt,
     };
   }

@@ -12,6 +12,7 @@ import {
   type ArticleCompletedPayload,
   type OrgQuotaLowPayload,
 } from '../../core/event-bus/events';
+import { runAfterCommit } from '../../core/event-bus/run-after-commit';
 import { BusinessException } from '../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../core/exceptions/error-codes';
 import { LoggerService } from '../../core/logger/logger.service';
@@ -46,7 +47,11 @@ export class BillingService {
   ) {}
 
   @OnEvent(ARTICLE_COMPLETED_EVENT)
-  async onArticleCompleted(payload: ArticleCompletedPayload): Promise<void> {
+  onArticleCompleted(payload: ArticleCompletedPayload): void {
+    runAfterCommit(() => this.handleArticleCompleted(payload));
+  }
+
+  private async handleArticleCompleted(payload: ArticleCompletedPayload): Promise<void> {
     const existing = await this.prisma.creditUsage.findFirst({
       where: {
         traceId: payload.traceId,

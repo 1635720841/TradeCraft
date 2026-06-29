@@ -18,6 +18,8 @@ import { BusinessException } from '../../../../core/exceptions/business.exceptio
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { PrismaService } from '../../../../core/database/prisma.service';
 import { LoggerService } from '../../../../core/logger/logger.service';
+import { AuditService } from '../../../../modules/access/audit.service';
+import { ArticleJobActivityService } from './article-job-activity.service';
 import { ARTICLE_JOB_QUEUE } from '../../../../core/queue/queue.constants';
 import {
   isBriefApprovalPending,
@@ -32,6 +34,8 @@ export class ArticleJobBriefService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly logger: LoggerService,
+    private readonly auditService: AuditService,
+    private readonly activityService: ArticleJobActivityService,
     @InjectQueue(ARTICLE_JOB_QUEUE) private readonly articleJobQueue: Queue<ArticleJobQueuePayload>,
   ) {}
 
@@ -133,6 +137,23 @@ export class ArticleJobBriefService {
       projectId,
       jobId,
       action: 'article_job.brief_approve',
+    });
+
+    await this.auditService.log({
+      organizationId,
+      actorUserId: ctx.userId,
+      action: 'article_job.brief_approve',
+      targetType: 'ArticleJob',
+      targetId: jobId,
+      traceId,
+    });
+    await this.activityService.record({
+      organizationId,
+      projectId,
+      jobId,
+      type: 'brief_approved',
+      actorUserId: ctx.userId,
+      summary: 'Brief 已确认',
     });
 
     return this.findOneBrief(organizationId, projectId, jobId);

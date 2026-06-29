@@ -17,12 +17,30 @@ import type {
 } from "./types";
 
 /** 项目下站点列表 */
-export async function listSites(projectId: string): Promise<SiteItem[]> {
+export async function listSites(
+  projectId: string,
+  options?: { siteOwner?: "me" }
+): Promise<SiteItem[]> {
+  const params: Record<string, string> = {};
+  if (options?.siteOwner === "me") params.siteOwner = "me";
   const res = await http.request<WmApiResponse<SiteItem[]>>(
     "get",
-    seoFactoryApiPath(projectId, "sites")
+    seoFactoryApiPath(projectId, "sites"),
+    { params }
   );
   return res.data ?? [];
+}
+
+/** 导出站点 UTM 归因 CSV */
+export async function exportSiteAttributionCsv(
+  projectId: string,
+  siteId: string
+): Promise<Blob> {
+  return http.request<Blob>(
+    "get",
+    seoFactoryApiPath(projectId, `sites/${siteId}/attribution-export`),
+    { responseType: "blob" }
+  );
 }
 
 /** 创建站点 */

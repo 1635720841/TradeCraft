@@ -27,6 +27,7 @@ export interface SiteContentProfile {
 }
 
 export interface SiteSettings extends SiteWorkflowSettings {
+  ownerUserId?: string;
   contentProfile?: SiteContentProfile;
   serpResearch?: SiteSerpResearchSettings;
 }
@@ -80,16 +81,27 @@ export function parseSiteContentProfile(raw: unknown): SiteContentProfile | unde
   return Object.keys(profile).length > 0 ? profile : undefined;
 }
 
-/** 站点是否已填写 B2B 写作素材（任一 Profile 字段非空） */
+/** 站点是否已填写最少写作素材（行业 + 至少 1 条卖点） */
 export function siteHasWritingProfile(settings: unknown): boolean {
-  return Boolean(parseSiteSettings(settings).contentProfile);
+  const profile = parseSiteSettings(settings).contentProfile;
+  if (!profile?.industry?.trim()) {
+    return false;
+  }
+  const hasProductLines = Boolean(profile.productLines?.trim());
+  const hasDifferentiator = (profile.differentiators?.length ?? 0) >= 1;
+  return hasProductLines || hasDifferentiator;
 }
 
 export function parseSiteSettings(settings: unknown): SiteSettings {
   const raw = (settings ?? {}) as SiteSettings;
   const workflow = parseSiteWorkflowSettings(settings);
+  const ownerUserId =
+    typeof raw.ownerUserId === 'string' && raw.ownerUserId.trim()
+      ? raw.ownerUserId.trim()
+      : undefined;
   return {
     ...workflow,
+    ownerUserId,
     contentProfile: parseSiteContentProfile(raw.contentProfile),
     serpResearch: parseSiteSerpResearchSettings(raw.serpResearch),
   };

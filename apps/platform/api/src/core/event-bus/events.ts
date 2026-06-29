@@ -94,6 +94,7 @@ export interface ArticleCommentAddedPayload {
   commentId: string;
   authorUserId: string;
   assigneeUserIds: string[];
+  mentionedUserIds: string[];
 }
 
 /** 计费变更申请 */

@@ -83,7 +83,7 @@ export function useOrgAdminSetupChecklist() {
       },
       {
         id: "member",
-        label: "将自己加入项目成员（企业管理员不会自动获得进入权限）",
+        label: "将自己加入项目成员（非创建者需手动加入）",
         done: selfJoined,
         actionLabel: "去加入",
         onAction: () =>
@@ -103,7 +103,7 @@ export function useOrgAdminSetupChecklist() {
           } else if (p) {
             router.push({
               path: "/org/projects",
-              query: { openPerm: p.id, preset: "content_editor" }
+              query: { openPerm: p.id, preset: "executor" }
             });
           } else {
             router.push("/org/projects");

@@ -6,6 +6,7 @@
  */
 
 import { markdownToHtml } from '../../providers/semrush/semrush-content';
+import { seoFactoryApiPath } from '../../constants/seo-factory-routes';
 
 export interface ExportHtmlInput {
   title: string;
@@ -127,5 +128,5 @@ export function buildExportStoragePrefix(
 
 /** API 相对下载路径 */
 export function buildExportHtmlUrl(projectId: string, jobId: string): string {
-  return `/api/v1/projects/${projectId}/article-jobs/${jobId}/export/html`;
+  return seoFactoryApiPath(projectId, `article-jobs/${jobId}/export/html`);
 }

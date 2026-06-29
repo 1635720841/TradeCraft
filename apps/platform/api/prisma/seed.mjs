@@ -107,8 +107,9 @@ async function ensureCatalogs() {
     ['project:update', '编辑项目', 'project', '归档或更新项目', 62],
     ['seo:job:create', '创建任务', 'seo', '创建文章任务', 70],
     ['seo:job:read', '查看任务', 'seo', '查看文章任务', 71],
-    ['seo:keyword:manage', '管理词库', 'seo', '关键词与聚类管理', 72],
-    ['seo:site:manage', '管理站点', 'seo', '站点配置与页面库', 73],
+    ['seo:job:review', '审核任务', 'seo', '确认大纲与敏感审核', 72],
+    ['seo:keyword:manage', '管理词库', 'seo', '关键词与聚类管理', 73],
+    ['seo:site:manage', '管理站点', 'seo', '站点配置与页面库', 74],
   ];
 
   for (const [id, name, module, description, sortOrder] of permissions) {

@@ -2,7 +2,7 @@
  * Webhook HTTP 入口。
  */
 
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import type { RequestContext } from '@wm/shared-core';
 import { ReqCtx } from '../../core/decorators/request-context.decorator';
 import { Permissions } from '../../core/decorators/permissions.decorator';
@@ -45,5 +45,28 @@ export class OrgWebhookController {
   async remove(@ReqCtx() ctx: RequestContext, @Param('id') id: string) {
     const data = await this.webhookService.remove(ctx.organizationId, id);
     return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Get(':id/deliveries')
+  @Permissions('org:integration:manage')
+  async listDeliveries(
+    @ReqCtx() ctx: RequestContext,
+    @Param('id') id: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const result = await this.webhookService.listDeliveries(
+      ctx.organizationId,
+      id,
+      page ? Number(page) : 1,
+      limit ? Number(limit) : 20,
+    );
+    return {
+      data: result.items,
+      meta: {
+        traceId: ctx.traceId,
+        pagination: { page: result.page, limit: result.limit, total: result.total },
+      },
+    };
   }
 }

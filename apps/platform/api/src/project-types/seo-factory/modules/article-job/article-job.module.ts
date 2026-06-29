@@ -6,6 +6,7 @@
  */
 
 import { Module } from '@nestjs/common';
+import { AccessModule } from '../../../../modules/access/access.module';
 import { ProjectModule } from '../../../../modules/project/project.module';
 import { BillingModule } from '../../../../modules/billing/billing.module';
 import { SeoFactoryQueueModule } from '../../seo-factory-queue.module';
@@ -26,9 +27,10 @@ import { ExportModule } from '../export/export.module';
 import { GscModule } from '../gsc/gsc.module';
 import { ScraperModule } from '../scraper/scraper.module';
 import { ArticleJobInternalLinksService } from './article-job-internal-links.service';
+import { ArticleJobActivityModule } from './article-job-activity.module';
 
 @Module({
-  imports: [ProjectModule, BillingModule, SeoFactoryQueueModule, SeoCheckerModule, LlmModule, SiteModule, ExportModule, LinkingModule, GscModule, ScraperModule],
+  imports: [ProjectModule, AccessModule, ArticleJobActivityModule, BillingModule, SeoFactoryQueueModule, SeoCheckerModule, LlmModule, SiteModule, ExportModule, LinkingModule, GscModule, ScraperModule],
   controllers: [ArticleJobController, ArticleJobCollabController],
   providers: [ArticleJobService, ArticleJobCollabService, ArticleJobBriefService, ArticleJobInternalLinksService, ArticleJobRewriteService, ArticleJobDraftEditService, ArticleJobDraftImageService, ArticleJobReviewService],
   exports: [ArticleJobService],

@@ -41,6 +41,14 @@ interface GscOAuthConfig {
   webAppOrigin: string;
 }
 
+export interface GscJobPagePerformance {
+  impressions: number;
+  clicks: number;
+  position: number;
+  periodDays: number;
+  syncedAt: string;
+}
+
 @Injectable()
 export class GscService {
   constructor(
@@ -425,6 +433,61 @@ export class GscService {
     return collected
       .sort((a, b) => b.impressions - a.impressions)
       .slice(0, 3);
+  }
+
+  /** 单篇已发布任务在 GSC 中的页面表现（无数据返回 null） */
+  async getJobPagePerformance(
+    organizationId: string,
+    projectId: string,
+    jobId: string,
+  ): Promise<GscJobPagePerformance | null> {
+    const job = await this.prisma.articleJob.findFirst({
+      where: { id: jobId, organizationId, projectId },
+      select: { siteId: true, seoCheckData: true },
+    });
+    if (!job) {
+      return null;
+    }
+
+    const postUrl = (
+      (job.seoCheckData as { cmsPublish?: { postUrl?: string | null } } | null)?.cmsPublish
+        ?.postUrl ?? ''
+    ).trim();
+    if (!postUrl) {
+      return null;
+    }
+
+    const connection = await this.prisma.siteGscConnection.findFirst({
+      where: { siteId: job.siteId },
+      select: {
+        refreshToken: true,
+        lastSyncAt: true,
+        summaryData: true,
+      },
+    });
+    if (!connection?.refreshToken || !connection.lastSyncAt) {
+      return null;
+    }
+
+    const summary = parseGscSummaryData(connection.summaryData);
+    if (!summary) {
+      return null;
+    }
+
+    const matched = summary.topPages.find((row) =>
+      pageUrlsMatchForGsc(row.page, postUrl),
+    );
+    if (!matched) {
+      return null;
+    }
+
+    return {
+      impressions: matched.impressions,
+      clicks: matched.clicks,
+      position: matched.position,
+      periodDays: summary.periodDays,
+      syncedAt: connection.lastSyncAt.toISOString(),
+    };
   }
 
   private enrichSummaryWithJobMatches(

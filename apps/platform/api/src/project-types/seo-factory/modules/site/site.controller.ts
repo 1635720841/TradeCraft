@@ -8,7 +8,8 @@
  * - SiteController
  */
 
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Header, Param, Patch, Post, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import type { RequestContext } from '@wm/shared-core';
 import { ReqCtx } from '../../../../core/decorators/request-context.decorator';
 import { ProjectService } from '../../../../modules/project/project.service';
@@ -28,9 +29,15 @@ export class SiteController {
   ) {}
 
   @Get()
-  async list(@ReqCtx() ctx: RequestContext, @Param('projectId') projectId: string) {
+  async list(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Query('siteOwner') siteOwner?: string,
+  ) {
     await this.projectService.assertSeoSiteRead(ctx.organizationId, projectId, ctx);
-    const sites = await this.siteService.findMany(ctx.organizationId, projectId);
+    const sites = await this.siteService.findMany(ctx.organizationId, projectId, {
+      siteOwnerUserId: siteOwner === 'me' ? ctx.userId : undefined,
+    });
     return { data: sites, meta: { traceId: ctx.traceId } };
   }
 
@@ -73,6 +80,28 @@ export class SiteController {
       dto,
     );
     return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Get(':siteId/attribution-export')
+  @Header('Cache-Control', 'private, no-store')
+  async exportAttribution(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('siteId') siteId: string,
+    @Res() res: Response,
+  ) {
+    await this.projectService.assertSeoSiteManage(ctx.organizationId, projectId, ctx);
+    const csv = await this.siteService.exportAttributionCsv(
+      ctx.organizationId,
+      projectId,
+      siteId,
+    );
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="attribution-${siteId.slice(0, 8)}.csv"`,
+    );
+    res.send(`\uFEFF${csv}`);
   }
 
   @Get(':siteId/keyword-conflicts')

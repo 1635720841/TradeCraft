@@ -566,6 +566,14 @@ export interface ArticleJobQuillbotResult {
   localScoreAfter?: number;
 }
 
+export interface ArticleJobGscPerformance {
+  impressions: number;
+  clicks: number;
+  position: number;
+  periodDays: number;
+  syncedAt: string;
+}
+
 export interface ArticleJobItem {
   id: string;
   traceId: string;
@@ -592,6 +600,7 @@ export interface ArticleJobItem {
   serpData?: ArticleJobSerpData | null;
   briefData?: ArticleJobBriefData | null;
   draftData?: ArticleJobDraftData | null;
+  gscPerformance?: ArticleJobGscPerformance | null;
   createdAt: string;
   updatedAt?: string;
 }
@@ -733,6 +742,7 @@ export interface SiteItem {
   contentLanguage?: string | null;
   cmsType?: string | null;
   cmsConfig?: SiteCmsConfig | null;
+  ownerUserId?: string | null;
   workflow?: SiteWorkflowSettings;
   contentProfile?: SiteContentProfile;
   serpResearch?: SiteSerpResearchSettings;
@@ -782,6 +792,7 @@ export interface UpdateSitePayload {
   workflow?: SiteWorkflowSettings;
   contentProfile?: SiteContentProfile;
   serpResearch?: SiteSerpResearchSettings;
+  ownerUserId?: string | null;
 }
 
 export interface SiteWordPressPayload {
@@ -852,6 +863,9 @@ export interface SeoFactoryProjectStats {
   keywordTotalCount: number;
   keywordQueueableCount: number;
   keywordUnclusteredCount: number;
+  myAssignedCount: number;
+  myReviewPendingCount: number;
+  canReviewInProject: boolean;
 }
 
 export interface ShopifyBlogItem {

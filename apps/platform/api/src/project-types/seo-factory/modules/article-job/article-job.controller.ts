@@ -113,6 +113,7 @@ export class ArticleJobController {
       ctx.organizationId,
       projectId,
       siteId?.trim() || undefined,
+      ctx.userId,
     );
     return { data, meta: { traceId: ctx.traceId } };
   }
@@ -157,7 +158,7 @@ export class ArticleJobController {
     @Param('projectId') projectId: string,
     @Body() dto: BatchRetryArticleJobsDto,
   ) {
-    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobReview(ctx.organizationId, projectId, ctx);
     const data = await this.articleJobBriefService.batchApproveBrief(
       ctx,
       ctx.organizationId,
@@ -174,12 +175,13 @@ export class ArticleJobController {
     @Param('projectId') projectId: string,
     @Body() dto: BatchPublishArticleJobsDto,
   ) {
-    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobPublish(ctx.organizationId, projectId, ctx);
     const data = await this.cmsPublishService.batchPublish(
       ctx.organizationId,
       projectId,
       ctx.traceId,
       dto,
+      ctx.userId,
     );
     return { data, meta: { traceId: ctx.traceId } };
   }
@@ -224,6 +226,8 @@ export class ArticleJobController {
     @Query('cmsPublishPending') cmsPublishPending?: string,
     @Query('staleDraft') staleDraft?: string,
     @Query('reviewPending') reviewPending?: string,
+    @Query('assignedToMe') assignedToMe?: string,
+    @Query('siteOwner') siteOwner?: string,
     @Query('status') status?: string,
     @Query('siteId') siteId?: string,
   ) {
@@ -240,6 +244,9 @@ export class ArticleJobController {
         cmsPublishPending: cmsPublishPending === '1' || cmsPublishPending === 'true',
         staleDraft: staleDraft === '1' || staleDraft === 'true',
         reviewPending: reviewPending === '1' || reviewPending === 'true',
+        assignedToMe: assignedToMe === '1' || assignedToMe === 'true',
+        siteOwnerMe: siteOwner === 'me',
+        actorUserId: ctx.userId,
         status: status === 'FAILED' ? 'FAILED' : undefined,
         siteId: siteId?.trim() || undefined,
       },
@@ -544,7 +551,7 @@ export class ArticleJobController {
     @Param('id') id: string,
     @Body() dto: ReviewArticleJobDto,
   ) {
-    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobReview(ctx.organizationId, projectId, ctx);
     const job = await this.articleJobReviewService.approve(
       ctx,
       ctx.organizationId,
@@ -562,7 +569,7 @@ export class ArticleJobController {
     @Param('id') id: string,
     @Body() dto: ReviewArticleJobDto,
   ) {
-    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobReview(ctx.organizationId, projectId, ctx);
     const job = await this.articleJobReviewService.reject(
       ctx,
       ctx.organizationId,
@@ -581,13 +588,14 @@ export class ArticleJobController {
     @Param('id') id: string,
     @Body() dto: PublishArticleJobDto,
   ) {
-    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobPublish(ctx.organizationId, projectId, ctx);
     const data = await this.cmsPublishService.publishJob(
       ctx.organizationId,
       projectId,
       id,
       ctx.traceId,
       dto,
+      ctx.userId,
     );
     return { data, meta: { traceId: ctx.traceId } };
   }
@@ -632,7 +640,7 @@ export class ArticleJobController {
     @Param('id') id: string,
     @Body() dto: PatchArticleBriefDto,
   ) {
-    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobReview(ctx.organizationId, projectId, ctx);
     const data = await this.articleJobBriefService.patchBrief(
       ctx.organizationId,
       projectId,
@@ -649,7 +657,7 @@ export class ArticleJobController {
     @Param('projectId') projectId: string,
     @Param('id') id: string,
   ) {
-    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoJobReview(ctx.organizationId, projectId, ctx);
     const data = await this.articleJobBriefService.approveBrief(
       ctx,
       ctx.organizationId,

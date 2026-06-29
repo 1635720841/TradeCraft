@@ -16,6 +16,8 @@ import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { fetchWithRetry } from '../../../../core/http/http-fetch';
 import { PrismaService } from '../../../../core/database/prisma.service';
 import { LoggerService } from '../../../../core/logger/logger.service';
+import { AuditService } from '../../../../modules/access/audit.service';
+import { ArticleJobActivityService } from '../article-job/article-job-activity.service';
 import { canPublishArticle } from '../content-review/ymyl-detect.util';
 import {
   getShopifyApiVersion,
@@ -112,6 +114,8 @@ export class CmsPublishService {
     private readonly logger: LoggerService,
     private readonly storage: StorageService,
     private readonly shopifyFiles: ShopifyFilesService,
+    private readonly auditService: AuditService,
+    private readonly activityService: ArticleJobActivityService,
   ) {}
 
   async publishJob(
@@ -120,10 +124,12 @@ export class CmsPublishService {
     jobId: string,
     traceId: string,
     dto: PublishArticleJobDto = {},
+    actorUserId?: string,
   ): Promise<CmsPublishRecord> {
     const job = await this.loadPublishableJob(organizationId, projectId, jobId);
     const ctx = this.buildPublishContext(job, traceId, organizationId, projectId);
 
+    let result: CmsPublishRecord;
     if (job.site.cmsType === 'shopify') {
       const config = parseShopifyCmsConfig(job.site.cmsType, job.site.cmsConfig);
       if (!config) {
@@ -132,17 +138,48 @@ export class CmsPublishService {
           '请先在站点设置中配置 Shopify Admin API',
         );
       }
-      return this.publishToShopify(ctx, config, dto);
+      result = await this.publishToShopify(ctx, config, dto);
+    } else {
+      const wpConfig = parseWordPressCmsConfig(job.site.cmsType, job.site.cmsConfig);
+      if (!wpConfig) {
+        throw new BusinessException(
+          ErrorCodes.CMS_NOT_CONFIGURED,
+          '请先在站点设置中配置 WordPress REST API',
+        );
+      }
+      result = await this.publishToWordPress(ctx, wpConfig, dto);
     }
 
-    const wpConfig = parseWordPressCmsConfig(job.site.cmsType, job.site.cmsConfig);
-    if (!wpConfig) {
-      throw new BusinessException(
-        ErrorCodes.CMS_NOT_CONFIGURED,
-        '请先在站点设置中配置 WordPress REST API',
-      );
+    if (actorUserId) {
+      await this.auditService.log({
+        organizationId,
+        actorUserId,
+        action: 'article_job.cms_publish',
+        targetType: 'ArticleJob',
+        targetId: jobId,
+        metadata: {
+          provider: result.provider,
+          postUrl: result.postUrl,
+          status: result.status,
+        },
+        traceId,
+      });
+      await this.activityService.record({
+        organizationId,
+        projectId,
+        jobId,
+        type: 'cms_publish',
+        actorUserId,
+        summary: `发布到 CMS（${result.provider}）`,
+        metadata: {
+          provider: result.provider,
+          postUrl: result.postUrl,
+          status: result.status,
+        },
+      });
     }
-    return this.publishToWordPress(ctx, wpConfig, dto);
+
+    return result;
   }
 
   async batchPublish(
@@ -150,6 +187,7 @@ export class CmsPublishService {
     projectId: string,
     traceId: string,
     dto: BatchPublishArticleJobsDto,
+    actorUserId?: string,
   ) {
     const results: Array<{ jobId: string; ok: boolean; data?: CmsPublishRecord; error?: string }> =
       [];
@@ -158,7 +196,7 @@ export class CmsPublishService {
       try {
         const data = await this.publishJob(organizationId, projectId, jobId, traceId, {
           status: dto.status,
-        });
+        }, actorUserId);
         results.push({ jobId, ok: true, data });
       } catch (error) {
         const message =

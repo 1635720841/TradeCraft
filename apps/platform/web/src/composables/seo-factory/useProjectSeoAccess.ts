@@ -19,6 +19,7 @@ import {
   fetchProjectAccess,
   hasProjectSeoPermission
 } from "@/router/guards/project-access";
+import { canPublishSeoJob, canReviewSeoJob } from "@/utils/project-seo-permission";
 import { useUserStoreHook } from "@/store/modules/user";
 
 export interface ProjectSeoAccessContext {
@@ -26,6 +27,8 @@ export interface ProjectSeoAccessContext {
   canEnter: Ref<boolean>;
   loading: Ref<boolean>;
   can: (required: string | string[] | undefined) => boolean;
+  canReview: () => boolean;
+  canPublish: () => boolean;
   refresh: () => Promise<void>;
   isSuperAdmin: ComputedRef<boolean>;
 }
@@ -69,9 +72,17 @@ function createProjectSeoAccess(
     });
   }
 
+  function canReview() {
+    return canReviewSeoJob(permissions.value, { superAdmin: isSuperAdmin.value });
+  }
+
+  function canPublish() {
+    return canPublishSeoJob(permissions.value, { superAdmin: isSuperAdmin.value });
+  }
+
   watch(() => toValue(projectId), () => void refresh(), { immediate: true });
 
-  return { permissions, canEnter, loading, can, refresh, isSuperAdmin };
+  return { permissions, canEnter, loading, can, canReview, canPublish, refresh, isSuperAdmin };
 }
 
 /** 在工作台 Shell 调用，向子树提供项目权限上下文 */

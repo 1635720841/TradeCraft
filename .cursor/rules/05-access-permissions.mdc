@@ -56,6 +56,18 @@ alwaysApply: false
 - **超级管理员**：可授 `console:*` 给平台管理员
 - **项目**：`listGrantablePermissionsForProjectType(projectType)`
 
+## SEO 项目岗位预设（三档）
+
+| 岗位 | 权限 | 能力 |
+|------|------|------|
+| **执行** | `seo:job:read` `seo:job:create` `seo:keyword:manage` | 选词、建任务、改稿 |
+| **审核** | `seo:job:read` `seo:job:review` `seo:site:manage` | 确认大纲、敏感审核、CMS 发布 |
+| **只读** | `seo:job:read` | 查看任务与进度 |
+
+- 审核判定：`seo:job:review` 或 `seo:site:manage`（**不含** `seo:job:create`）
+- CMS 发布判定：`seo:job:create` 或 `seo:site:manage`
+- OWNER 自动获得该项目类型全部 `seo:*`（含 `seo:job:review`）
+
 ## 改代码时检查
 
 - 新页面：`meta.menuKey` + `meta.permission` 与 `menu.constants.ts` 对齐

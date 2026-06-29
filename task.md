@@ -631,6 +631,40 @@ Phase 4 — 变现
 | P0-004 | Brief FAQ / Snippet + serpContext 修复 | [x] |
 | P0-005 | 关键词同质化警告 API + 前端 | [x] |
 
+## 企业体验简化包 P4-UX（2026-06-29）
+
+| ID | 任务 | 状态 |
+|----|------|------|
+| P4-UX-001 | 三档岗位 preset（执行/审核/只读）+ `content_editor` alias + `assertSeoJobReview` | [x] |
+| P4-UX-002 | `OrgProjectsView` 预设 UI + `canReviewSeoJob` / `canPublishSeoJob` + 评分实验室 `seo:site:manage` | [x] |
+| P4-UX-003 | 管理员「将自己加入项目」+ 项目准入单测 | [x] |
+| P4-UX-004 | 通知收件人规则 + 邮件直达链接 + 指派邮件 + Webhook 新事件 | [x] |
+| P4-UX-005 | 概览个人待办 + `assignedToMe` 筛选 + stats API | [x] |
+| P4-UX-006 | 任务详情 GSC 一行（`getJobPagePerformance`） | [x] |
+| P4-UX-007 | 站点最少素材规则（行业 + 卖点）+ 文案 | [x] |
+| P4-UX-008 | 单测：`project-permission-presets` / `notification-recipient` / `project-stats-personal` / `gsc-job-performance` / `site-settings` | [x] |
+
+## 企业 UX Full Pack P5-ENTERPRISE（2026-06-29）
+
+| ID | 任务 | 状态 |
+|----|------|------|
+| P5-001 | `seo:job:review` 权限分离 + preset/迁移/单测 | [x] |
+| P5-002 | 创建项目后直达工作台 + checklist | [x] |
+| P5-003 | 组织生产看板 `GET /org/production/summary` | [x] |
+| P5-004 | `useArticleQuotaPreview` 入队前预览 | [x] |
+| P5-005 | CMS/审核/大纲审计 + OrgAuditView 映射 | [x] |
+| P5-006 | ArticleJobActivity 时间线 | [x] |
+| P5-007 | 评论 @提及 + 通知 | [x] |
+| P5-008 | 钉钉/飞书 OrgRobotChannel | [x] |
+| P5-009 | UserNotificationPreference | [x] |
+| P5-010 | 审核超时 24h BullMQ 升级 | [x] |
+| P5-011 | Webhook 投递日志 + SSRF + 异步队列 + comment 事件 | [x] |
+| P5-012 | 顶栏全局搜索 + 文档 | [x] |
+| P5-013 | 成员禁用/启用 UI | [x] |
+| P5-014 | projectType 守卫 + afterCommit + 访问期 UI | [x] |
+| P5-015 | UTM 归因 CSV 导出 | [x] |
+| P5-016 | Site.settings.ownerUserId + 按负责人筛选 | [x] |
+
 ## SEO 外贸优化 Backlog（P1/P2，待排期）
 
 | ID | 任务 | 状态 |
@@ -655,4 +689,4 @@ Phase 4 — 变现
 
 ---
 
-*最后更新：2026-06-14 | SEO 工作台左侧导航 IA、任务阶段筛选合并队列、设置页；见 `docs/CURRENT_STATE.md`*
+*最后更新：2026-06-29 | P5-ENTERPRISE 企业 UX Full Pack；见 `docs/CURRENT_STATE.md`*

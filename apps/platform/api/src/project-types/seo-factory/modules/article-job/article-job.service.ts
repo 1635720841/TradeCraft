@@ -43,6 +43,7 @@ import type { CreateArticleJobDto } from './dto/create-article-job.dto';
 import type { RefreshArticleJobSerpDto } from './dto/refresh-article-job-serp.dto';
 import { resolveSerpResearchOptions } from '../../constants/serp-research-settings';
 import { SiteArticleCrawlerService } from '../site/site-article-crawler.service';
+import { SiteService } from '../site/site.service';
 import {
   isSemrushCheckStale,
   shouldRecoverOrphanOptimizing,
@@ -60,6 +61,10 @@ import { findKeywordConflicts } from '../keyword-pool/keyword-cannibalization.ut
 import { removeBullJobsByArticleJobId } from '../../utils/article-job-queue-cleanup.util';
 import type { PlaywrightJobPayload } from '../../services/semrush-queue.service';
 import { buildExportStoragePrefix } from '../export/export-html.util';
+import { ProjectAccessService } from '../../../../modules/project/project-access.service';
+import {
+  canReviewInSeoProject,
+} from '../../../../modules/project/project-notification.util';
 
 const JOB_LIST_SITE_SELECT = { domain: true, cmsType: true, cmsConfig: true } as const;
 
@@ -70,10 +75,12 @@ export class ArticleJobService {
     private readonly logger: LoggerService,
     private readonly seoCheckerService: SeoCheckerService,
     private readonly siteArticleCrawler: SiteArticleCrawlerService,
+    private readonly siteService: SiteService,
     private readonly billingService: BillingService,
     private readonly gscService: GscService,
     private readonly scraperService: ScraperService,
     private readonly storage: StorageService,
+    private readonly projectAccessService: ProjectAccessService,
     @InjectQueue(ARTICLE_JOB_QUEUE) private readonly articleJobQueue: Queue<ArticleJobQueuePayload>,
     @InjectQueue(PLAYWRIGHT_QUEUE) private readonly playwrightQueue: Queue<PlaywrightJobPayload>,
     private readonly orgQueueLimiter: OrgQueueLimiterService,
@@ -296,24 +303,51 @@ export class ArticleJobService {
       cmsPublishPending?: boolean;
       staleDraft?: boolean;
       reviewPending?: boolean;
+      assignedToMe?: boolean;
+      siteOwnerMe?: boolean;
       status?: 'FAILED';
       siteId?: string;
+      actorUserId?: string;
     } = {},
   ) {
+    const siteScope = await this.resolveSiteScopeFilter(
+      organizationId,
+      projectId,
+      options.siteId,
+      options.siteOwnerMe,
+      options.actorUserId,
+    );
+    if (siteScope.empty) {
+      const safeLimit = Math.min(Math.max(limit, 1), 100);
+      return { items: [], total: 0, page: Math.max(page, 1), limit: safeLimit };
+    }
+
     if (options.cmsPublishFailed) {
-      return this.findManyCmsPublishFailed(organizationId, projectId, page, limit, options.siteId);
+      return this.findManyCmsPublishFailed(
+        organizationId,
+        projectId,
+        page,
+        limit,
+        siteScope,
+      );
     }
 
     if (options.cmsPublishPending) {
-      return this.findManyCmsPublishPending(organizationId, projectId, page, limit, options.siteId);
+      return this.findManyCmsPublishPending(
+        organizationId,
+        projectId,
+        page,
+        limit,
+        siteScope,
+      );
     }
 
     if (options.staleDraft) {
-      return this.findManyStaleDraft(organizationId, projectId, page, limit, options.siteId);
+      return this.findManyStaleDraft(organizationId, projectId, page, limit, siteScope);
     }
 
     if (options.reviewPending) {
-      return this.findManyReviewPending(organizationId, projectId, page, limit, options.siteId);
+      return this.findManyReviewPending(organizationId, projectId, page, limit, siteScope);
     }
 
     const safeLimit = Math.min(Math.max(limit, 1), 100);
@@ -323,10 +357,16 @@ export class ArticleJobService {
       { NOT: { id: { startsWith: CALIBRATION_LAB_JOB_ID_PREFIX } } },
     ];
 
+    if (options.assignedToMe && options.actorUserId) {
+      andFilters.push({
+        assignees: { some: { userId: options.actorUserId } },
+      });
+    }
+
     const where: Prisma.ArticleJobWhereInput = {
       organizationId,
       projectId,
-      ...(options.siteId ? { siteId: options.siteId } : {}),
+      ...this.buildSiteWhere(siteScope),
     };
 
     if (options.status === 'FAILED') {
@@ -389,12 +429,50 @@ export class ArticleJobService {
     return { items, total, page: Math.max(page, 1), limit: safeLimit };
   }
 
+  private buildSiteWhere(siteScope: {
+    siteId?: string;
+    siteIds?: string[];
+  }): Prisma.ArticleJobWhereInput {
+    if (siteScope.siteId) {
+      return { siteId: siteScope.siteId };
+    }
+    if (siteScope.siteIds?.length) {
+      return { siteId: { in: siteScope.siteIds } };
+    }
+    return {};
+  }
+
+  private async resolveSiteScopeFilter(
+    organizationId: string,
+    projectId: string,
+    siteId: string | undefined,
+    siteOwnerMe: boolean | undefined,
+    actorUserId: string | undefined,
+  ): Promise<{ siteId?: string; siteIds?: string[]; empty?: boolean }> {
+    if (!siteOwnerMe || !actorUserId) {
+      return siteId ? { siteId } : {};
+    }
+
+    const ownedSiteIds = await this.siteService.listOwnedSiteIds(
+      organizationId,
+      projectId,
+      actorUserId,
+    );
+    if (ownedSiteIds.length === 0) {
+      return { empty: true };
+    }
+    if (siteId) {
+      return ownedSiteIds.includes(siteId) ? { siteId } : { empty: true };
+    }
+    return { siteIds: ownedSiteIds };
+  }
+
   private async findManyStaleDraft(
     organizationId: string,
     projectId: string,
     page = 1,
     limit = 20,
-    siteId?: string,
+    siteScope: { siteId?: string; siteIds?: string[] } = {},
   ) {
     const safePage = Math.max(page, 1);
     const safeLimit = Math.min(Math.max(limit, 1), 100);
@@ -404,7 +482,7 @@ export class ArticleJobService {
         organizationId,
         projectId,
         status: { notIn: ['FAILED', 'QUEUED'] },
-        ...(siteId ? { siteId } : {}),
+        ...this.buildSiteWhere(siteScope),
       },
       select: {
         id: true,
@@ -441,7 +519,7 @@ export class ArticleJobService {
     projectId: string,
     page = 1,
     limit = 20,
-    siteId?: string,
+    siteScope: { siteId?: string; siteIds?: string[] } = {},
   ) {
     const safePage = Math.max(page, 1);
     const safeLimit = Math.min(Math.max(limit, 1), 100);
@@ -455,7 +533,7 @@ export class ArticleJobService {
           path: ['ymylReview', 'requires_human_review'],
           equals: true,
         },
-        ...(siteId ? { siteId } : {}),
+        ...this.buildSiteWhere(siteScope),
       },
       select: {
         id: true,
@@ -497,7 +575,7 @@ export class ArticleJobService {
     projectId: string,
     page = 1,
     limit = 20,
-    siteId?: string,
+    siteScope: { siteId?: string; siteIds?: string[] } = {},
   ) {
     const safePage = Math.max(page, 1);
     const safeLimit = Math.min(Math.max(limit, 1), 100);
@@ -508,7 +586,7 @@ export class ArticleJobService {
         projectId,
         status: 'COMPLETED',
         outputUrl: { not: null },
-        ...(siteId ? { siteId } : {}),
+        ...this.buildSiteWhere(siteScope),
       },
       select: {
         id: true,
@@ -546,7 +624,7 @@ export class ArticleJobService {
     projectId: string,
     page = 1,
     limit = 20,
-    siteId?: string,
+    siteScope: { siteId?: string; siteIds?: string[] } = {},
   ) {
     const safePage = Math.max(page, 1);
     const safeLimit = Math.min(Math.max(limit, 1), 100);
@@ -557,7 +635,7 @@ export class ArticleJobService {
         projectId,
         status: 'COMPLETED',
         outputUrl: { not: null },
-        ...(siteId ? { siteId } : {}),
+        ...this.buildSiteWhere(siteScope),
       },
       select: {
         id: true,
@@ -743,6 +821,12 @@ export class ArticleJobService {
 
     const { site, ...jobRest } = job;
 
+    const gscPerformance = await this.gscService.getJobPagePerformance(
+      organizationId,
+      projectId,
+      id,
+    );
+
     return {
       ...jobRest,
       siteDomain: site.domain,
@@ -753,6 +837,7 @@ export class ArticleJobService {
       internalLinkCount: draftData?.internalLinksApplied
         ? (draftData.internalLinks?.length ?? 0)
         : null,
+      gscPerformance,
     };
   }
 
@@ -1514,7 +1599,12 @@ export class ArticleJobService {
     return fallback;
   }
 
-  async getProjectStats(organizationId: string, projectId: string, siteId?: string) {
+  async getProjectStats(
+    organizationId: string,
+    projectId: string,
+    siteId?: string,
+    actorUserId?: string,
+  ) {
     const jobWhere = { organizationId, projectId, ...(siteId ? { siteId } : {}) };
     const siteWhere = { organizationId, projectId, ...(siteId ? { id: siteId } : {}) };
     const keywordWhere = {
@@ -1638,6 +1728,45 @@ export class ArticleJobService {
         ? []
         : await this.gscService.getUnderperformingJobs(organizationId, projectId, siteId);
 
+    let myAssignedCount = 0;
+    let canReviewInProject = false;
+    if (actorUserId) {
+      myAssignedCount = await this.prisma.articleJobAssignee.count({
+        where: {
+          userId: actorUserId,
+          job: {
+            organizationId,
+            projectId,
+            ...(siteId ? { siteId } : {}),
+            status: { notIn: [JobStatus.COMPLETED, JobStatus.FAILED] },
+          },
+        },
+      });
+
+      const member = await this.prisma.projectMember.findUnique({
+        where: { projectId_userId: { projectId, userId: actorUserId } },
+        select: { id: true, role: true },
+      });
+      if (member) {
+        const project = await this.prisma.project.findFirst({
+          where: { id: projectId, organizationId },
+          select: { projectType: true },
+        });
+        if (project) {
+          const perms = await this.projectAccessService.resolveMemberPermissions(
+            member.id,
+            member.role,
+            project.projectType,
+          );
+          canReviewInProject = canReviewInSeoProject(perms);
+        }
+      }
+    }
+
+    const myReviewPendingCount = canReviewInProject
+      ? pendingBriefJobs + pendingReviewCount
+      : 0;
+
     return {
       totalJobs,
       completedJobs,
@@ -1659,6 +1788,9 @@ export class ArticleJobService {
       keywordTotalCount,
       keywordQueueableCount,
       keywordUnclusteredCount,
+      myAssignedCount,
+      myReviewPendingCount,
+      canReviewInProject,
     };
   }
 }

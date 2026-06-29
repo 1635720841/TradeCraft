@@ -10,6 +10,7 @@ import { ProjectModule } from '../project/project.module';
 import { MemberInviteModule } from './member-invite.module';
 import { OrgController } from './org.controller';
 import { OrganizationService } from './organization.service';
+import { OrgProductionService } from './org-production.service';
 
 @Module({
   imports: [
@@ -20,7 +21,7 @@ import { OrganizationService } from './organization.service';
     forwardRef(() => ProjectModule),
   ],
   controllers: [OrgController],
-  providers: [OrganizationService],
+  providers: [OrganizationService, OrgProductionService],
   exports: [OrganizationService, MemberInviteModule],
 })
 export class OrganizationModule {}

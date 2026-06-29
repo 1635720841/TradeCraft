@@ -10,21 +10,38 @@
 
 import { Injectable } from '@nestjs/common';
 import { LoggerService } from '../../core/logger/logger.service';
+import { UserNotificationPreferenceService } from './user-notification-preference.service';
 
 export interface SendEmailInput {
   to: string[];
   subject: string;
   text: string;
+  organizationId?: string;
+  notificationType?: string;
 }
 
 @Injectable()
 export class EmailNotificationService {
-  constructor(private readonly logger: LoggerService) {}
+  constructor(
+    private readonly logger: LoggerService,
+    private readonly preferences: UserNotificationPreferenceService,
+  ) {}
 
   async send(input: SendEmailInput): Promise<void> {
-    const recipients = [...new Set(input.to.filter(Boolean))];
+    let recipients = [...new Set(input.to.filter(Boolean))];
     if (recipients.length === 0) {
       return;
+    }
+
+    if (input.organizationId && input.notificationType) {
+      recipients = await this.preferences.filterEmailableRecipients(
+        input.organizationId,
+        recipients,
+        input.notificationType,
+      );
+      if (recipients.length === 0) {
+        return;
+      }
     }
 
     const host = process.env.SMTP_HOST?.trim();

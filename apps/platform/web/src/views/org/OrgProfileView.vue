@@ -103,6 +103,78 @@
       </template>
     </el-card>
 
+    <el-card v-loading="prefLoading" shadow="never">
+      <template #header>
+        <span class="font-medium">通知偏好</span>
+      </template>
+      <p class="mb-4 text-sm text-gray-500">
+        控制邮件通知开关，以及需要静音的通知类型。
+      </p>
+      <el-form label-width="120px" class="max-w-xl">
+        <el-form-item label="邮件通知">
+          <el-switch v-model="notifPref.emailEnabled" />
+        </el-form-item>
+        <el-form-item label="静音类型">
+          <el-checkbox-group v-model="notifPref.mutedTypes">
+            <el-checkbox
+              v-for="opt in notificationTypeOptions"
+              :key="opt.value"
+              :label="opt.value"
+            >
+              {{ opt.label }}
+            </el-checkbox>
+          </el-checkbox-group>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :loading="prefSaving" @click="saveNotificationPreferences">
+            保存偏好
+          </el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
+
+    <el-card v-if="canManageIntegration" v-loading="robotsLoading" shadow="never">
+      <template #header>
+        <div class="flex items-center justify-between">
+          <span class="font-medium">钉钉 / 飞书机器人</span>
+          <el-button type="primary" size="small" @click="openRobotDialog()">
+            添加机器人
+          </el-button>
+        </div>
+      </template>
+      <p class="mb-4 text-sm text-gray-500">
+        将关键事件推送到钉钉或飞书群机器人 Webhook。
+      </p>
+      <el-table :data="robotChannels" stripe>
+        <el-table-column prop="channelType" label="类型" width="90">
+          <template #default="{ row }">
+            {{ robotChannelTypeLabel(row.channelType) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="webhookUrl" label="Webhook URL" min-width="220" />
+        <el-table-column prop="events" label="事件" min-width="160">
+          <template #default="{ row }">
+            <el-tag v-for="ev in row.events" :key="ev" class="mr-1 mb-1" size="small">
+              {{ robotEventLabel(ev) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="isActive" label="状态" width="90">
+          <template #default="{ row }">
+            <el-tag :type="row.isActive ? 'success' : 'info'">
+              {{ row.isActive ? "启用" : "停用" }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="140" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openRobotDialog(row)">编辑</el-button>
+            <el-button link type="danger" @click="removeRobotChannel(row.id)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
     <el-card v-if="canManageIntegration" v-loading="webhooksLoading" shadow="never">
       <template #header>
         <div class="flex items-center justify-between">
@@ -131,9 +203,10 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right">
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openWebhookDialog(row)">编辑</el-button>
+            <el-button link type="primary" @click="openDeliveryDrawer(row)">投递记录</el-button>
             <el-button link type="danger" @click="removeWebhook(row.id)">删除</el-button>
           </template>
         </el-table-column>
@@ -174,6 +247,79 @@
         <el-button type="primary" :loading="webhookSaving" @click="saveWebhook">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="robotDialogVisible"
+      :title="robotForm.id ? '编辑机器人' : '添加机器人'"
+      width="520px"
+    >
+      <el-form label-width="100px">
+        <el-form-item label="类型">
+          <el-select v-model="robotForm.channelType" class="w-full">
+            <el-option
+              v-for="opt in robotChannelTypeOptions"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="Webhook URL">
+          <el-input v-model="robotForm.webhookUrl" placeholder="https://..." />
+        </el-form-item>
+        <el-form-item label="事件">
+          <el-checkbox-group v-model="robotForm.events">
+            <el-checkbox
+              v-for="opt in robotEventOptions"
+              :key="opt.value"
+              :label="opt.value"
+            >
+              {{ opt.label }}
+            </el-checkbox>
+          </el-checkbox-group>
+        </el-form-item>
+        <el-form-item v-if="robotForm.id" label="启用">
+          <el-switch v-model="robotForm.isActive" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="robotDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="robotSaving" @click="saveRobotChannel">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-drawer v-model="deliveryDrawerVisible" title="Webhook 投递记录" size="640px">
+      <el-table v-loading="deliveriesLoading" :data="deliveries" stripe>
+        <el-table-column prop="event" label="事件" width="160">
+          <template #default="{ row }">
+            {{ webhookEventLabel(row.event) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="success" label="结果" width="80">
+          <template #default="{ row }">
+            <el-tag :type="row.success ? 'success' : 'danger'" size="small">
+              {{ row.success ? "成功" : "失败" }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="statusCode" label="HTTP" width="70" />
+        <el-table-column prop="errorMessage" label="错误信息" min-width="140" show-overflow-tooltip />
+        <el-table-column prop="createdAt" label="时间" width="170">
+          <template #default="{ row }">
+            {{ formatTime(row.createdAt) }}
+          </template>
+        </el-table-column>
+      </el-table>
+      <div class="mt-4 flex justify-end">
+        <el-pagination
+          v-model:current-page="deliveryPage"
+          :page-size="deliveryLimit"
+          :total="deliveryTotal"
+          layout="total, prev, pager, next"
+          @current-change="loadDeliveries"
+        />
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -190,9 +336,25 @@ import {
   createOrgWebhook,
   deleteOrgWebhook,
   listOrgWebhooks,
+  listWebhookDeliveries,
   updateOrgWebhook,
-  type OrgWebhookItem
+  type OrgWebhookItem,
+  type WebhookDeliveryLog
 } from "@/api/org/webhooks";
+import {
+  NOTIFICATION_TYPE_OPTIONS,
+  getNotificationPreferences,
+  updateNotificationPreferences
+} from "@/api/org/notification-preferences";
+import {
+  ROBOT_CHANNEL_TYPE_OPTIONS,
+  ROBOT_EVENT_OPTIONS,
+  createOrgRobotChannel,
+  deleteOrgRobotChannel,
+  listOrgRobotChannels,
+  updateOrgRobotChannel,
+  type OrgRobotChannelItem
+} from "@/api/org/robot-channels";
 import {
   planNameDict,
   subscriptionStatusDict
@@ -213,6 +375,25 @@ const canEdit = computed(() => hasPerms("org:profile:update"));
 const canViewBilling = computed(() => hasPerms("org:billing:read"));
 const canManageIntegration = computed(() => hasPerms("org:integration:manage"));
 
+const prefLoading = ref(false);
+const prefSaving = ref(false);
+const notificationTypeOptions = NOTIFICATION_TYPE_OPTIONS;
+const notifPref = reactive({ emailEnabled: true, mutedTypes: [] as string[] });
+
+const robotsLoading = ref(false);
+const robotSaving = ref(false);
+const robotChannels = ref<OrgRobotChannelItem[]>([]);
+const robotDialogVisible = ref(false);
+const robotEventOptions = ROBOT_EVENT_OPTIONS;
+const robotChannelTypeOptions = ROBOT_CHANNEL_TYPE_OPTIONS;
+const robotForm = reactive({
+  id: "",
+  channelType: "dingtalk" as string,
+  webhookUrl: "",
+  events: [] as string[],
+  isActive: true
+});
+
 const webhooksLoading = ref(false);
 const webhookSaving = ref(false);
 const webhooks = ref<OrgWebhookItem[]>([]);
@@ -225,6 +406,14 @@ const webhookForm = reactive({
   events: [] as string[],
   isActive: true
 });
+
+const deliveryDrawerVisible = ref(false);
+const deliveriesLoading = ref(false);
+const deliveries = ref<WebhookDeliveryLog[]>([]);
+const deliveryPage = ref(1);
+const deliveryLimit = 20;
+const deliveryTotal = ref(0);
+const activeWebhookId = ref("");
 
 const quotaPercent = computed(() => {
   const quota = profile.value?.quota;
@@ -262,6 +451,106 @@ async function saveProfile() {
   } finally {
     saving.value = false;
   }
+}
+
+async function loadNotificationPreferences() {
+  prefLoading.value = true;
+  try {
+    const pref = await getNotificationPreferences();
+    notifPref.emailEnabled = pref.emailEnabled;
+    notifPref.mutedTypes = [...pref.mutedTypes];
+  } finally {
+    prefLoading.value = false;
+  }
+}
+
+async function saveNotificationPreferences() {
+  prefSaving.value = true;
+  try {
+    await updateNotificationPreferences({
+      emailEnabled: notifPref.emailEnabled,
+      mutedTypes: notifPref.mutedTypes
+    });
+    message("通知偏好已保存", { type: "success" });
+  } finally {
+    prefSaving.value = false;
+  }
+}
+
+function robotEventLabel(value: string) {
+  return robotEventOptions.find((o) => o.value === value)?.label ?? value;
+}
+
+function robotChannelTypeLabel(value: string) {
+  return robotChannelTypeOptions.find((o) => o.value === value)?.label ?? value;
+}
+
+async function loadRobotChannels() {
+  if (!canManageIntegration.value) return;
+  robotsLoading.value = true;
+  try {
+    robotChannels.value = await listOrgRobotChannels();
+  } finally {
+    robotsLoading.value = false;
+  }
+}
+
+function openRobotDialog(row?: OrgRobotChannelItem) {
+  if (row) {
+    robotForm.id = row.id;
+    robotForm.channelType = row.channelType;
+    robotForm.webhookUrl = row.webhookUrl;
+    robotForm.events = [...row.events];
+    robotForm.isActive = row.isActive;
+  } else {
+    robotForm.id = "";
+    robotForm.channelType = "dingtalk";
+    robotForm.webhookUrl = "";
+    robotForm.events = ["brief_pending"];
+    robotForm.isActive = true;
+  }
+  robotDialogVisible.value = true;
+}
+
+async function saveRobotChannel() {
+  if (!robotForm.webhookUrl.trim() || robotForm.events.length === 0) {
+    message("请填写 Webhook URL 并选择至少一个事件", { type: "warning" });
+    return;
+  }
+  robotSaving.value = true;
+  try {
+    if (robotForm.id) {
+      await updateOrgRobotChannel(robotForm.id, {
+        channelType: robotForm.channelType,
+        webhookUrl: robotForm.webhookUrl.trim(),
+        events: robotForm.events,
+        isActive: robotForm.isActive
+      });
+      message("机器人通道已更新", { type: "success" });
+    } else {
+      await createOrgRobotChannel({
+        channelType: robotForm.channelType,
+        webhookUrl: robotForm.webhookUrl.trim(),
+        events: robotForm.events
+      });
+      message("机器人通道已创建", { type: "success" });
+    }
+    robotDialogVisible.value = false;
+    await loadRobotChannels();
+  } finally {
+    robotSaving.value = false;
+  }
+}
+
+async function removeRobotChannel(id: string) {
+  try {
+    await ElMessageBox.confirm("确认删除该机器人通道？", "删除", { type: "warning" });
+  } catch {
+    return;
+  }
+  await deleteOrgRobotChannel(id);
+  message("已删除", { type: "success" });
+  await loadRobotChannels();
 }
 
 function webhookEventLabel(value: string) {
@@ -325,6 +614,29 @@ async function saveWebhook() {
   }
 }
 
+async function openDeliveryDrawer(row: OrgWebhookItem) {
+  activeWebhookId.value = row.id;
+  deliveryPage.value = 1;
+  deliveryDrawerVisible.value = true;
+  await loadDeliveries();
+}
+
+async function loadDeliveries() {
+  if (!activeWebhookId.value) return;
+  deliveriesLoading.value = true;
+  try {
+    const result = await listWebhookDeliveries(
+      activeWebhookId.value,
+      deliveryPage.value,
+      deliveryLimit
+    );
+    deliveries.value = result.items;
+    deliveryTotal.value = result.total;
+  } finally {
+    deliveriesLoading.value = false;
+  }
+}
+
 async function removeWebhook(id: string) {
   try {
     await ElMessageBox.confirm("确认删除该 Webhook？", "删除", { type: "warning" });
@@ -338,6 +650,8 @@ async function removeWebhook(id: string) {
 
 onMounted(() => {
   void loadProfile();
+  void loadNotificationPreferences();
   void loadWebhooks();
+  void loadRobotChannels();
 });
 </script>

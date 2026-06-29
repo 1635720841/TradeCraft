@@ -44,8 +44,9 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   { id: 'project:update', name: '编辑项目', module: 'project', description: '更新、归档或删除项目', sortOrder: 62 },
   { id: 'seo:job:create', name: '创建任务', module: 'seo', description: '创建文章任务', sortOrder: 70 },
   { id: 'seo:job:read', name: '查看任务', module: 'seo', description: '查看文章任务', sortOrder: 71 },
-  { id: 'seo:keyword:manage', name: '管理词库', module: 'seo', description: '关键词与聚类管理', sortOrder: 72 },
-  { id: 'seo:site:manage', name: '管理站点', module: 'seo', description: '站点配置与页面库', sortOrder: 73 },
+  { id: 'seo:job:review', name: '审核任务', module: 'seo', description: '确认大纲与敏感审核', sortOrder: 72 },
+  { id: 'seo:keyword:manage', name: '管理词库', module: 'seo', description: '关键词与聚类管理', sortOrder: 73 },
+  { id: 'seo:site:manage', name: '管理站点', module: 'seo', description: '站点配置与页面库', sortOrder: 74 },
 ];
 
 /** 角色默认权限（SUPER_ADMIN 走 *:*:*） */

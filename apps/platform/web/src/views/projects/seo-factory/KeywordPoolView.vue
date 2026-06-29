@@ -309,10 +309,18 @@
             <el-option v-for="site in sites" :key="site.id" :label="site.domain" :value="site.id" />
           </el-select>
         </el-form-item>
+        <el-form-item label="配额">
+          <span>{{ quotaPreview.previewText(selectedKeywords.length) }}</span>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="batchJobDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="batchCreating" @click="submitBatchCreateJobs">
+        <el-button
+          type="primary"
+          :loading="batchCreating"
+          :disabled="!quotaPreview.canConsume(selectedKeywords.length)"
+          @click="submitBatchCreateJobs"
+        >
           确认入队
         </el-button>
       </template>
@@ -384,6 +392,7 @@ import {
 import { dictLabel, dictTagType } from "@/utils/dict";
 import { message } from "@/utils/message";
 import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
+import { useArticleQuotaPreview } from "@/composables/useArticleQuotaPreview";
 
 defineOptions({ name: "KeywordPoolView" });
 
@@ -391,6 +400,7 @@ const route = useRoute();
 const router = useRouter();
 const projectId = route.params.projectId as string;
 const { can } = useProjectSeoAccess();
+const quotaPreview = useArticleQuotaPreview();
 const canManageKeywords = computed(() => can("seo:keyword:manage"));
 const canCreateJob = computed(() => can("seo:job:create"));
 
@@ -823,6 +833,7 @@ function openBatchJobDialog() {
   }
   batchJobForm.siteId = sites.value[0]?.id ?? "";
   batchJobDialogVisible.value = true;
+  void quotaPreview.refreshQuota();
   if (sites.value.length === 0) {
     void loadSites();
   }
@@ -830,6 +841,10 @@ function openBatchJobDialog() {
 
 async function submitBatchCreateJobs() {
   if (selectedKeywords.value.length === 0) return;
+  if (!quotaPreview.canConsume(selectedKeywords.value.length)) {
+    message("本账期配额不足", { type: "warning" });
+    return;
+  }
 
   const siteId = batchJobForm.siteId || undefined;
   if (siteId) {

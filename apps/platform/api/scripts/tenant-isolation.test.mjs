@@ -104,7 +104,23 @@ function noopLogger() {
 }
 
 function createArticleJobService(prisma) {
-  return new ArticleJobService(prisma, noopLogger(), {}, {}, { add: async () => {} });
+  const noop = {};
+  const gscService = { getJobPagePerformance: async () => null };
+  const projectAccessService = { resolveMemberPermissions: async () => [] };
+  return new ArticleJobService(
+    prisma,
+    noopLogger(),
+    noop,
+    noop,
+    noop,
+    gscService,
+    noop,
+    noop,
+    projectAccessService,
+    { add: async () => {} },
+    { add: async () => {} },
+    noop,
+  );
 }
 
 async function assertBusinessError(promise, expectedCode) {

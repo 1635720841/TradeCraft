@@ -11,6 +11,7 @@ export const PROJECT_TYPE_PERMISSION_IDS: Record<string, string[]> = {
     'project:update',
     'seo:job:create',
     'seo:job:read',
+    'seo:job:review',
     'seo:keyword:manage',
     'seo:site:manage',
   ],

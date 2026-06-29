@@ -9,3 +9,9 @@ export function seoFactoryRoutes(relativePath: string): string[] {
     `api/v1/projects/:projectId/seo-factory/${normalized}`,
   ];
 }
+
+/** API 相对路径（新 seo-factory 前缀） */
+export function seoFactoryApiPath(projectId: string, relativePath: string): string {
+  const normalized = relativePath.replace(/^\/+/, '');
+  return `/api/v1/projects/${projectId}/seo-factory/${normalized}`;
+}

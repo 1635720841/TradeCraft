@@ -116,6 +116,42 @@
       @dismiss="orgSetupDismiss"
     />
 
+    <section
+      v-if="production"
+      v-loading="productionLoading"
+      class="mw-home__production-card"
+      aria-label="本月生产看板"
+    >
+      <div class="mw-home__production-head">
+        <h2>本月生产 · {{ production.periodLabel }}</h2>
+        <span class="mw-home__production-quota">
+          配额 {{ production.quota.remaining }} / {{ production.quota.periodQuota }} 篇
+        </span>
+      </div>
+      <div class="mw-home__production-grid">
+        <button
+          v-for="tile in productionTiles"
+          :key="tile.key"
+          type="button"
+          class="mw-home__production-tile"
+          :disabled="tile.count <= 0"
+          @click="tile.onClick()"
+        >
+          <b>{{ tile.count }}</b>
+          <span>{{ tile.label }}</span>
+        </button>
+      </div>
+      <p v-if="production.myTodos.reviewPendingCount || production.myTodos.assignedCount" class="mw-home__production-todos">
+        <template v-if="production.myTodos.assignedCount">
+          指派给我 {{ production.myTodos.assignedCount }} 项
+        </template>
+        <template v-if="production.myTodos.reviewPendingCount">
+          <span v-if="production.myTodos.assignedCount"> · </span>
+          等我审核 {{ production.myTodos.reviewPendingCount }} 项
+        </template>
+      </p>
+    </section>
+
     <section class="mw-home__feature-grid" aria-label="项目运营重点">
       <article
         v-for="item in operationCards"
@@ -309,6 +345,10 @@ import {
   type OrgProjectItem
 } from "@/api/org/projects";
 import { createProjectAccessRequest } from "@/api/org/access";
+import {
+  getOrgProductionSummary,
+  type OrgProductionSummary
+} from "@/api/org/production";
 import { projectMyAccessStatusDict, projectStatusDict } from "@/constants/dicts/platform";
 import { useUserStoreHook } from "@/store/modules/user";
 import { dictLabel } from "@/utils/dict";
@@ -331,6 +371,8 @@ const showOtherProjects = ref(false);
 const applyingProjectId = ref<string | null>(null);
 const projects = ref<OrgProjectItem[]>([]);
 const profile = ref<OrganizationProfile | null>(null);
+const production = ref<OrgProductionSummary | null>(null);
+const productionLoading = ref(false);
 
 const operationCards = [
   {
@@ -418,6 +460,47 @@ const displayProjects = computed(() => {
   return primary.length > 0 ? primary : otherProjects.value;
 });
 
+const firstEnterableProject = computed(() => enterableProjects.value[0]);
+
+const productionTiles = computed(() => {
+  if (!production.value) return [];
+  const t = production.value.totals;
+  const pid = firstEnterableProject.value?.id;
+  const base = pid ? `/projects/${pid}/seo-factory/jobs` : "";
+  return [
+    {
+      key: "completed",
+      label: "已完成",
+      count: t.completedJobs,
+      onClick: () => pid && router.push(`${base}?status=COMPLETED`)
+    },
+    {
+      key: "brief",
+      label: "待确认大纲",
+      count: t.pendingBriefCount,
+      onClick: () => pid && router.push(`${base}?stage=outlinePending`)
+    },
+    {
+      key: "review",
+      label: "待审核",
+      count: t.pendingReviewCount,
+      onClick: () => pid && router.push(`${base}?stage=reviewPending`)
+    },
+    {
+      key: "publish",
+      label: "待发布",
+      count: t.pendingPublishCount,
+      onClick: () => pid && router.push(`${base}?cmsPublishPending=1`)
+    },
+    {
+      key: "failed",
+      label: "失败",
+      count: t.failedJobs,
+      onClick: () => pid && router.push(`${base}?status=FAILED`)
+    }
+  ];
+});
+
 function projectTypeLabel(type: string) {
   if (type === "seo-factory") return "SEO 内容工厂";
   return type;
@@ -502,6 +585,17 @@ async function fetchProjects() {
   }
 }
 
+async function fetchProduction() {
+  productionLoading.value = true;
+  try {
+    production.value = await getOrgProductionSummary();
+  } catch {
+    production.value = null;
+  } finally {
+    productionLoading.value = false;
+  }
+}
+
 function goOrganization() {
   router.push({ name: "OrgProfile" });
 }
@@ -521,5 +615,6 @@ function enterProject(row: OrgProjectItem) {
 onMounted(() => {
   void loadProfile();
   void fetchProjects();
+  void fetchProduction();
 });
 </script>

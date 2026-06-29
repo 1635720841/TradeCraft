@@ -11,6 +11,7 @@
         <div class="flex flex-wrap items-center justify-between gap-2">
           <span class="font-medium">站点</span>
           <div class="flex gap-2">
+            <el-checkbox v-model="mySitesOnly" @change="onOwnerFilterChange">我负责的站点</el-checkbox>
             <el-button v-if="canManageSite" type="primary" @click="openCreateDialog">新建站点</el-button>
             <el-button :loading="sitesLoading" @click="loadSites">刷新</el-button>
           </div>
@@ -23,10 +24,10 @@
         type="warning"
         :closable="false"
         show-icon
-        title="仅显示未填写公司卖点的站点"
+        title="仅显示未填写最少写作素材的站点"
       >
         <template #default>
-          请编辑站点，补充行业、认证、起订量或文末询盘引导，提升 AI 写作质量。
+          请编辑站点，至少填写「行业」和 1 条卖点（产品线或差异化卖点），即可开始创建任务。
           <el-button link type="primary" @click="clearProfileFilter">查看全部站点</el-button>
         </template>
       </el-alert>
@@ -54,14 +55,27 @@
             <span v-else class="text-gray-400">未填</span>
           </template>
         </el-table-column>
+        <el-table-column label="负责人" width="120">
+          <template #default="{ row }">
+            {{ ownerLabel(row as SiteItem) }}
+          </template>
+        </el-table-column>
         <el-table-column prop="createdAt" label="创建时间" min-width="170">
           <template #default="{ row }">
             {{ formatTime(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column v-if="canManageSite" label="操作" width="120" fixed="right">
+        <el-table-column v-if="canManageSite" label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link @click="openEditDialog(row as SiteItem)">编辑</el-button>
+            <el-button
+              type="primary"
+              link
+              :loading="exportingSiteId === row.id"
+              @click="downloadAttribution(row as SiteItem)"
+            >
+              归因导出
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -101,6 +115,17 @@
             show-word-limit
             placeholder="例如：专业、务实，面向采购/工程师读者；与下方「公司卖点」一起影响 AI 写法"
           />
+        </el-form-item>
+
+        <el-form-item label="站点负责人">
+          <el-select v-model="siteForm.ownerUserId" clearable filterable class="w-full" placeholder="可选，用于筛选「我负责的站点」">
+            <el-option
+              v-for="member in projectMembers"
+              :key="member.userId"
+              :label="`${member.email}${member.name ? ` (${member.name})` : ''}`"
+              :value="member.userId"
+            />
+          </el-select>
         </el-form-item>
 
         <el-divider content-position="left">公司卖点（AI 写作素材）</el-divider>
@@ -242,8 +267,9 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { FormInstance, FormRules } from "element-plus";
-import { createSite, listSites, updateSite } from "@/api/seo-factory/site";
+import { createSite, exportSiteAttributionCsv, listSites, updateSite } from "@/api/seo-factory/site";
 import type { SiteItem } from "@/api/seo-factory/types";
+import { listProjectMembers, type OrgProjectMember } from "@/api/org/projects";
 import {
   CONTENT_LANGUAGE_OPTIONS,
   type ContentLanguageCode
@@ -261,7 +287,10 @@ const canManageSite = computed(() => can("seo:site:manage"));
 
 const sitesLoading = ref(false);
 const siteSaving = ref(false);
+const exportingSiteId = ref("");
+const mySitesOnly = ref(false);
 const sites = ref<SiteItem[]>([]);
+const projectMembers = ref<OrgProjectMember[]>([]);
 const siteDialogVisible = ref(false);
 const editingSiteId = ref("");
 const siteFormRef = ref<FormInstance>();
@@ -287,7 +316,8 @@ const siteForm = reactive({
   differentiator3: "",
   targetBuyerType: "",
   caseHighlights: "",
-  forbiddenTerms: ""
+  forbiddenTerms: "",
+  ownerUserId: "" as string
 });
 
 const siteRules: FormRules = {
@@ -332,6 +362,34 @@ const contentProfilePreview = computed(() => {
   }
   return lines.join("\n");
 });
+
+function ownerLabel(site: SiteItem): string {
+  if (!site.ownerUserId) return "-";
+  const member = projectMembers.value.find((item) => item.userId === site.ownerUserId);
+  return member?.name || member?.email || site.ownerUserId.slice(0, 8);
+}
+
+function onOwnerFilterChange() {
+  void loadSites();
+}
+
+async function downloadAttribution(site: SiteItem) {
+  exportingSiteId.value = site.id;
+  try {
+    const blob = await exportSiteAttributionCsv(projectId, site.id);
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `attribution-${site.domain.replace(/[^\w.-]+/g, "_")}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    message("归因 CSV 已下载", { type: "success" });
+  } catch (error) {
+    message(error instanceof Error ? error.message : "导出失败", { type: "error" });
+  } finally {
+    exportingSiteId.value = "";
+  }
+}
 
 function parseForbiddenTerms(raw: string): string[] {
   return raw
@@ -393,6 +451,7 @@ function resetSiteForm() {
   siteForm.targetBuyerType = "";
   siteForm.caseHighlights = "";
   siteForm.forbiddenTerms = "";
+  siteForm.ownerUserId = "";
 }
 
 function openCreateDialog() {
@@ -422,6 +481,7 @@ function openEditDialog(site: SiteItem) {
   siteForm.targetBuyerType = site.contentProfile?.targetBuyerType ?? "";
   siteForm.caseHighlights = site.contentProfile?.caseHighlights ?? "";
   siteForm.forbiddenTerms = site.contentProfile?.forbiddenTerms?.join("，") ?? "";
+  siteForm.ownerUserId = site.ownerUserId ?? "";
   siteDialogVisible.value = true;
 }
 
@@ -461,10 +521,18 @@ async function submitSiteForm() {
       const payload = buildSitePayload();
 
       if (editingSiteId.value) {
-        await updateSite(projectId, editingSiteId.value, payload);
+        await updateSite(projectId, editingSiteId.value, {
+          ...payload,
+          ownerUserId: siteForm.ownerUserId.trim() || null
+        });
         message("站点已更新", { type: "success" });
       } else {
-        await createSite(projectId, payload);
+        const created = await createSite(projectId, payload);
+        if (siteForm.ownerUserId.trim()) {
+          await updateSite(projectId, created.id, {
+            ownerUserId: siteForm.ownerUserId.trim()
+          });
+        }
         message("站点已创建", { type: "success" });
       }
 
@@ -479,7 +547,7 @@ async function submitSiteForm() {
 async function loadSites() {
   sitesLoading.value = true;
   try {
-    sites.value = await listSites(projectId);
+    sites.value = await listSites(projectId, mySitesOnly.value ? { siteOwner: "me" } : undefined);
   } catch (error) {
     const msg = error instanceof Error ? error.message : "加载站点失败";
     message(msg, { type: "error" });
@@ -488,11 +556,20 @@ async function loadSites() {
   }
 }
 
+async function loadProjectMembers() {
+  try {
+    projectMembers.value = await listProjectMembers(projectId);
+  } catch {
+    projectMembers.value = [];
+  }
+}
+
 function formatTime(iso: string) {
   return new Date(iso).toLocaleString("zh-CN");
 }
 
 onMounted(() => {
+  void loadProjectMembers();
   void loadSites();
 });
 </script>
