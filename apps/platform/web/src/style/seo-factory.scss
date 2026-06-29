@@ -1639,6 +1639,10 @@
   text-align: center;
   background: #b45309;
   border-radius: 999px;
+
+  &.is-muted {
+    background: #64748b;
+  }
 }
 
 .job-diagnose-collapse {
@@ -2218,6 +2222,17 @@
   padding-right: 4px;
 }
 
+.seo-issue-polish-note {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #475569;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+
 /* —— 问题定位（按类型分组） —— */
 .seo-issue-group {
   margin-bottom: 10px;
@@ -2256,6 +2271,12 @@
   border-bottom-color: #fde68a;
 }
 
+.seo-issue-group.is-info .seo-issue-group__head {
+  color: #475569;
+  background: #f8fafc;
+  border-bottom-color: #e2e8f0;
+}
+
 .seo-issue-group__kind {
   font-weight: 800;
 }
@@ -2279,6 +2300,10 @@
 
 .seo-issue-group.is-warning .seo-issue-group__count {
   background: #f59e0b;
+}
+
+.seo-issue-group.is-info .seo-issue-group__count {
+  background: #64748b;
 }
 
 .seo-issue-group__hint {

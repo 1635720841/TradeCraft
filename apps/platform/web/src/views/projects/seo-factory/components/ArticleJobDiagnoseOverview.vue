@@ -20,7 +20,7 @@
       </div>
       <div class="job-diagnose-overview__actions">
         <el-button
-          type="primary"
+          :type="releaseReady ? 'default' : 'primary'"
           size="small"
           :loading="checking"
           :disabled="!canCheck || checking"
@@ -37,7 +37,7 @@
           :loading="rerunningOptimization"
           @click="emit('rerun-optimization')"
         >
-          重新优化
+          {{ releaseReady ? "继续精修" : "重新优化" }}
         </el-button>
         <el-button
           size="small"
@@ -60,7 +60,13 @@
         @click="emit('navigate', item.id)"
       >
         {{ item.label }}
-        <span v-if="item.badge != null" class="job-diagnose-overview__nav-badge">{{ item.badge }}</span>
+        <span
+          v-if="item.badge != null"
+          class="job-diagnose-overview__nav-badge"
+          :class="{ 'is-muted': item.badgeMuted }"
+        >
+          {{ item.badge }}
+        </span>
       </button>
     </nav>
   </header>
@@ -70,7 +76,14 @@
 import { computed } from "vue";
 import type { ArticleJobItem } from "@/api/seo-factory/types";
 import { buildJobDetailSummary } from "@/utils/seo-factory/job-detail-summary";
-import { countSeoIssueItems, countSeoSuggestions } from "@/utils/seo-factory/job-seo-issues";
+import {
+  buildSeoVerdictDesc,
+  buildSeoVerdictTitle,
+  countSeoIssueItems,
+  countSeoSuggestions,
+  fixesNavLabel,
+  isSeoReleaseReady
+} from "@/utils/seo-factory/job-seo-issues";
 
 export type DiagnoseSectionId = "fixes" | "scores" | "research" | "pipeline";
 
@@ -107,45 +120,54 @@ const suggestions = computed(
   () => props.suggestionCount ?? countSeoSuggestions(props.job.seoCheckData)
 );
 
-const verdictTitle = computed(() => {
-  const local = props.localSeoScore ?? summary.value.localScore;
-  const semrush = summary.value.semrushScore;
-  const parts: string[] = [];
-  if (local != null) {
-    parts.push(`本地 ${local}/100${summary.value.localPassed ? " 达标" : " 待提升"}`);
-  }
-  if (semrush != null) {
-    parts.push(`Semrush ${semrush}/10${summary.value.semrushPassed ? " 达标" : " 待提升"}`);
-  }
-  return parts.length ? parts.join(" · ") : "暂无评分，请先生成正文";
-});
-
-const verdictDesc = computed(() => {
-  if (issues.value > 0) {
-    return `${issues.value} 项待修复${suggestions.value > 0 ? ` · ${suggestions.value} 条优化建议` : ""}，优先处理待修复项`;
-  }
-  if (suggestions.value > 0) {
-    return `${suggestions.value} 条优化建议，可按需微调`;
-  }
-  if (summary.value.hasDraftContent) {
-    return "暂无待修复项，可导出或发布";
-  }
-  return "正文生成后可查看完整诊断";
-});
-
-const verdictIcon = computed(() =>
-  issues.value > 0 ? "ri:alert-line" : summary.value.hasDraftContent ? "ri:checkbox-circle-line" : "ri:information-line"
+const releaseReady = computed(() =>
+  isSeoReleaseReady(summary.value.localPassed, summary.value.semrushPassed)
 );
 
+const verdictTitle = computed(() =>
+  buildSeoVerdictTitle({
+    localScore: summary.value.localScore,
+    semrushScore: summary.value.semrushScore,
+    localPassed: summary.value.localPassed,
+    semrushPassed: summary.value.semrushPassed,
+    displayLocalScore: props.localSeoScore ?? summary.value.localScore
+  })
+);
+
+const verdictDesc = computed(() =>
+  buildSeoVerdictDesc({
+    releaseReady: releaseReady.value,
+    issueCount: issues.value,
+    suggestionCount: suggestions.value,
+    hasDraftContent: summary.value.hasDraftContent
+  })
+);
+
+const verdictIcon = computed(() => {
+  if (releaseReady.value) return "ri:checkbox-circle-line";
+  if (issues.value > 0) return "ri:alert-line";
+  return summary.value.hasDraftContent ? "ri:file-list-3-line" : "ri:information-line";
+});
+
 const verdictToneClass = computed(() => {
+  if (releaseReady.value) return "is-pass";
   if (issues.value > 0) return "is-warn";
-  if (summary.value.localPassed && summary.value.semrushPassed) return "is-pass";
   return "is-info";
 });
 
 const navItems = computed(() => {
-  const items: Array<{ id: DiagnoseSectionId; label: string; badge?: number | string }> = [
-    { id: "fixes", label: "待修复", badge: issues.value || undefined },
+  const items: Array<{
+    id: DiagnoseSectionId;
+    label: string;
+    badge?: number | string;
+    badgeMuted?: boolean;
+  }> = [
+    {
+      id: "fixes",
+      label: fixesNavLabel(releaseReady.value),
+      badge: issues.value || undefined,
+      badgeMuted: releaseReady.value && issues.value > 0
+    },
     { id: "scores", label: "评分明细" },
     { id: "research", label: "竞品对标" }
   ];

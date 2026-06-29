@@ -196,4 +196,24 @@ describe('validateAndFixSemrushStructure', () => {
     assert.match(fixed, /^1\. Disconnect the main leads/m);
     assert.match(fixed, /^1\. Label each balance wire/m);
   });
+
+  it('repairMarkdownStructureArtifacts splits inline dash pseudo bullet lists', () => {
+    const broken = `- complete manuals and wiring diagrams - firmware or app update support - warranty coverage and claim process.`;
+    const fixed = repairMarkdownStructureArtifacts(broken);
+    assert.match(fixed, /^- complete manuals and wiring diagrams$/m);
+    assert.match(fixed, /^- firmware or app update support$/m);
+    assert.match(fixed, /^- warranty coverage and claim process\.$/m);
+  });
+
+  it('repairMarkdownStructureArtifacts expands bullets after list intro colon', () => {
+    const broken = `Look for these features:
+
+overvoltage and undervoltage protection - charge and discharge.
+current limits - temperature sensing at the pack and cell level - alarms for warning states before shutdown - event logging for support and maintenance teams.`;
+    const fixed = repairMarkdownStructureArtifacts(broken);
+    assert.match(fixed, /^- overvoltage and undervoltage protection$/m);
+    assert.match(fixed, /^- charge and discharge\.$/m);
+    assert.match(fixed, /^- current limits$/m);
+    assert.match(fixed, /^- event logging for support and maintenance teams\.$/m);
+  });
 });

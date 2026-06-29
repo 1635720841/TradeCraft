@@ -79,7 +79,9 @@ export function markdownToSemrushHtml(markdown: string): string {
 }
 
 function markdownToHtmlInternal(markdown: string, semrushTables: boolean): string {
-  const lines = repairMarkdownTables(markdown).replace(/\r\n/g, "\n").split("\n");
+  const lines = repairMarkdownStructureArtifacts(repairMarkdownTables(markdown))
+    .replace(/\r\n/g, "\n")
+    .split("\n");
   const html: string[] = [];
   let inUl = false;
   let inOl = false;

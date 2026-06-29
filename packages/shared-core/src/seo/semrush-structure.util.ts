@@ -240,6 +240,93 @@ export function convertInlineOrderedEnumerations(content: string): string {
   return result.join('\n\n');
 }
 
+function explodeInlineBulletParts(line: string): string[] | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+
+  let body = trimmed;
+  const hadListMarker = /^[-*]\s+/.test(body);
+  if (hadListMarker) {
+    body = body.replace(/^[-*]\s+/, '');
+  }
+
+  if (!body.includes(' - ')) {
+    return hadListMarker ? [body] : null;
+  }
+
+  const parts = body
+    .split(/ - /)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length < 2) return hadListMarker ? [body] : null;
+  return parts;
+}
+
+/**
+ * 将段内或行内「item - item - item」伪无序列表转为逐行 `- item`。
+ * 也处理引导语（以冒号结尾）后的两行式要点。
+ */
+export function convertInlineBulletEnumerations(content: string): string {
+  const lines = content.replace(/\r\n/g, '\n').split('\n');
+  const result: string[] = [];
+  let listContext = false;
+  let afterListIntro = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      if (!afterListIntro) listContext = false;
+      result.push(line);
+      continue;
+    }
+
+    if (/^(#{1,6}\s+|!\[|\d+\.\s+|\|)/.test(trimmed) || /^```/.test(trimmed)) {
+      listContext = false;
+      afterListIntro = false;
+      result.push(line);
+      continue;
+    }
+
+    if (/^[-*]\s+/.test(trimmed) && !/ - /.test(trimmed.replace(/^[-*]\s+/, ''))) {
+      listContext = true;
+      afterListIntro = false;
+      result.push(line);
+      continue;
+    }
+
+    const parts = explodeInlineBulletParts(line);
+    if (!parts) {
+      if (/[:：]\s*$/.test(trimmed)) {
+        afterListIntro = true;
+      } else {
+        afterListIntro = false;
+      }
+      listContext = false;
+      result.push(line);
+      continue;
+    }
+
+    const shouldExpand =
+      parts.length >= 3 ||
+      /^[-*]\s+/.test(trimmed) ||
+      listContext ||
+      afterListIntro;
+    if (!shouldExpand) {
+      listContext = false;
+      afterListIntro = false;
+      result.push(line);
+      continue;
+    }
+
+    result.push(...parts.map((part) => `- ${part}`));
+    listContext = true;
+    afterListIntro = false;
+  }
+
+  return result.join('\n');
+}
+
 /** 去掉同类型列表项之间的空行，避免渲染成多个 `<ol>` 均从 1. 开始。 */
 export function repairListBlankLineGaps(content: string): string {
   const lines = content.replace(/\r\n/g, '\n').split('\n');
@@ -273,6 +360,7 @@ export function repairListBlankLineGaps(content: string): string {
 export function repairMarkdownStructureArtifacts(content: string): string {
   let result = content.replace(/\r\n/g, '\n');
   result = convertInlineOrderedEnumerations(result);
+  result = convertInlineBulletEnumerations(result);
   result = repairListBlankLineGaps(result);
   result = repairOrderedListArtifacts(result);
   return result;

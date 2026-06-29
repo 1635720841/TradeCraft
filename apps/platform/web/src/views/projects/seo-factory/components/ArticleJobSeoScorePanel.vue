@@ -143,8 +143,11 @@
       <div v-if="showRightColumn" class="seo-score-panel__right">
         <div class="seo-score-block">
           <el-tabs v-model="detailTab" class="seo-score-detail-tabs">
-            <el-tab-pane :label="`问题定位${issueItems.length ? ` (${issueItems.length})` : ''}`" name="issues">
+            <el-tab-pane :label="issuesTabTitle" name="issues">
               <div class="seo-score-scroll">
+                <p v-if="releaseReady && issueGroups.length" class="seo-issue-polish-note">
+                  评分已达标，以下为可选精修项，不影响发布。
+                </p>
                 <template v-if="issueGroups.length">
                   <div
                     v-for="group in issueGroups"
@@ -168,7 +171,7 @@
                 </template>
                 <div v-else class="seo-score-panel__empty-hint">
                   <IconifyIconOnline icon="ri:checkbox-circle-line" />
-                  <span>暂无待修复项</span>
+                  <span>{{ emptyIssuesLabel }}</span>
                 </div>
               </div>
             </el-tab-pane>
@@ -347,7 +350,7 @@
     />
     <el-empty
       v-else-if="!hasData && sectionMode === 'fixes'"
-      description="正文生成后可查看待修复项"
+      :description="fixesEmptyDescriptionLabel"
     />
     <el-empty
       v-else-if="!hasData && sectionMode === 'scores'"
@@ -369,6 +372,12 @@ import {
   SCORE_CALIBRATION_HIGH_LOCAL_SOFT_PASS_MARGIN
 } from "@/constants/seo-factory";
 import { workflowStepLabel } from "@/utils/seo-factory/workflow-progress";
+import {
+  emptyIssuesHint,
+  fixesEmptyDescription,
+  isSeoReleaseReady,
+  issuesTabLabel
+} from "@/utils/seo-factory/job-seo-issues";
 import ArticleJobSeoAnalysisSnapshotsPanel from "./seo/ArticleJobSeoAnalysisSnapshotsPanel.vue";
 
 defineOptions({ name: "ArticleJobSeoScorePanel" });
@@ -403,6 +412,14 @@ const localPassThreshold = computed(
 const semrushPassThreshold = computed(
   () => props.semrushPassThreshold ?? SEMRUSH_PASS_THRESHOLD
 );
+
+const semrushPassed = computed(
+  () => props.semrushScore != null && props.semrushScore >= semrushPassThreshold.value
+);
+const releaseReady = computed(() => isSeoReleaseReady(localPassed.value, semrushPassed.value));
+const issuesTabTitle = computed(() => issuesTabLabel(releaseReady.value, issueItems.value.length));
+const emptyIssuesLabel = computed(() => emptyIssuesHint(releaseReady.value));
+const fixesEmptyDescriptionLabel = computed(() => fixesEmptyDescription(releaseReady.value));
 
 const emit = defineEmits<{
   "run-semrush-check": [];
@@ -1081,7 +1098,7 @@ const statusHintWarn = computed(
     (checking.value && checkStale.value)
 );
 
-type IssueSeverity = "error" | "warning";
+type IssueSeverity = "error" | "warning" | "info";
 
 interface IssueItem {
   kind: string;
@@ -1134,27 +1151,33 @@ const issueItems = computed((): IssueItem[] => {
 const issueGroups = computed((): IssueGroup[] => {
   const map = new Map<string, IssueGroup>();
   for (const item of issueItems.value) {
+    const severity: IssueSeverity = releaseReady.value
+      ? "info"
+      : item.severity;
     let group = map.get(item.kind);
     if (!group) {
       group = {
         kind: item.kind,
-        severity: item.severity,
+        severity,
         hint: ISSUE_HINTS[item.kind] ?? "",
         items: []
       };
       map.set(item.kind, group);
     }
-    if (item.severity === "error") group.severity = "error";
+    if (!releaseReady.value && severity === "error") group.severity = "error";
+    else if (!releaseReady.value && severity === "warning" && group.severity !== "error") {
+      group.severity = "warning";
+    }
     group.items.push(item);
   }
-  // error 组排前面
-  return [...map.values()].sort(
-    (a, b) => (a.severity === "error" ? 0 : 1) - (b.severity === "error" ? 0 : 1)
-  );
+  const severityOrder = (s: IssueSeverity) => (s === "error" ? 0 : s === "warning" ? 1 : 2);
+  return [...map.values()].sort((a, b) => severityOrder(a.severity) - severityOrder(b.severity));
 });
 
 function severityIcon(severity: IssueSeverity) {
-  return severity === "error" ? "ri:error-warning-line" : "ri:alert-line";
+  if (severity === "error") return "ri:error-warning-line";
+  if (severity === "warning") return "ri:alert-line";
+  return "ri:information-line";
 }
 
 function suggestionIcon(key: string) {

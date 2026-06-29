@@ -1,6 +1,6 @@
 /** Markdown → Semrush Quill 编辑器可用 HTML */
 
-import { buildSemrushTableHtml, repairMarkdownTables } from '@wm/shared-core';
+import { buildSemrushTableHtml, repairMarkdownStructureArtifacts, repairMarkdownTables } from '@wm/shared-core';
 
 function escapeHtml(text: string): string {
   return text
@@ -79,7 +79,9 @@ export function markdownToPlainText(markdown: string): string {
 
 /** Markdown 转 HTML；`semrushTables` 时将表格展平为 Quill 可识别的段落（Semrush 不支持 table） */
 export function markdownToHtml(markdown: string, options?: { semrushTables?: boolean }): string {
-  const lines = repairMarkdownTables(markdown).replace(/\r\n/g, '\n').split('\n');
+  const lines = repairMarkdownStructureArtifacts(repairMarkdownTables(markdown))
+    .replace(/\r\n/g, '\n')
+    .split('\n');
   const html: string[] = [];
   let inUl = false;
   let inOl = false;

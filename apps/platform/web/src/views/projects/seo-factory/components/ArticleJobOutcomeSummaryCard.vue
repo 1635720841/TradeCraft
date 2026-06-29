@@ -217,7 +217,11 @@ import {
   buildJobDetailSummary,
   type DiagnoseSection
 } from "@/utils/seo-factory/job-detail-summary";
-import { countSeoIssueItems } from "@/utils/seo-factory/job-seo-issues";
+import {
+  buildOutcomeSummaryDesc,
+  countSeoIssueItems,
+  isSeoReleaseReady
+} from "@/utils/seo-factory/job-seo-issues";
 import { message } from "@/utils/message";
 
 defineOptions({ name: "ArticleJobOutcomeSummaryCard" });
@@ -259,6 +263,9 @@ const resolvedMeta = computed(() =>
   resolveDraftTitleAndMeta(props.job.draftData, props.job.briefData)
 );
 const issueCount = computed(() => countSeoIssueItems(props.job.seoCheckData));
+const releaseReady = computed(() =>
+  isSeoReleaseReady(summary.value.localPassed, summary.value.semrushPassed)
+);
 const hasTdk = computed(() =>
   Boolean(resolvedMeta.value.title && resolvedMeta.value.metaDescription)
 );
@@ -300,18 +307,13 @@ const outcomeTitle = computed(() => {
   return "等待正文生成";
 });
 
-const outcomeDesc = computed(() => {
-  if (summary.value.localPassed && summary.value.semrushPassed) {
-    return "已完成竞品对标、SEO 评分、内容优化和发布物生成，适合直接交付给运营或推送到 CMS。";
-  }
-  if (issueCount.value > 0) {
-    return `当前还有 ${issueCount.value} 项待修复，建议优先处理诊断里的结构、可读性和关键词覆盖问题。`;
-  }
-  if (summary.value.hasDraftContent) {
-    return "正文、标题和摘要已生成，可继续查看诊断、微调稿件或准备导出。";
-  }
-  return "任务还未产出正文，完成后这里会汇总分数、资产和发布状态。";
-});
+const outcomeDesc = computed(() =>
+  buildOutcomeSummaryDesc({
+    releaseReady: releaseReady.value,
+    issueCount: issueCount.value,
+    hasDraftContent: summary.value.hasDraftContent
+  })
+);
 
 const reviewLabel = computed(() => {
   const review = props.job.seoCheckData?.ymylReview;

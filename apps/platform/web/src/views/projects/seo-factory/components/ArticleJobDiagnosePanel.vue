@@ -36,10 +36,8 @@
     <el-collapse v-model="expandedSections" class="job-diagnose-collapse">
       <el-collapse-item id="diagnose-fixes" name="fixes">
         <template #title>
-          <span class="job-diagnose-collapse__title">待修复与建议</span>
-          <span v-if="issueCount > 0" class="job-diagnose-collapse__hint">
-            {{ issueCount }} 项待处理
-          </span>
+          <span class="job-diagnose-collapse__title">{{ fixesTitle }}</span>
+          <span v-if="fixesHint" class="job-diagnose-collapse__hint">{{ fixesHint }}</span>
         </template>
         <ArticleJobSeoScorePanel
           section="fixes"
@@ -130,7 +128,12 @@ import type {
   ArticleJobYmylReview
 } from "@/api/seo-factory/types";
 import { buildJobDetailSummary } from "@/utils/seo-factory/job-detail-summary";
-import { countSeoIssueItems } from "@/utils/seo-factory/job-seo-issues";
+import {
+  countSeoIssueItems,
+  fixesSectionHint,
+  fixesSectionTitle,
+  isSeoReleaseReady
+} from "@/utils/seo-factory/job-seo-issues";
 import ArticleJobCompetitorCompareChart from "./ArticleJobCompetitorCompareChart.vue";
 import ArticleJobCompetitorPanel from "./ArticleJobCompetitorPanel.vue";
 import ArticleJobDiagnoseOverview, {
@@ -191,8 +194,14 @@ const pipelineOptions = [
   { label: "内容审查", value: "ymyl" }
 ];
 
+const summary = computed(() => buildJobDetailSummary(props.job));
 const issueCount = computed(() => countSeoIssueItems(props.job.seoCheckData));
-const benchmarkHint = computed(() => buildJobDetailSummary(props.job).benchmarkLine);
+const releaseReady = computed(() =>
+  isSeoReleaseReady(summary.value.localPassed, summary.value.semrushPassed)
+);
+const fixesTitle = computed(() => fixesSectionTitle(releaseReady.value));
+const fixesHint = computed(() => fixesSectionHint(releaseReady.value, issueCount.value));
+const benchmarkHint = computed(() => summary.value.benchmarkLine);
 
 function scrollToSection(section: DiagnoseSectionId) {
   activeSection.value = section;
