@@ -6,12 +6,25 @@
 -->
 <template>
   <SeoFactoryWorkbenchShell>
-    <router-view />
+    <router-view v-slot="{ Component }">
+      <keep-alive :include="keepAliveViews" :max="8">
+        <component :is="Component" />
+      </keep-alive>
+    </router-view>
   </SeoFactoryWorkbenchShell>
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
 import SeoFactoryWorkbenchShell from "./components/SeoFactoryWorkbenchShell.vue";
 
 defineOptions({ name: "SeoFactoryLayout" });
+
+const keepAliveViews = computed(() => [
+  "WorkbenchOverviewView",
+  "JobListView",
+  "KeywordSchedulingLayout",
+  "SiteManageView",
+  "ProjectSettingsView"
+]);
 </script>

@@ -6,6 +6,8 @@ import { http } from "@/utils/http";
 import { seoFactoryApiPath } from "./paths";
 import type { WmApiResponse } from "./types";
 
+import type { KeywordEntryItem } from "./keyword";
+
 export interface KeywordClusterItem {
   id: string;
   name: string;
@@ -18,6 +20,16 @@ export interface KeywordClusterItem {
   pendingCount?: number;
   usedCount?: number;
   progressPercent?: number;
+}
+
+export interface KeywordClusterDetail extends KeywordClusterItem {
+  keywords: KeywordEntryItem[];
+  nextBatchKeywords: KeywordEntryItem[];
+  keywordPagination?: {
+    page: number;
+    limit: number;
+    total: number;
+  };
 }
 
 function projectBase(projectId: string) {
@@ -34,9 +46,23 @@ export async function listKeywordClusters(
   return res.data ?? [];
 }
 
+export async function getKeywordClusterDetail(
+  projectId: string,
+  clusterId: string,
+  page = 1,
+  limit = 20
+): Promise<KeywordClusterDetail> {
+  const res = await http.request<WmApiResponse<KeywordClusterDetail>>(
+    "get",
+    `${projectBase(projectId)}/${clusterId}`,
+    { params: { page, limit } }
+  );
+  return res.data;
+}
+
 export async function createKeywordCluster(
   projectId: string,
-  payload: { name: string; description?: string }
+  payload: { name: string; description?: string; keywordIds?: string[] }
 ): Promise<KeywordClusterItem> {
   const res = await http.request<WmApiResponse<KeywordClusterItem>>(
     "post",
@@ -86,12 +112,12 @@ export async function assignKeywordsToCluster(
 export async function createJobsFromCluster(
   projectId: string,
   clusterId: string,
-  siteId?: string
+  payload: { siteId?: string; limit?: number } = {}
 ): Promise<{ created: number; skipped: number }> {
   const res = await http.request<
     WmApiResponse<{ created: number; skipped: number; jobs: unknown[] }>
   >("post", `${projectBase(projectId)}/${clusterId}/create-jobs`, {
-    data: siteId ? { siteId } : {}
+    data: payload
   });
   return { created: res.data.created, skipped: res.data.skipped };
 }

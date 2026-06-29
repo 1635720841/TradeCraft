@@ -713,14 +713,19 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
     const count = Math.min(Math.max(input.count ?? 15, 5), 30);
     const contentLanguage = normalizeContentLanguage(input.contentLanguage);
 
-    const userContent = this.fillTemplate(template, {
-      siteDomain: input.siteDomain,
-      targetMarket: input.targetMarket?.trim() || 'Global',
-      outputLanguage: getContentLanguageLabel(contentLanguage),
-      brandVoice: input.brandVoice ?? defaultBrandVoice(contentLanguage),
-      topicHint: input.topicHint?.trim() || '（无额外主题约束，按站点整体定位扩展）',
-      count: String(count),
-    });
+    const userContent = [
+      this.fillTemplate(template, {
+        siteDomain: input.siteDomain,
+        targetMarket: input.targetMarket?.trim() || 'Global',
+        outputLanguage: getContentLanguageLabel(contentLanguage),
+        brandVoice: input.brandVoice ?? defaultBrandVoice(contentLanguage),
+        topicHint: input.topicHint?.trim() || '（无额外主题约束，按站点整体定位扩展）',
+        count: String(count),
+      }),
+      '',
+      'CRITICAL: Every `rationale` MUST be one short sentence in 简体中文 only (for operator review).',
+      'The `keyword` field follows Output language above; do not write English rationales.',
+    ].join('\n');
     this.logPromptDebug({
       action: 'generateKeywordSeeds',
       task: 'default',

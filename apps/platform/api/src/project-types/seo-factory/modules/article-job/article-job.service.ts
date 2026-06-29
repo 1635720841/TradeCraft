@@ -308,6 +308,7 @@ export class ArticleJobService {
       status?: 'FAILED';
       siteId?: string;
       actorUserId?: string;
+      keyword?: string;
     } = {},
   ) {
     const siteScope = await this.resolveSiteScopeFilter(
@@ -329,6 +330,7 @@ export class ArticleJobService {
         page,
         limit,
         siteScope,
+        options.keyword,
       );
     }
 
@@ -339,15 +341,30 @@ export class ArticleJobService {
         page,
         limit,
         siteScope,
+        options.keyword,
       );
     }
 
     if (options.staleDraft) {
-      return this.findManyStaleDraft(organizationId, projectId, page, limit, siteScope);
+      return this.findManyStaleDraft(
+        organizationId,
+        projectId,
+        page,
+        limit,
+        siteScope,
+        options.keyword,
+      );
     }
 
     if (options.reviewPending) {
-      return this.findManyReviewPending(organizationId, projectId, page, limit, siteScope);
+      return this.findManyReviewPending(
+        organizationId,
+        projectId,
+        page,
+        limit,
+        siteScope,
+        options.keyword,
+      );
     }
 
     const safeLimit = Math.min(Math.max(limit, 1), 100);
@@ -362,6 +379,8 @@ export class ArticleJobService {
         assignees: { some: { userId: options.actorUserId } },
       });
     }
+
+    this.applyKeywordToAndFilters(andFilters, options.keyword);
 
     const where: Prisma.ArticleJobWhereInput = {
       organizationId,
@@ -417,7 +436,7 @@ export class ArticleJobService {
           createdAt: true,
           updatedAt: true,
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { updatedAt: 'desc' },
         skip,
         take: safeLimit,
       }),
@@ -427,6 +446,23 @@ export class ArticleJobService {
     const items = rows.map((row) => this.toListItem(row));
 
     return { items, total, page: Math.max(page, 1), limit: safeLimit };
+  }
+
+  private applyKeywordToAndFilters(
+    andFilters: Prisma.ArticleJobWhereInput[],
+    keyword?: string,
+  ): void {
+    const q = keyword?.trim();
+    if (!q) return;
+    andFilters.push({
+      targetKeyword: { contains: q, mode: 'insensitive' },
+    });
+  }
+
+  private matchesKeyword(targetKeyword: string, keyword?: string): boolean {
+    const q = keyword?.trim();
+    if (!q) return true;
+    return targetKeyword.toLowerCase().includes(q.toLowerCase());
   }
 
   private buildSiteWhere(siteScope: {
@@ -473,6 +509,7 @@ export class ArticleJobService {
     page = 1,
     limit = 20,
     siteScope: { siteId?: string; siteIds?: string[] } = {},
+    keyword?: string,
   ) {
     const safePage = Math.max(page, 1);
     const safeLimit = Math.min(Math.max(limit, 1), 100);
@@ -506,7 +543,11 @@ export class ArticleJobService {
       take: 500,
     });
 
-    const stale = rows.filter((row) => this.isDraftStale(row.draftData));
+    const stale = rows.filter(
+      (row) =>
+        this.isDraftStale(row.draftData) &&
+        this.matchesKeyword(row.targetKeyword, keyword),
+    );
     const total = stale.length;
     const skip = (safePage - 1) * safeLimit;
     const items = stale.slice(skip, skip + safeLimit).map((row) => this.toListItem(row));
@@ -520,6 +561,7 @@ export class ArticleJobService {
     page = 1,
     limit = 20,
     siteScope: { siteId?: string; siteIds?: string[] } = {},
+    keyword?: string,
   ) {
     const safePage = Math.max(page, 1);
     const safeLimit = Math.min(Math.max(limit, 1), 100);
@@ -557,7 +599,11 @@ export class ArticleJobService {
       take: 500,
     });
 
-    const pending = rows.filter((row) => isPendingHumanReview(row.seoCheckData));
+    const pending = rows.filter(
+      (row) =>
+        isPendingHumanReview(row.seoCheckData) &&
+        this.matchesKeyword(row.targetKeyword, keyword),
+    );
     const total = pending.length;
     const skip = (safePage - 1) * safeLimit;
     const items = pending.slice(skip, skip + safeLimit).map((row) => this.toListItem(row));
@@ -576,6 +622,7 @@ export class ArticleJobService {
     page = 1,
     limit = 20,
     siteScope: { siteId?: string; siteIds?: string[] } = {},
+    keyword?: string,
   ) {
     const safePage = Math.max(page, 1);
     const safeLimit = Math.min(Math.max(limit, 1), 100);
@@ -609,8 +656,10 @@ export class ArticleJobService {
       orderBy: { updatedAt: 'desc' },
     });
 
-    const pending = rows.filter((row) =>
-      this.isCmsPublishPending(row.seoCheckData, row.site.cmsType),
+    const pending = rows.filter(
+      (row) =>
+        this.isCmsPublishPending(row.seoCheckData, row.site.cmsType) &&
+        this.matchesKeyword(row.targetKeyword, keyword),
     );
     const total = pending.length;
     const skip = (safePage - 1) * safeLimit;
@@ -625,6 +674,7 @@ export class ArticleJobService {
     page = 1,
     limit = 20,
     siteScope: { siteId?: string; siteIds?: string[] } = {},
+    keyword?: string,
   ) {
     const safePage = Math.max(page, 1);
     const safeLimit = Math.min(Math.max(limit, 1), 100);
@@ -658,7 +708,11 @@ export class ArticleJobService {
       orderBy: { updatedAt: 'desc' },
     });
 
-    const failed = rows.filter((row) => this.isCmsPublishFailed(row.seoCheckData));
+    const failed = rows.filter(
+      (row) =>
+        this.isCmsPublishFailed(row.seoCheckData) &&
+        this.matchesKeyword(row.targetKeyword, keyword),
+    );
     const total = failed.length;
     const skip = (safePage - 1) * safeLimit;
     const items = failed.slice(skip, skip + safeLimit).map((row) => this.toListItem(row));

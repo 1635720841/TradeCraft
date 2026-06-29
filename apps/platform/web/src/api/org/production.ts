@@ -4,7 +4,7 @@
 
 import { http } from "@/utils/http";
 import type { WmApiResponse } from "@/api/platform/types";
-import type { QuotaSummary } from "@/api/org/billing";
+import type { QuotaSummary } from "@/api/org/organization";
 
 export interface OrgProductionTotals {
   completedJobs: number;

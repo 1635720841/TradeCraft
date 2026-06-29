@@ -1,46 +1,68 @@
 <!--
-  关键词池：发现、优先级排序与一键入队。
+  选题 · 全部关键词：发现、筛选与创建任务。
 
   边界：
-  - 不负责：Semrush RPA 写作助手检测
+  - 不负责：专题排产主界面（TopicClusterView）
 -->
 <template>
   <div class="p-4 space-y-4">
     <el-card shadow="never">
       <template #header>
         <div class="flex flex-wrap items-center justify-between gap-2">
-          <span class="font-medium">关键词池</span>
+          <span class="font-medium">全部关键词</span>
           <div class="flex flex-wrap gap-2">
-            <el-button v-if="canManageKeywords" type="warning" :loading="generatingSeeds" @click="openSeedDialog">
-              AI 生成种子词
-            </el-button>
-            <el-button v-if="canManageKeywords" :loading="enrichingMetrics" @click="handleEnrichMetrics">
-              回填 Semrush 指标
-            </el-button>
             <el-button v-if="canManageKeywords" type="primary" @click="openCreateDialog">添加关键词</el-button>
-            <el-button v-if="canManageKeywords" @click="openImportDialog">批量导入</el-button>
             <el-button
               type="primary"
               :disabled="selectedKeywords.length === 0"
               :loading="batchCreating"
               @click="openBatchJobDialog"
             >
-              批量入队{{ selectedKeywords.length > 0 ? `（${selectedKeywords.length}）` : "" }}
+              创建任务{{ selectedKeywords.length > 0 ? `（${selectedKeywords.length}）` : "" }}
             </el-button>
+            <el-button v-if="canManageKeywords" @click="openImportDialog">批量导入</el-button>
+            <el-button v-if="canManageKeywords" @click="openSeedDialog">AI 生成种子词</el-button>
             <el-button @click="fetchKeywords">刷新</el-button>
-            <el-button link type="primary" @click="goTopicClusters">主题集群</el-button>
           </div>
         </div>
       </template>
 
       <el-collapse class="mb-4">
-        <el-collapse-item title="优先级怎么算？（管理员）" name="priority">
+        <el-collapse-item title="优先级怎么理解？" name="priority">
           <p class="text-sm leading-relaxed text-gray-600">
-            优先级 = 搜索量 25% + 商业价值 35% + 难度（越低越好）20% + 内容匹配 20%。
-            管理员可点击「回填搜索指标」拉取 Semrush 数据。导入 CSV 可选第四列「主题名称」。
+            系统综合商业价值与内容匹配，给出<strong>高 / 中 / 低</strong>建议优先级。
+            AI 生成种子词时会一并评估；导入 CSV 时第二列可填专题名称。
           </p>
         </el-collapse-item>
       </el-collapse>
+
+      <div v-if="schedulingSummary?.unclusteredCount && quickFilter !== 'unclustered'" class="mb-4">
+        <el-alert type="warning" :closable="false" show-icon>
+          <template #title>
+            {{ schedulingSummary.unclusteredCount }} 个关键词尚未分组
+          </template>
+          <template #default>
+            <span class="text-sm text-gray-600">建议先加入专题，再按主题批量创建任务。</span>
+            <el-button link type="primary" class="ml-1" @click="goUnclusteredFilter">
+              查看未分组
+            </el-button>
+          </template>
+        </el-alert>
+      </div>
+
+      <div
+        v-if="schedulingSummary?.highPriorityQueueableCount && quickFilter === 'queueable'"
+        class="mb-4"
+      >
+        <el-alert type="success" :closable="false" show-icon>
+          <template #title>
+            {{ schedulingSummary.highPriorityQueueableCount }} 个高优先级待写词
+          </template>
+          <template #default>
+            <span class="text-sm text-gray-600">建议优先勾选这些词创建任务或加入专题后排产。</span>
+          </template>
+        </el-alert>
+      </div>
 
       <div v-if="filterClusterId || quickFilter !== 'all'" class="mb-4">
         <el-alert type="info" :closable="false" show-icon :title="activeFilterTitle">
@@ -52,14 +74,24 @@
 
       <div v-if="selectedKeywords.length" class="mb-4 flex flex-wrap items-center gap-2">
         <span class="text-sm text-gray-600">已选 {{ selectedKeywords.length }} 项</span>
-        <el-button v-if="canManageKeywords" size="small" @click="openAssignClusterDialog">归入主题</el-button>
+        <el-button v-if="canManageKeywords" size="small" @click="openAssignClusterDialog">加入专题</el-button>
+        <el-button
+          v-if="canManageKeywords"
+          size="small"
+          type="danger"
+          plain
+          :loading="deleting"
+          @click="handleBatchDelete"
+        >
+          删除
+        </el-button>
       </div>
 
       <div class="mb-4 flex flex-wrap items-center gap-3">
         <el-radio-group v-model="quickFilter" @change="onQuickFilterChange">
-          <el-radio-button value="all">全部</el-radio-button>
-          <el-radio-button value="queueable">可入队</el-radio-button>
+          <el-radio-button value="queueable">待写</el-radio-button>
           <el-radio-button value="unclustered">未分组</el-radio-button>
+          <el-radio-button value="all">全部</el-radio-button>
         </el-radio-group>
         <el-select v-model="filterStatus" clearable placeholder="状态" style="width: 140px" @change="onFilterChange">
           <el-option
@@ -80,7 +112,7 @@
         <el-select
           v-model="filterClusterId"
           clearable
-          placeholder="主题"
+          placeholder="专题"
           style="width: 160px"
           @change="onClusterFilterChange"
         >
@@ -102,11 +134,13 @@
       >
         <el-table-column type="selection" width="48" :selectable="isRowSelectable" />
         <el-table-column prop="keyword" label="关键词" min-width="180" show-overflow-tooltip />
-        <el-table-column prop="priorityScore" label="优先级" width="90" sortable>
+        <el-table-column prop="priorityScore" label="建议优先级" width="108" sortable>
           <template #default="{ row }">
-            <el-tag :type="priorityTagType(row.priorityScore)" size="small">
-              {{ formatScore(row.priorityScore) }}
-            </el-tag>
+            <el-tooltip :content="priorityHint(row.priorityScore)" placement="top">
+              <el-tag :type="priorityTierTagType(row.priorityScore)" size="small">
+                {{ priorityTierLabel(row.priorityScore) }}
+              </el-tag>
+            </el-tooltip>
           </template>
         </el-table-column>
         <el-table-column prop="intent" label="意图" width="110">
@@ -116,27 +150,17 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="主题" width="130" show-overflow-tooltip>
+        <el-table-column label="专题" width="130" show-overflow-tooltip>
           <template #default="{ row }">
             <span v-if="row.cluster?.name">{{ row.cluster.name }}</span>
             <span v-else class="text-gray-400">未分组</span>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="状态" width="100">
+        <el-table-column prop="status" label="状态" width="88">
           <template #default="{ row }">
-            <el-tag size="small" :type="dictTagType(keywordStatusDict, row.status)">
-              {{ dictLabel(keywordStatusDict, row.status) }}
+            <el-tag size="small" :type="displayStatus(row.status).type">
+              {{ displayStatus(row.status).label }}
             </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="searchVolume" label="搜索量" width="90">
-          <template #default="{ row }">
-            {{ row.searchVolume ?? "-" }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="keywordDifficulty" label="KD" width="70">
-          <template #default="{ row }">
-            {{ row.keywordDifficulty ?? "-" }}
           </template>
         </el-table-column>
         <el-table-column prop="source" label="来源" width="100">
@@ -144,7 +168,7 @@
             {{ dictLabel(keywordSourceDict, row.source) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="240" fixed="right">
+        <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
             <el-button
               v-if="row.status !== 'ARCHIVED' && row.status !== 'USED'"
@@ -164,20 +188,21 @@
               查看任务
             </el-button>
             <el-button
-              v-if="canCreateJob && row.status === 'PENDING'"
-              type="success"
-              link
-              @click="handleApprove(row as KeywordEntryItem)"
-            >
-              通过
-            </el-button>
-            <el-button
               v-if="canManageKeywords"
               type="primary"
               link
               @click="openEditDialog(row as KeywordEntryItem)"
             >
               编辑
+            </el-button>
+            <el-button
+              v-if="canManageKeywords"
+              type="danger"
+              link
+              :loading="deletingId === row.id"
+              @click="handleDelete(row as KeywordEntryItem)"
+            >
+              删除
             </el-button>
           </template>
         </el-table-column>
@@ -218,7 +243,7 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="所属主题">
+        <el-form-item label="所属专题">
           <el-select v-model="form.clusterId" class="w-full" clearable placeholder="未分组">
             <el-option
               v-for="item in clusters"
@@ -227,12 +252,6 @@
               :value="item.id"
             />
           </el-select>
-        </el-form-item>
-        <el-form-item label="搜索量">
-          <el-input-number v-model="form.searchVolume" :min="0" class="w-full" />
-        </el-form-item>
-        <el-form-item label="KD (0-100)">
-          <el-input-number v-model="form.keywordDifficulty" :min="0" :max="100" class="w-full" />
         </el-form-item>
         <el-form-item label="商业价值">
           <el-slider v-model="form.businessValueScore" :min="0" :max="1" :step="0.05" show-input />
@@ -250,38 +269,116 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="seedDialogVisible" title="AI 生成种子关键词" width="560px" destroy-on-close>
-      <el-alert
-        class="mb-4"
-        type="info"
-        :closable="false"
-        show-icon
-        title="说明"
-        description="基于站点域名、品牌语气与目标市场，由 AI 生成一批待筛选关键词并写入关键词池。"
-      />
-      <el-form label-width="100px">
-        <el-form-item label="目标站点">
-          <el-select v-model="seedForm.siteId" class="w-full" placeholder="默认首个站点" clearable :loading="sitesLoading">
-            <el-option v-for="site in sites" :key="site.id" :label="site.domain" :value="site.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="生成数量">
-          <el-input-number v-model="seedForm.count" :min="5" :max="30" class="w-full" />
-        </el-form-item>
-        <el-form-item label="主题聚焦">
-          <el-input
-            v-model="seedForm.topicHint"
-            type="textarea"
-            :rows="3"
-            maxlength="500"
-            show-word-limit
-            placeholder="可选，如：工业阀门、B2B 采购决策"
-          />
-        </el-form-item>
-      </el-form>
+    <el-dialog
+      v-model="seedDialogVisible"
+      :title="seedStep === 'config' ? 'AI 生成种子词' : '挑选要加入的关键词'"
+      width="820px"
+      destroy-on-close
+      class="keyword-seed-dialog"
+      :class="{ 'is-preview': seedStep === 'preview' }"
+      @closed="resetSeedDialog"
+    >
+      <template v-if="seedStep === 'config'">
+        <el-collapse class="mb-4">
+          <el-collapse-item title="这个功能是做什么的？" name="principle">
+            <div class="space-y-2 text-sm leading-relaxed text-gray-600">
+              <p>
+                <strong>种子词</strong>是内容规划的起点：AI 根据站点域名、品牌语气、目标市场和你填的「主题聚焦」，模拟 SEO 研究员头脑风暴，生成一批<strong>候选搜索词</strong>。
+              </p>
+              <p>
+                每个候选词会附带<strong>搜索意图</strong>、<strong>商业价值</strong>与<strong>内容匹配度</strong>评估，用于后续「建议优先级」排序——并不是直接写文章。
+              </p>
+              <p>
+                生成后你会在下一步<strong>勾选想要的词</strong>，确认后才写入关键词池；不合适的可以去掉，不会自动全部入库。
+              </p>
+              <p class="text-gray-500">
+                推荐路径：生成并挑选 → 加入专题 → 按主题创建任务。
+              </p>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
+        <el-form label-width="100px">
+          <el-form-item label="目标站点">
+            <el-select v-model="seedForm.siteId" class="w-full" placeholder="默认首个站点" clearable :loading="sitesLoading">
+              <el-option v-for="site in sites" :key="site.id" :label="site.domain" :value="site.id" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="生成数量">
+            <el-input-number v-model="seedForm.count" :min="5" :max="30" class="w-full" />
+          </el-form-item>
+          <el-form-item label="主题聚焦">
+            <el-input
+              v-model="seedForm.topicHint"
+              type="textarea"
+              :rows="3"
+              maxlength="500"
+              show-word-limit
+              placeholder="可选，如：工业阀门、B2B 采购决策"
+            />
+          </el-form-item>
+        </el-form>
+      </template>
+
+      <div v-else class="keyword-seed-preview">
+        <el-alert
+          class="mb-4"
+          type="info"
+          :closable="false"
+          show-icon
+          title="请勾选要加入关键词池的词"
+          description="已存在于池中的词会标记为「已有」，无法重复加入。确认后仅写入你勾选的项。"
+        />
+        <el-table
+          ref="seedPreviewTableRef"
+          class="keyword-seed-preview__table"
+          :data="seedCandidates"
+          :max-height="380"
+          stripe
+          @selection-change="handleSeedSelectionChange"
+        >
+          <el-table-column type="selection" width="48" :selectable="isSeedRowSelectable" />
+          <el-table-column prop="keyword" label="关键词" min-width="220" show-overflow-tooltip />
+          <el-table-column label="建议优先级" width="108">
+            <template #default="{ row }">
+              <el-tag :type="priorityTierTagType(seedPriorityScore(row))" size="small">
+                {{ priorityTierLabel(seedPriorityScore(row)) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="intent" label="意图" width="110">
+            <template #default="{ row }">
+              <el-tag size="small" :type="dictTagType(keywordIntentDict, row.intent)">
+                {{ dictLabel(keywordIntentDict, row.intent) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="rationale" label="推荐理由" min-width="280" show-overflow-tooltip />
+          <el-table-column label="状态" width="72">
+            <template #default="{ row }">
+              <el-tag v-if="row.alreadyExists" size="small" type="info">已有</el-tag>
+              <span v-else class="text-gray-400">—</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+
       <template #footer>
-        <el-button @click="seedDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="generatingSeeds" @click="submitGenerateSeeds">开始生成</el-button>
+        <template v-if="seedStep === 'config'">
+          <el-button @click="seedDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="generatingSeeds" @click="submitPreviewSeeds">生成预览</el-button>
+        </template>
+        <template v-else>
+          <el-button @click="seedStep = 'config'">返回修改</el-button>
+          <el-button @click="seedDialogVisible = false">取消</el-button>
+          <el-button
+            type="primary"
+            :loading="confirmingSeeds"
+            :disabled="selectedSeedCandidates.length === 0"
+            @click="submitConfirmSeeds"
+          >
+            加入关键词池{{ selectedSeedCandidates.length > 0 ? `（${selectedSeedCandidates.length}）` : "" }}
+          </el-button>
+        </template>
       </template>
     </el-dialog>
 
@@ -321,7 +418,7 @@
           :disabled="!quotaPreview.canConsume(selectedKeywords.length)"
           @click="submitBatchCreateJobs"
         >
-          确认入队
+          确认创建
         </el-button>
       </template>
     </el-dialog>
@@ -333,13 +430,13 @@
         :closable="false"
         show-icon
         title="格式"
-        description="每行一个关键词；可选附加列：搜索量,KD,主题名称（逗号分隔）。"
+        description="每行一个关键词；可选第二列：专题名称（逗号分隔）。"
       />
       <el-input
         v-model="importText"
         type="textarea"
         :rows="10"
-        placeholder="industrial valve supplier&#10;stainless steel ball valve,800,42,工业阀门选型"
+        placeholder="industrial valve supplier&#10;stainless steel ball valve,工业阀门选型"
       />
       <template #footer>
         <el-button @click="importDialogVisible = false">取消</el-button>
@@ -347,10 +444,29 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="assignClusterDialogVisible" title="归入主题" width="420px">
-      <el-select v-model="assignClusterId" class="w-full" placeholder="选择主题">
+    <el-dialog v-model="assignClusterDialogVisible" title="加入专题" width="460px">
+      <el-radio-group v-model="assignMode" class="mb-4">
+        <el-radio value="existing">选择已有专题</el-radio>
+        <el-radio value="new">新建专题</el-radio>
+      </el-radio-group>
+      <el-select
+        v-if="assignMode === 'existing'"
+        v-model="assignClusterId"
+        class="w-full"
+        placeholder="选择专题"
+      >
         <el-option v-for="item in clusters" :key="item.id" :label="item.name" :value="item.id" />
       </el-select>
+      <el-input
+        v-else
+        v-model="newClusterName"
+        maxlength="100"
+        show-word-limit
+        placeholder="如：工业阀门选型"
+      />
+      <p class="mt-3 text-sm text-gray-500">
+        将把已选的 {{ selectedKeywords.length }} 个关键词归入该专题。
+      </p>
       <template #footer>
         <el-button @click="assignClusterDialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="assigningCluster" @click="submitAssignCluster">确定</el-button>
@@ -360,11 +476,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, inject, nextTick, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { FormInstance, FormRules, TableInstance } from "element-plus";
 import {
   assignKeywordsToCluster,
+  createKeywordCluster,
   listKeywordClusters,
   type KeywordClusterItem
 } from "@/api/seo-factory/keyword-cluster";
@@ -372,8 +489,11 @@ import {
   createJobFromKeyword,
   createJobsFromKeywords,
   createKeyword,
-  enrichKeywordMetrics,
-  generateKeywordSeeds,
+  deleteKeyword,
+  deleteKeywords,
+  confirmKeywordSeeds,
+  previewKeywordSeeds,
+  type KeywordSeedCandidate,
   importKeywords,
   listKeywords,
   updateKeyword,
@@ -390,11 +510,25 @@ import {
   keywordStatusDict
 } from "@/constants/dicts/seo-factory";
 import { dictLabel, dictTagType } from "@/utils/dict";
+import {
+  getKeywordDisplayStatus,
+  getKeywordPriorityTier,
+  getKeywordPriorityTierHint,
+  getKeywordPriorityTierLabel,
+  getKeywordPriorityTierTagType,
+  isKeywordQueueable
+} from "@/utils/seo-factory/keyword-display";
 import { message } from "@/utils/message";
 import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
 import { useArticleQuotaPreview } from "@/composables/useArticleQuotaPreview";
+import { keywordSchedulingContextKey } from "@/composables/seo-factory/keyword-scheduling-context";
 
 defineOptions({ name: "KeywordPoolView" });
+
+const emit = defineEmits<{ refreshSummary: [] }>();
+
+const schedulingCtx = inject(keywordSchedulingContextKey, null);
+const schedulingSummary = computed(() => schedulingCtx?.summary.value ?? null);
 
 const route = useRoute();
 const router = useRouter();
@@ -412,11 +546,11 @@ const emptyKeywordHint = computed(() =>
 
 const activeFilterTitle = computed(() => {
   const parts: string[] = [];
-  if (quickFilter.value === "queueable") parts.push("可入队");
+  if (quickFilter.value === "queueable") parts.push("待写");
   if (quickFilter.value === "unclustered") parts.push("未分组");
   if (filterClusterId.value) {
     const name = clusters.value.find((c) => c.id === filterClusterId.value)?.name;
-    if (name) parts.push(`主题「${name}」`);
+    if (name) parts.push(`专题「${name}」`);
   }
   return parts.length ? `筛选：${parts.join(" · ")}` : "筛选中";
 });
@@ -425,7 +559,7 @@ const loading = ref(false);
 const saving = ref(false);
 const importing = ref(false);
 const generatingSeeds = ref(false);
-const enrichingMetrics = ref(false);
+const confirmingSeeds = ref(false);
 const batchCreating = ref(false);
 const sitesLoading = ref(false);
 const sites = ref<SiteItem[]>([]);
@@ -438,17 +572,26 @@ const total = ref(0);
 const filterStatus = ref("");
 const filterIntent = ref("");
 const filterClusterId = ref("");
-const quickFilter = ref<"all" | "queueable" | "unclustered">("all");
+const quickFilter = ref<"all" | "queueable" | "unclustered">("queueable");
 const clusters = ref<KeywordClusterItem[]>([]);
 const creatingJobId = ref<string | null>(null);
+const deleting = ref(false);
+const deletingId = ref<string | null>(null);
 
 const formDialogVisible = ref(false);
 const importDialogVisible = ref(false);
 const batchJobDialogVisible = ref(false);
 const seedDialogVisible = ref(false);
+const seedStep = ref<"config" | "preview">("config");
+const seedCandidates = ref<KeywordSeedCandidate[]>([]);
+const selectedSeedCandidates = ref<KeywordSeedCandidate[]>([]);
+const seedPreviewSiteId = ref("");
+const seedPreviewTableRef = ref<TableInstance>();
 const assignClusterDialogVisible = ref(false);
 const assigningCluster = ref(false);
 const assignClusterId = ref("");
+const assignMode = ref<"existing" | "new">("existing");
+const newClusterName = ref("");
 const editingId = ref("");
 const importText = ref("");
 const formRef = ref<FormInstance>();
@@ -456,8 +599,6 @@ const formRef = ref<FormInstance>();
 const form = reactive({
   keyword: "",
   intent: "INFORMATIONAL",
-  searchVolume: undefined as number | undefined,
-  keywordDifficulty: undefined as number | undefined,
   businessValueScore: 0.5,
   contentFitScore: 0.5,
   notes: "",
@@ -483,11 +624,23 @@ const batchJobForm = reactive({
 });
 
 function isRowSelectable(row: KeywordEntryItem) {
-  return row.status !== "ARCHIVED";
+  return isKeywordQueueable(row.status);
 }
 
-function handleSelectionChange(rows: KeywordEntryItem[]) {
-  selectedKeywords.value = rows;
+function displayStatus(status: string) {
+  return getKeywordDisplayStatus(status);
+}
+
+function priorityTierLabel(score: number) {
+  return getKeywordPriorityTierLabel(getKeywordPriorityTier(score));
+}
+
+function priorityTierTagType(score: number) {
+  return getKeywordPriorityTierTagType(getKeywordPriorityTier(score));
+}
+
+function priorityHint(score: number) {
+  return getKeywordPriorityTierHint(getKeywordPriorityTier(score));
 }
 
 function clearSelection() {
@@ -495,14 +648,8 @@ function clearSelection() {
   selectedKeywords.value = [];
 }
 
-function formatScore(value: number) {
-  return Number(value ?? 0).toFixed(1);
-}
-
-function priorityTagType(score: number) {
-  if (score >= 75) return "success";
-  if (score >= 50) return "warning";
-  return "info";
+function handleSelectionChange(rows: KeywordEntryItem[]) {
+  selectedKeywords.value = rows;
 }
 
 async function fetchKeywords() {
@@ -513,13 +660,25 @@ async function fetchKeywords() {
       intent: filterIntent.value || undefined,
       clusterId: filterClusterId.value || undefined,
       unclustered: quickFilter.value === "unclustered",
-      queueable: quickFilter.value === "queueable"
+      queueable: quickFilter.value === "queueable",
+      excludeArchived:
+        quickFilter.value === "all" && !filterStatus.value ? undefined : false
     });
     keywords.value = res.data ?? [];
     total.value = res.meta?.pagination?.total ?? keywords.value.length;
   } finally {
     loading.value = false;
   }
+}
+
+function notifySummaryRefresh() {
+  emit("refreshSummary");
+  void schedulingCtx?.refreshSummary();
+}
+
+function goUnclusteredFilter() {
+  quickFilter.value = "unclustered";
+  onQuickFilterChange();
 }
 
 function onQuickFilterChange() {
@@ -574,28 +733,59 @@ function goTopicClusters() {
 }
 
 function openAssignClusterDialog() {
-  if (clusters.value.length === 0) {
-    message("请先在「主题集群」创建主题", { type: "warning" });
+  if (selectedKeywords.value.length === 0) {
+    message("请先勾选关键词", { type: "warning" });
     return;
   }
+  assignMode.value = clusters.value.length > 0 ? "existing" : "new";
   assignClusterId.value = clusters.value[0]?.id ?? "";
+  newClusterName.value = "";
   assignClusterDialogVisible.value = true;
 }
 
 async function submitAssignCluster() {
-  if (!assignClusterId.value || selectedKeywords.value.length === 0) return;
+  if (selectedKeywords.value.length === 0) return;
+
+  const keywordIds = selectedKeywords.value.map((row) => row.id);
+
+  if (assignMode.value === "new") {
+    const name = newClusterName.value.trim();
+    if (name.length < 2) {
+      message("请输入至少 2 个字的专题名称", { type: "warning" });
+      return;
+    }
+    assigningCluster.value = true;
+    try {
+      await createKeywordCluster(projectId, { name, keywordIds });
+      message(`已创建专题并加入 ${keywordIds.length} 个关键词`, { type: "success" });
+      assignClusterDialogVisible.value = false;
+      clearSelection();
+      await loadClusters();
+      await fetchKeywords();
+      notifySummaryRefresh();
+    } finally {
+      assigningCluster.value = false;
+    }
+    return;
+  }
+
+  if (!assignClusterId.value) {
+    message("请选择专题", { type: "warning" });
+    return;
+  }
   assigningCluster.value = true;
   try {
     const result = await assignKeywordsToCluster(
       projectId,
       assignClusterId.value,
-      selectedKeywords.value.map((row) => row.id)
+      keywordIds
     );
-    message(`已归入主题：${result.assigned} 个关键词`, { type: "success" });
+    message(`已加入专题：${result.assigned} 个关键词`, { type: "success" });
     assignClusterDialogVisible.value = false;
     clearSelection();
     await fetchKeywords();
     await loadClusters();
+    notifySummaryRefresh();
   } finally {
     assigningCluster.value = false;
   }
@@ -604,12 +794,16 @@ async function submitAssignCluster() {
 function syncClusterFilterFromRoute() {
   const clusterId = route.query.clusterId;
   filterClusterId.value = typeof clusterId === "string" ? clusterId : "";
-  if (route.query.queueable === "1" || route.query.queueable === "true") {
+  if (filterClusterId.value) {
+    quickFilter.value = "all";
+  } else if (route.query.queueable === "1" || route.query.queueable === "true") {
     quickFilter.value = "queueable";
   } else if (route.query.unclustered === "1" || route.query.unclustered === "true") {
     quickFilter.value = "unclustered";
-  } else {
+  } else if (route.query.all === "1" || route.query.all === "true") {
     quickFilter.value = "all";
+  } else {
+    quickFilter.value = "queueable";
   }
 }
 
@@ -621,8 +815,6 @@ function onSizeChange() {
 function resetForm() {
   form.keyword = "";
   form.intent = "INFORMATIONAL";
-  form.searchVolume = undefined;
-  form.keywordDifficulty = undefined;
   form.businessValueScore = 0.5;
   form.contentFitScore = 0.5;
   form.notes = "";
@@ -639,8 +831,6 @@ function openEditDialog(row: KeywordEntryItem) {
   editingId.value = row.id;
   form.keyword = row.keyword;
   form.intent = row.intent;
-  form.searchVolume = row.searchVolume ?? undefined;
-  form.keywordDifficulty = row.keywordDifficulty ?? undefined;
   form.businessValueScore = row.businessValueScore;
   form.contentFitScore = row.contentFitScore;
   form.notes = row.notes ?? "";
@@ -662,7 +852,31 @@ async function loadSites() {
   }
 }
 
+function seedPriorityScore(row: {
+  businessValueScore?: number;
+  contentFitScore?: number;
+}) {
+  const raw = (row.businessValueScore ?? 0.5) * 0.5 + (row.contentFitScore ?? 0.5) * 0.5;
+  return Math.round(raw * 1000) / 10;
+}
+
+function isSeedRowSelectable(row: KeywordSeedCandidate) {
+  return !row.alreadyExists;
+}
+
+function handleSeedSelectionChange(rows: KeywordSeedCandidate[]) {
+  selectedSeedCandidates.value = rows;
+}
+
+function resetSeedDialog() {
+  seedStep.value = "config";
+  seedCandidates.value = [];
+  selectedSeedCandidates.value = [];
+  seedPreviewSiteId.value = "";
+}
+
 function openSeedDialog() {
+  resetSeedDialog();
   seedForm.siteId = sites.value[0]?.id ?? "";
   seedForm.count = 15;
   seedForm.topicHint = "";
@@ -672,32 +886,55 @@ function openSeedDialog() {
   }
 }
 
-async function submitGenerateSeeds() {
+async function submitPreviewSeeds() {
   generatingSeeds.value = true;
   try {
-    const result = await generateKeywordSeeds(projectId, {
+    const result = await previewKeywordSeeds(projectId, {
       siteId: seedForm.siteId || undefined,
       count: seedForm.count,
       topicHint: seedForm.topicHint.trim() || undefined
     });
-    message(`种子词生成完成：新增 ${result.created} 条，跳过 ${result.skipped} 条`, {
-      type: "success"
+    seedCandidates.value = result.keywords;
+    seedPreviewSiteId.value = result.siteId;
+    seedStep.value = "preview";
+    await nextTick();
+    const selectable = seedCandidates.value.filter((row) => !row.alreadyExists);
+    selectedSeedCandidates.value = selectable;
+    selectable.forEach((row) => {
+      seedPreviewTableRef.value?.toggleRowSelection(row, true);
     });
-    seedDialogVisible.value = false;
-    await fetchKeywords();
+    if (selectable.length === 0) {
+      message("生成的词均已在关键词池中", { type: "warning" });
+    }
   } finally {
     generatingSeeds.value = false;
   }
 }
 
-async function handleEnrichMetrics() {
-  enrichingMetrics.value = true;
+async function submitConfirmSeeds() {
+  if (selectedSeedCandidates.value.length === 0) {
+    message("请至少勾选一个关键词", { type: "warning" });
+    return;
+  }
+  confirmingSeeds.value = true;
   try {
-    const result = await enrichKeywordMetrics(projectId, { allMissing: true });
-    message(`指标回填完成：更新 ${result.updated} 条`, { type: "success" });
+    const result = await confirmKeywordSeeds(projectId, {
+      siteId: seedPreviewSiteId.value || seedForm.siteId || undefined,
+      keywords: selectedSeedCandidates.value.map((row) => ({
+        keyword: row.keyword,
+        intent: row.intent,
+        businessValueScore: row.businessValueScore,
+        contentFitScore: row.contentFitScore,
+        rationale: row.rationale
+      }))
+    });
+    const skippedText = result.skipped > 0 ? `，跳过 ${result.skipped} 个重复` : "";
+    message(`已加入 ${result.created} 个关键词${skippedText}`, { type: "success" });
+    seedDialogVisible.value = false;
     await fetchKeywords();
+    notifySummaryRefresh();
   } finally {
-    enrichingMetrics.value = false;
+    confirmingSeeds.value = false;
   }
 }
 
@@ -709,15 +946,8 @@ function parseImportLines(text: string): CreateKeywordPayload[] {
     .map((line) => {
       const parts = line.split(",").map((part) => part.trim());
       const keyword = parts[0];
-      const searchVolume = parts[1] ? Number(parts[1]) : undefined;
-      const keywordDifficulty = parts[2] ? Number(parts[2]) : undefined;
-      const clusterName = parts[3]?.trim() || undefined;
-      return {
-        keyword,
-        searchVolume: Number.isFinite(searchVolume) ? searchVolume : undefined,
-        keywordDifficulty: Number.isFinite(keywordDifficulty) ? keywordDifficulty : undefined,
-        clusterName
-      };
+      const clusterName = parts[1]?.trim() || undefined;
+      return { keyword, clusterName };
     })
     .filter((item) => item.keyword.length >= 2);
 }
@@ -731,8 +961,6 @@ async function submitForm() {
       const payload: CreateKeywordPayload = {
         keyword: form.keyword.trim(),
         intent: form.intent,
-        searchVolume: form.searchVolume,
-        keywordDifficulty: form.keywordDifficulty,
         businessValueScore: form.businessValueScore,
         contentFitScore: form.contentFitScore,
         notes: form.notes.trim() || undefined,
@@ -742,8 +970,6 @@ async function submitForm() {
       if (editingId.value) {
         await updateKeyword(projectId, editingId.value, {
           intent: payload.intent,
-          searchVolume: payload.searchVolume ?? null,
-          keywordDifficulty: payload.keywordDifficulty ?? null,
           businessValueScore: payload.businessValueScore,
           contentFitScore: payload.contentFitScore,
           notes: payload.notes ?? null,
@@ -757,6 +983,7 @@ async function submitForm() {
 
       formDialogVisible.value = false;
       await fetchKeywords();
+      notifySummaryRefresh();
     } finally {
       saving.value = false;
     }
@@ -778,15 +1005,78 @@ async function submitImport() {
     });
     importDialogVisible.value = false;
     await fetchKeywords();
+    notifySummaryRefresh();
   } finally {
     importing.value = false;
   }
 }
 
-async function handleApprove(row: KeywordEntryItem) {
-  await updateKeyword(projectId, row.id, { status: "APPROVED" });
-  message("已标记为通过", { type: "success" });
-  await fetchKeywords();
+
+async function confirmDelete(count: number, keyword?: string, hasUsed = false) {
+  const subject = count === 1 && keyword ? `「${keyword}」` : `${count} 个关键词`;
+  let text = `${subject}将从关键词池永久删除，不可恢复。`;
+  if (hasUsed) {
+    text += " 已关联的文章任务不会被删除。";
+  }
+  await ElMessageBox.confirm(text, "删除关键词", {
+    type: "warning",
+    confirmButtonText: "删除",
+    cancelButtonText: "取消",
+    confirmButtonClass: "el-button--danger"
+  });
+}
+
+async function deleteKeywordRows(rows: KeywordEntryItem[]) {
+  if (rows.length === 0) {
+    message("请先选择关键词", { type: "warning" });
+    return;
+  }
+
+  const hasUsed = rows.some((row) => row.status === "USED" || row.lastJobId);
+  await confirmDelete(
+    rows.length,
+    rows.length === 1 ? rows[0].keyword : undefined,
+    hasUsed
+  );
+
+  if (rows.length === 1) {
+    deletingId.value = rows[0].id;
+  } else {
+    deleting.value = true;
+  }
+
+  try {
+    if (rows.length === 1) {
+      await deleteKeyword(projectId, rows[0].id);
+    } else {
+      await deleteKeywords(projectId, { ids: rows.map((row) => row.id) });
+    }
+    message(`已删除 ${rows.length} 个关键词`, { type: "success" });
+    clearSelection();
+    await fetchKeywords();
+    notifySummaryRefresh();
+  } finally {
+    deleting.value = false;
+    deletingId.value = null;
+  }
+}
+
+async function handleDelete(row: KeywordEntryItem) {
+  try {
+    await deleteKeywordRows([row]);
+  } catch (error) {
+    if (error === "cancel") return;
+    throw error;
+  }
+}
+
+async function handleBatchDelete() {
+  try {
+    await deleteKeywordRows(selectedKeywords.value);
+  } catch (error) {
+    if (error === "cancel") return;
+    throw error;
+  }
 }
 
 async function confirmKeywordConflicts(siteId: string, keyword: string): Promise<boolean> {
@@ -812,11 +1102,12 @@ async function handleCreateJob(row: KeywordEntryItem) {
   creatingJobId.value = row.id;
   try {
     const result = await createJobFromKeyword(projectId, row.id, siteId);
-    message("任务已入队", { type: "success" });
+    message("任务已创建", { type: "success" });
     if (result.warnings?.length) {
       message(result.warnings[0].message, { type: "warning" });
     }
     await fetchKeywords();
+    notifySummaryRefresh();
     router.push({
       name: "SeoFactoryJobDetail",
       params: { projectId, jobId: result.job.id }
@@ -861,10 +1152,11 @@ async function submitBatchCreateJobs() {
     });
 
     const skippedText = result.skipped > 0 ? `，跳过 ${result.skipped} 个已归档` : "";
-    message(`已入队 ${result.created} 个任务${skippedText}`, { type: "success" });
+    message(`已创建 ${result.created} 个任务${skippedText}`, { type: "success" });
     batchJobDialogVisible.value = false;
     clearSelection();
     await fetchKeywords();
+    notifySummaryRefresh();
 
     if (result.jobs.length === 1) {
       router.push({

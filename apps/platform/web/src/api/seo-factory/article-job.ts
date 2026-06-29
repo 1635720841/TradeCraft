@@ -69,6 +69,7 @@ export async function listArticleJobs(
     siteOwner?: "me";
     status?: "FAILED";
     siteId?: string;
+    keyword?: string;
   } = {}
 ): Promise<WmApiResponse<ArticleJobItem[]>> {
   const params: Record<string, string | number> = { page, limit };
@@ -82,6 +83,7 @@ export async function listArticleJobs(
   if (options.siteOwner === "me") params.siteOwner = "me";
   if (options.status === "FAILED") params.status = "FAILED";
   if (options.siteId) params.siteId = options.siteId;
+  if (options.keyword?.trim()) params.keyword = options.keyword.trim();
   return http.request<WmApiResponse<ArticleJobItem[]>>(
     "get",
     projectBase(projectId),

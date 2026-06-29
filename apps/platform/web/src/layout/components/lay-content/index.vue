@@ -6,8 +6,12 @@ import { useTags } from "@/layout/hooks/useTag";
 import { useGlobal, isNumber } from "@pureadmin/utils";
 import BackTopIcon from "@/assets/svg/back_top.svg?component";
 import { h, computed, Transition, defineComponent } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, type RouteLocationNormalizedLoaded } from "vue-router";
 import { usePermissionStoreHook } from "@/store/modules/permission";
+import {
+  getContentRouteKey,
+  isProjectWorkbenchPath
+} from "@/layout/utils/route-shell";
 import OrgSubscriptionBanner from "../OrgSubscriptionBanner.vue";
 import ImpersonationBanner from "../ImpersonationBanner.vue";
 
@@ -52,12 +56,22 @@ const layout = computed(() => {
 });
 
 const getMainWidth = computed(() => {
+  if (fillViewport.value) return "100%";
   return isNumber(stretch.value)
     ? stretch.value + "px"
     : stretch.value
       ? "1440px"
       : "100%";
 });
+
+const getScrollWrapStyle = computed(() => ({
+  display: "flex",
+  flexWrap: "wrap",
+  width: fillViewport.value ? "100%" : undefined,
+  maxWidth: getMainWidth.value,
+  margin: fillViewport.value ? "0" : "0 auto",
+  transition: "all 300ms cubic-bezier(0.4, 0, 0.2, 1)"
+}));
 
 const getSectionStyle = computed(() => {
   return [
@@ -91,10 +105,15 @@ const transitionMain = defineComponent({
     }
   },
   render() {
+    const currentRoute = this.route as RouteLocationNormalizedLoaded;
+    if (isProjectWorkbenchPath(currentRoute.path)) {
+      return this.$slots.default();
+    }
+
     const transitionName =
-      transitions.value(this.route)?.name || "fade-transform";
-    const enterTransition = transitions.value(this.route)?.enterTransition;
-    const leaveTransition = transitions.value(this.route)?.leaveTransition;
+      transitions.value(currentRoute)?.name || "fade-transform";
+    const enterTransition = transitions.value(currentRoute)?.enterTransition;
+    const leaveTransition = transitions.value(currentRoute)?.leaveTransition;
     return h(
       Transition,
       {
@@ -133,13 +152,7 @@ const transitionMain = defineComponent({
             <el-scrollbar
               v-if="fixedHeader"
               :class="{ 'app-main__scroll--fill': fillViewport }"
-              :wrap-style="{
-                display: 'flex',
-                'flex-wrap': 'wrap',
-                'max-width': getMainWidth,
-                margin: '0 auto',
-                transition: 'all 300ms cubic-bezier(0.4, 0, 0.2, 1)'
-              }"
+              :wrap-style="getScrollWrapStyle"
               :view-style="{
                 display: 'flex',
                 flex: 'auto',
@@ -162,7 +175,7 @@ const transitionMain = defineComponent({
                   >
                     <component
                       :is="Comp"
-                      :key="fullPath"
+                      :key="getContentRouteKey(route)"
                       :frameInfo="frameInfo"
                       class="main-content"
                       :class="{ 'main-content--fill': fillViewport }"
@@ -171,7 +184,7 @@ const transitionMain = defineComponent({
                   <component
                     :is="Comp"
                     v-else
-                    :key="fullPath"
+                    :key="getContentRouteKey(route)"
                     :frameInfo="frameInfo"
                     class="main-content"
                     :class="{ 'main-content--fill': fillViewport }"
@@ -188,7 +201,7 @@ const transitionMain = defineComponent({
                 >
                   <component
                     :is="Comp"
-                    :key="fullPath"
+                    :key="getContentRouteKey(route)"
                     :frameInfo="frameInfo"
                     class="main-content"
                   />
@@ -196,7 +209,7 @@ const transitionMain = defineComponent({
                 <component
                   :is="Comp"
                   v-else
-                  :key="fullPath"
+                  :key="getContentRouteKey(route)"
                   :frameInfo="frameInfo"
                   class="main-content"
                 />
@@ -242,6 +255,7 @@ const transitionMain = defineComponent({
 }
 
 .app-main :deep(.grow--fill) {
+  width: 100%;
   min-height: 0;
   height: 100%;
 }
@@ -268,9 +282,10 @@ const transitionMain = defineComponent({
   display: flex;
   flex: 1;
   flex-direction: column;
+  width: 100%;
   min-height: 0;
   height: 100%;
-  padding: 18px 32px;
+  padding: 12px 16px;
   overflow: hidden;
 }
 

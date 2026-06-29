@@ -9,6 +9,7 @@ import { scryptSync } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { PrismaClient } from '@prisma/client';
+import Redis from 'ioredis';
 
 /** 当前开发种子 ID（合法 UUID v4） */
 const MVP_ORGANIZATION_ID = '00000000-0000-4000-8000-000000000001';
@@ -426,6 +427,11 @@ async function ensurePromptTemplates() {
         isActive: true,
       },
     });
+    if (process.env.REDIS_URL) {
+      const redis = new Redis(process.env.REDIS_URL);
+      await redis.del(`prompt:template:${version}`);
+      await redis.quit();
+    }
     created += 1;
   }
   console.log(`[seed] Prompt 模板已同步 ${created} 条（FORCE_PROMPT_SEED=true 可覆盖已有内容）`);

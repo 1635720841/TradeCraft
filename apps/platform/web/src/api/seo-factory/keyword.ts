@@ -65,6 +65,22 @@ function projectBase(projectId: string) {
   return seoFactoryApiPath(projectId, "keywords");
 }
 
+export interface KeywordSummary {
+  queueableCount: number;
+  unclusteredCount: number;
+  archivedCount: number;
+  clusterCount: number;
+  highPriorityQueueableCount: number;
+}
+
+export async function getKeywordSummary(projectId: string): Promise<KeywordSummary> {
+  const res = await http.request<WmApiResponse<KeywordSummary>>(
+    "get",
+    `${projectBase(projectId)}/summary`
+  );
+  return res.data;
+}
+
 export async function listKeywords(
   projectId: string,
   page = 1,
@@ -75,6 +91,7 @@ export async function listKeywords(
     clusterId?: string;
     unclustered?: boolean;
     queueable?: boolean;
+    excludeArchived?: boolean;
   } = {}
 ): Promise<WmApiResponse<KeywordEntryItem[]>> {
   const params: Record<string, string | number | boolean> = { page, limit };
@@ -83,6 +100,7 @@ export async function listKeywords(
   if (filters.clusterId) params.clusterId = filters.clusterId;
   if (filters.unclustered) params.unclustered = "1";
   if (filters.queueable) params.queueable = "1";
+  if (filters.excludeArchived === false) params.excludeArchived = "0";
   return http.request<WmApiResponse<KeywordEntryItem[]>>("get", projectBase(projectId), {
     params
   });
@@ -120,6 +138,36 @@ export async function updateKeyword(
   const res = await http.request<WmApiResponse<KeywordEntryItem>>(
     "patch",
     `${projectBase(projectId)}/${keywordId}`,
+    { data: payload }
+  );
+  return res.data;
+}
+
+export async function deleteKeyword(
+  projectId: string,
+  keywordId: string
+): Promise<{ id: string; keyword: string; deleted: true }> {
+  const res = await http.request<
+    WmApiResponse<{ id: string; keyword: string; deleted: true }>
+  >("delete", `${projectBase(projectId)}/${keywordId}`);
+  return res.data;
+}
+
+export interface DeleteKeywordsPayload {
+  ids: string[];
+}
+
+export interface DeleteKeywordsResult {
+  deleted: number;
+}
+
+export async function deleteKeywords(
+  projectId: string,
+  payload: DeleteKeywordsPayload
+): Promise<DeleteKeywordsResult> {
+  const res = await http.request<WmApiResponse<DeleteKeywordsResult>>(
+    "post",
+    `${projectBase(projectId)}/batch/delete`,
     { data: payload }
   );
   return res.data;
@@ -164,6 +212,69 @@ export async function createJobsFromKeywords(
   return res.data;
 }
 
+export interface KeywordSeedCandidate {
+  keyword: string;
+  intent: string;
+  businessValueScore: number;
+  contentFitScore: number;
+  rationale?: string;
+  alreadyExists?: boolean;
+}
+
+export interface PreviewKeywordSeedsPayload {
+  siteId?: string;
+  count?: number;
+  topicHint?: string;
+}
+
+export interface PreviewKeywordSeedsResult {
+  siteId: string;
+  keywords: KeywordSeedCandidate[];
+  promptVersion: string;
+}
+
+export interface ConfirmKeywordSeedsPayload {
+  siteId?: string;
+  keywords: Array<{
+    keyword: string;
+    intent: string;
+    businessValueScore: number;
+    contentFitScore: number;
+    rationale?: string;
+  }>;
+}
+
+export interface ConfirmKeywordSeedsResult {
+  created: number;
+  skipped: number;
+  items: KeywordEntryItem[];
+}
+
+export async function previewKeywordSeeds(
+  projectId: string,
+  payload: PreviewKeywordSeedsPayload = {}
+): Promise<PreviewKeywordSeedsResult> {
+  const res = await http.request<WmApiResponse<PreviewKeywordSeedsResult>>(
+    "post",
+    `${projectBase(projectId)}/generate-seeds/preview`,
+    { data: payload }
+  );
+  return res.data;
+}
+
+export async function confirmKeywordSeeds(
+  projectId: string,
+  payload: ConfirmKeywordSeedsPayload
+): Promise<ConfirmKeywordSeedsResult> {
+  const res = await http.request<WmApiResponse<ConfirmKeywordSeedsResult>>(
+    "post",
+    `${projectBase(projectId)}/generate-seeds/confirm`,
+    { data: payload }
+  );
+  return res.data;
+}
+
+/** @deprecated 使用 previewKeywordSeeds + confirmKeywordSeeds */
 export interface GenerateKeywordSeedsPayload {
   siteId?: string;
   count?: number;

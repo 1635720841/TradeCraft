@@ -27,6 +27,7 @@ import {
   formatFlatteningRoutes,
   hasRoutePermission
 } from "./utils";
+import { isProjectWorkbenchInnerNavigation } from "@/layout/utils/route-shell";
 import {
   type Router,
   type RouteRecordRaw,
@@ -123,7 +124,8 @@ const whiteList = ["/login", "/login/callback"];
 const { VITE_HIDE_HOME } = import.meta.env;
 
 router.beforeEach((to: ToRouteType, _from, next) => {
-  to.meta.loaded = loadedPaths.has(to.path);
+  const workbenchInnerNav = isProjectWorkbenchInnerNavigation(_from.path, to.path);
+  to.meta.loaded = loadedPaths.has(to.path) || workbenchInnerNav;
 
   if (!to.meta.loaded) {
     NProgress.start();

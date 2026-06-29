@@ -48,8 +48,6 @@
               我负责的站点
             </el-checkbox>
             <el-tag v-if="polling" type="info" size="small">自动刷新中</el-tag>
-            <el-button @click="goContentScore">内容评分</el-button>
-            <el-button @click="goSites">站点</el-button>
             <el-button @click="() => fetchJobs()">刷新</el-button>
             <el-button v-if="canCreateJob" type="primary" @click="goCreate">
               新建任务
@@ -57,6 +55,17 @@
           </div>
         </div>
       </template>
+
+      <div class="mb-4 flex flex-wrap items-center gap-3">
+        <el-input
+          v-model="keywordSearch"
+          clearable
+          placeholder="搜索关键词"
+          style="width: 220px"
+          @input="onKeywordSearchInput"
+          @clear="onKeywordSearchClear"
+        />
+      </div>
 
       <div v-if="stageAlert || assignedToMeAlert || siteOwnerMeAlert" class="mb-4">
         <el-alert
@@ -135,51 +144,14 @@
             {{ (row as ArticleJobItem).siteDomain || "-" }}
           </template>
         </el-table-column>
-        <el-table-column label="阶段" min-width="140">
+        <el-table-column label="状态" min-width="140">
           <template #default="{ row }">
-            <el-tag :type="dictTagType(jobStatusDict, row.status)" size="small">
-              {{ dictLabel(jobStatusDict, row.status) }}
-            </el-tag>
-            <el-tag
-              v-if="isBriefPending(row as ArticleJobItem)"
-              type="warning"
-              size="small"
-              class="ml-1"
-            >
-              待确认大纲
-            </el-tag>
-            <el-tag
-              v-else-if="isReviewPending(row as ArticleJobItem)"
-              type="warning"
-              size="small"
-              class="ml-1"
-            >
-              待审核
-            </el-tag>
-            <el-tag
-              v-else-if="draftEditLabel(row as ArticleJobItem)"
-              type="warning"
-              size="small"
-              class="ml-1"
-            >
-              {{ draftEditLabel(row as ArticleJobItem) }}
-            </el-tag>
-            <el-tag
-              v-else-if="cmsUiEnabled"
-              size="small"
-              class="ml-1"
-              :type="cmsPublishStatusTagType(resolveCmsPublishStatus(row as ArticleJobItem))"
-            >
-              {{ cmsPublishStatusLabel(resolveCmsPublishStatus(row as ArticleJobItem), row as ArticleJobItem) }}
+            <el-tag :type="resolveJobListPrimaryTag(row as ArticleJobItem).type" size="small">
+              {{ resolveJobListPrimaryTag(row as ArticleJobItem).label }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="进度" min-width="200">
-          <template #default="{ row }">
-            <ArticleJobProgressStepper :job="row as ArticleJobItem" compact />
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link @click="goDetail(row.id)">详情</el-button>
             <el-button
@@ -192,7 +164,7 @@
               确认大纲
             </el-button>
             <el-button
-              v-if="canReviewJob && isReviewPending(row as ArticleJobItem)"
+              v-else-if="canReviewJob && isReviewPending(row as ArticleJobItem)"
               type="success"
               link
               :loading="actingReviewId === (row as ArticleJobItem).id && actingReviewType === 'approve'"
@@ -201,16 +173,7 @@
               通过
             </el-button>
             <el-button
-              v-if="canReviewJob && isReviewPending(row as ArticleJobItem)"
-              type="danger"
-              link
-              :loading="actingReviewId === (row as ArticleJobItem).id && actingReviewType === 'reject'"
-              @click="openReviewDialog((row as ArticleJobItem).id, 'reject')"
-            >
-              驳回
-            </el-button>
-            <el-button
-              v-if="(row as ArticleJobItem).status === 'FAILED'"
+              v-else-if="(row as ArticleJobItem).status === 'FAILED'"
               type="warning"
               link
               :loading="retryingId === (row as ArticleJobItem).id"
@@ -219,7 +182,7 @@
               重新生成
             </el-button>
             <el-button
-              v-if="cmsUiEnabled && canPublishJobToCms(row as ArticleJobItem)"
+              v-else-if="cmsUiEnabled && canPublishJobToCms(row as ArticleJobItem)"
               type="success"
               link
               :loading="publishingId === (row as ArticleJobItem).id"
@@ -227,14 +190,20 @@
             >
               推送
             </el-button>
-            <el-button
-              type="danger"
-              link
-              :loading="deletingId === (row as ArticleJobItem).id"
-              @click="handleDelete((row as ArticleJobItem).id, (row as ArticleJobItem).targetKeyword)"
-            >
-              删除
-            </el-button>
+            <el-dropdown trigger="click" @command="(cmd: string) => handleRowMore(cmd, row as ArticleJobItem)">
+              <el-button type="primary" link>更多</el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item
+                    v-if="canReviewJob && isReviewPending(row as ArticleJobItem)"
+                    command="reject"
+                  >
+                    驳回审核
+                  </el-dropdown-item>
+                  <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
         </el-table-column>
       </el-table>
@@ -302,20 +271,13 @@ import {
 } from "@/api/seo-factory/article-job";
 import { listSites } from "@/api/seo-factory/site";
 import type { ArticleJobItem, SiteItem } from "@/api/seo-factory/types";
-import { jobStatusDict, JOB_TERMINAL_STATUSES } from "@/constants/dicts/seo-factory";
+import { JOB_TERMINAL_STATUSES } from "@/constants/dicts/seo-factory";
 import { WORDPRESS_CMS_UI_ENABLED } from "@/constants/feature-flags";
-import { dictLabel, dictTagType } from "@/utils/dict";
 import { message } from "@/utils/message";
-import {
-  canPublishJobToCms,
-  cmsPublishStatusLabel,
-  cmsPublishStatusTagType,
-  resolveCmsPublishStatus
-} from "@/utils/seo-factory/cms-publish-status";
-import { draftEditStatusLabel } from "@/utils/seo-factory/draft-edit-preview";
+import { canPublishJobToCms } from "@/utils/seo-factory/cms-publish-status";
 import { isBriefPending, isReviewPending } from "@/utils/seo-factory/job-progress";
+import { resolveJobListPrimaryTag } from "@/utils/seo-factory/job-list-status";
 import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
-import ArticleJobProgressStepper from "./components/ArticleJobProgressStepper.vue";
 
 defineOptions({ name: "JobListView" });
 
@@ -370,8 +332,10 @@ type JobListStage =
 
 const listFilter = ref<JobListStage>("all");
 const filterSiteId = ref("");
+const keywordSearch = ref("");
 const sites = ref<SiteItem[]>([]);
 const sitesLoading = ref(false);
+let keywordSearchTimer: ReturnType<typeof setTimeout> | null = null;
 
 const stageAlert = computed(() => {
   switch (listFilter.value) {
@@ -391,7 +355,7 @@ const stageAlert = computed(() => {
       return {
         type: "info" as const,
         title: "仅显示生成中的任务",
-        description: "系统正在分析搜索结果并生成正文，可在进度列查看当前步骤。"
+        description: "系统正在分析搜索结果并生成正文，列表会自动刷新。"
       };
     case "failed":
       return {
@@ -409,7 +373,7 @@ const stageAlert = computed(() => {
       return {
         type: "warning" as const,
         title: "仅显示编辑后待处理的任务",
-        description: "正文改过后需重新检查评分或导出，请进入任务详情按黄色提示操作。"
+        description: "正文改过后需重新导出或推送 CMS，请进入任务详情按黄色提示操作。"
       };
     case "publishFailed":
       return {
@@ -476,12 +440,35 @@ const exportableSelected = computed(() =>
   selectedJobs.value.filter((job) => job.exportReady === true)
 );
 
-function draftEditLabel(row: ArticleJobItem): string | null {
-  return draftEditStatusLabel(row);
+function handleRowMore(command: string, row: ArticleJobItem) {
+  if (command === "reject") {
+    openReviewDialog(row.id, "reject");
+    return;
+  }
+  if (command === "delete") {
+    void handleDelete(row.id, row.targetKeyword);
+  }
 }
 
-function handleSelectionChange(rows: ArticleJobItem[]) {
-  selectedJobs.value = rows;
+function syncKeywordFromRoute() {
+  const kw = route.query.keyword;
+  keywordSearch.value = typeof kw === "string" ? kw : "";
+}
+
+function onKeywordSearchInput() {
+  if (keywordSearchTimer) clearTimeout(keywordSearchTimer);
+  keywordSearchTimer = setTimeout(() => {
+    const query = { ...route.query };
+    const trimmed = keywordSearch.value.trim();
+    if (trimmed) query.keyword = trimmed;
+    else delete query.keyword;
+    router.replace({ name: "SeoFactoryJobs", params: { projectId }, query });
+  }, 300);
+}
+
+function onKeywordSearchClear() {
+  keywordSearch.value = "";
+  onKeywordSearchInput();
 }
 
 async function fetchJobs(showLoading = true) {
@@ -497,7 +484,8 @@ async function fetchJobs(showLoading = true) {
       assignedToMe: assignedToMeFilter.value,
       siteOwner: siteOwnerMeFilter.value ? "me" : undefined,
       status: failedFilter.value ? "FAILED" : undefined,
-      siteId: filterSiteId.value || undefined
+      siteId: filterSiteId.value || undefined,
+      keyword: keywordSearch.value.trim() || undefined
     });
     jobs.value = res.data ?? [];
     total.value = res.meta?.pagination?.total ?? jobs.value.length;
@@ -880,6 +868,10 @@ async function handleBatchPublish() {
   }
 }
 
+function handleSelectionChange(rows: ArticleJobItem[]) {
+  selectedJobs.value = rows;
+}
+
 function goCreate() {
   router.push({
     name: "SeoFactoryJobCreate",
@@ -894,24 +886,11 @@ function goDetail(jobId: string) {
   });
 }
 
-function goSites() {
-  router.push({
-    name: "SeoFactorySites",
-    params: { projectId }
-  });
-}
-
-function goContentScore() {
-  router.push({
-    name: "SeoFactoryContentScore",
-    params: { projectId }
-  });
-}
-
 watch(
-  () => [route.query.stage, route.query.siteId, route.query.assignedToMe, route.query.siteOwner],
+  () => [route.query.stage, route.query.siteId, route.query.assignedToMe, route.query.siteOwner, route.query.keyword],
   () => {
     syncListFilterFromRoute();
+    syncKeywordFromRoute();
     page.value = 1;
     void fetchJobs();
   }
@@ -928,6 +907,7 @@ async function loadSites() {
 
 onMounted(() => {
   syncListFilterFromRoute();
+  syncKeywordFromRoute();
   void loadSites();
   void fetchJobs();
 });

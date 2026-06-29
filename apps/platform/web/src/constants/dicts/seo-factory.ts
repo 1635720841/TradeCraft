@@ -22,6 +22,15 @@ export const CONTENT_LANGUAGE_OPTIONS = [
   { value: "zh-CN", label: "简体中文" }
 ] as const;
 
+/** 站点目标市场（与 Site.targetMarket 一致，自由文本存储） */
+export const TARGET_MARKET_OPTIONS = [
+  { value: "US", label: "美国 (US)" },
+  { value: "CN", label: "中国 (CN)" },
+  { value: "EU", label: "欧洲 (EU)" },
+  { value: "SEA", label: "东南亚 (SEA)" },
+  { value: "Global", label: "全球 (Global)" }
+] as const;
+
 export type ContentLanguageCode = (typeof CONTENT_LANGUAGE_OPTIONS)[number]["value"];
 
 /** 文章内容形态（与 Prisma ArticleContentForm 一致） */
@@ -62,37 +71,46 @@ export const ymylHumanReviewStatusDict: DictItem[] = [
 ];
 
 /** 关键词搜索意图（与 Prisma KeywordIntent 一致） */
-export const keywordIntentDict: DictItem[] = [
+export const keywordIntentByPurposeDict: DictItem[] = [
   {
     value: "INFORMATIONAL",
-    label: "了解知识",
-    description: "读者想搞懂一个问题，适合写科普、教程、行业知识",
+    label: "科普教程",
+    description: "用户想找教程、科普或行业解答，采购意图较弱",
     type: "info"
   },
   {
     value: "COMMERCIAL",
     label: "对比选购",
-    description: "读者在比较多家方案或产品，适合写选购指南、参数对比",
+    description: "用户在比较方案或供应商，尚未决定联系谁",
     type: "primary"
   },
   {
     value: "TRANSACTIONAL",
-    label: "询价下单",
-    description: "读者离联系或采购很近，适合突出报价、起订量与联系方式",
+    label: "询价采购",
+    description: "用户已接近询价、下单或联系销售",
     type: "success"
-  },
+  }
+];
+
+/** 品牌/竞品词：按关键词类型分，非常规「读者目的」 */
+export const keywordIntentByKeywordTypeDict: DictItem[] = [
   {
     value: "BRAND",
-    label: "搜我们品牌",
-    description: "读者直接搜公司名或品牌，适合写公司实力、案例与信任背书",
+    label: "品牌词",
+    description: "关键词是本公司或自有品牌名",
     type: "warning"
   },
   {
     value: "COMPETITOR",
-    label: "搜竞品名",
-    description: "读者搜的是竞争对手，适合写客观对比、帮读者做选择",
+    label: "竞品词",
+    description: "关键词是竞争对手品牌或产品名",
     type: "danger"
   }
+];
+
+export const keywordIntentDict: DictItem[] = [
+  ...keywordIntentByPurposeDict,
+  ...keywordIntentByKeywordTypeDict
 ];
 
 /** 关键词状态（与 Prisma KeywordStatus 一致） */

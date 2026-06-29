@@ -16,10 +16,16 @@ export interface LogtoConfig {
 }
 
 export function isLogtoEnabled(): boolean {
+  if (process.env.LOGTO_ENABLED?.trim().toLowerCase() === 'false') {
+    return false;
+  }
   return readLogtoConfig() !== null;
 }
 
 export function readLogtoConfig(): LogtoConfig | null {
+  if (process.env.LOGTO_ENABLED?.trim().toLowerCase() === 'false') {
+    return null;
+  }
   const endpoint = process.env.LOGTO_ENDPOINT?.trim().replace(/\/$/, '');
   const appId = process.env.LOGTO_APP_ID?.trim();
   const appSecret = process.env.LOGTO_APP_SECRET?.trim();
@@ -30,7 +36,7 @@ export function readLogtoConfig(): LogtoConfig | null {
   const webPort = process.env.WEB_PORT?.trim() || '5173';
   const redirectUri =
     process.env.LOGTO_REDIRECT_URI?.trim() ||
-    `http://localhost:${webPort}/#/login/callback`;
+    `http://localhost:${webPort}/logto-callback.html`;
 
   return { endpoint, appId, appSecret, redirectUri };
 }

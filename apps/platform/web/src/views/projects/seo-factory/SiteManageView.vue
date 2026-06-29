@@ -9,7 +9,12 @@
     <el-card shadow="never">
       <template #header>
         <div class="flex flex-wrap items-center justify-between gap-2">
-          <span class="font-medium">站点</span>
+          <div>
+            <span class="font-medium">站点</span>
+            <p class="mt-1 text-sm text-gray-500 font-normal">
+              配置域名与 AI 写作素材，供该站下所有文章复用。
+            </p>
+          </div>
           <div class="flex gap-2">
             <el-checkbox v-model="mySitesOnly" @change="onOwnerFilterChange">我负责的站点</el-checkbox>
             <el-button v-if="canManageSite" type="primary" @click="openCreateDialog">新建站点</el-button>
@@ -24,10 +29,10 @@
         type="warning"
         :closable="false"
         show-icon
-        title="仅显示未填写最少写作素材的站点"
+        title="仅显示写作素材未达标的站点"
       >
         <template #default>
-          请编辑站点，至少填写「行业」和 1 条卖点（产品线或差异化卖点），即可开始创建任务。
+          填写「行业」和至少一条卖点（产品线或差异化卖点）后即可创建任务。
           <el-button link type="primary" @click="clearProfileFilter">查看全部站点</el-button>
         </template>
       </el-alert>
@@ -39,9 +44,9 @@
             {{ row.targetMarket || "-" }}
           </template>
         </el-table-column>
-        <el-table-column prop="contentLanguage" label="语言" width="100">
+        <el-table-column prop="contentLanguage" label="输出语言" width="100">
           <template #default="{ row }">
-            {{ row.contentLanguage || "-" }}
+            {{ contentLanguageLabel(row.contentLanguage) }}
           </template>
         </el-table-column>
         <el-table-column prop="brandVoice" label="品牌语气" min-width="160" show-overflow-tooltip>
@@ -51,8 +56,10 @@
         </el-table-column>
         <el-table-column label="写作素材" width="100">
           <template #default="{ row }">
-            <el-tag v-if="hasWritingProfile(row as SiteItem)" size="small" type="success">已配置</el-tag>
-            <span v-else class="text-gray-400">未填</span>
+            <el-tag v-if="siteItemHasMinWritingProfile(row as SiteItem)" size="small" type="success">
+              已达标
+            </el-tag>
+            <span v-else class="text-gray-400">待完善</span>
           </template>
         </el-table-column>
         <el-table-column label="负责人" width="120">
@@ -69,13 +76,24 @@
           <template #default="{ row }">
             <el-button type="primary" link @click="openEditDialog(row as SiteItem)">编辑</el-button>
             <el-button
-              type="primary"
+              v-if="!siteItemHasMinWritingProfile(row as SiteItem)"
+              type="warning"
               link
-              :loading="exportingSiteId === row.id"
-              @click="downloadAttribution(row as SiteItem)"
+              @click="openEditDialog(row as SiteItem, 'profile')"
             >
-              归因导出
+              完善素材
             </el-button>
+            <el-dropdown
+              trigger="click"
+              @command="(cmd: string) => handleSiteRowMore(cmd, row as SiteItem)"
+            >
+              <el-button type="primary" link>更多</el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="attribution">归因导出</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
         </el-table-column>
       </el-table>
@@ -89,14 +107,35 @@
       width="640px"
       destroy-on-close
     >
-      <el-form ref="siteFormRef" :model="siteForm" :rules="siteRules" label-width="120px">
+      <el-form
+        v-if="!editingSiteId"
+        ref="siteFormRef"
+        :model="siteForm"
+        :rules="siteRules"
+        label-width="100px"
+      >
         <el-form-item label="域名" prop="domain">
           <el-input v-model="siteForm.domain" placeholder="例如 example.com" />
         </el-form-item>
-        <el-form-item label="目标市场" prop="targetMarket">
-          <el-input v-model="siteForm.targetMarket" placeholder="例如 US、CN" />
+        <el-form-item label="目标市场">
+          <el-select
+            v-model="siteForm.targetMarket"
+            class="w-full"
+            clearable
+            filterable
+            allow-create
+            default-first-option
+            placeholder="选择或输入市场代码"
+          >
+            <el-option
+              v-for="item in targetMarketOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            />
+          </el-select>
         </el-form-item>
-        <el-form-item label="内容语言" prop="contentLanguage">
+        <el-form-item label="输出语言" prop="contentLanguage">
           <el-select v-model="siteForm.contentLanguage" class="w-full">
             <el-option
               v-for="item in contentLanguageOptions"
@@ -106,19 +145,14 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="品牌语气" prop="brandVoice">
-          <el-input
-            v-model="siteForm.brandVoice"
-            type="textarea"
-            :rows="3"
-            maxlength="2000"
-            show-word-limit
-            placeholder="例如：专业、务实，面向采购/工程师读者；与下方「公司卖点」一起影响 AI 写法"
-          />
-        </el-form-item>
-
-        <el-form-item label="站点负责人">
-          <el-select v-model="siteForm.ownerUserId" clearable filterable class="w-full" placeholder="可选，用于筛选「我负责的站点」">
+        <el-form-item label="负责人">
+          <el-select
+            v-model="siteForm.ownerUserId"
+            clearable
+            filterable
+            class="w-full"
+            placeholder="可选"
+          >
             <el-option
               v-for="member in projectMembers"
               :key="member.userId"
@@ -127,78 +161,96 @@
             />
           </el-select>
         </el-form-item>
+        <p class="text-xs text-gray-500">保存后可在列表中「完善素材」，填写行业与卖点后即可创建任务。</p>
+      </el-form>
 
-        <el-divider content-position="left">公司卖点（AI 写作素材）</el-divider>
-        <el-alert class="mb-4" type="info" :closable="false" show-icon>
-          <template #title>这项是干什么的？</template>
-          <div class="text-sm leading-relaxed">
-            <p class="mb-2">
-              填一次，该站点下<strong>每篇新文章</strong>生成大纲 / 正文时都会自动带上，不用每单重复写。
+      <el-form
+        v-else
+        ref="siteFormRef"
+        :model="siteForm"
+        :rules="siteRules"
+        label-width="100px"
+      >
+        <el-tabs v-model="siteFormTab">
+          <el-tab-pane label="基础信息" name="basic">
+            <el-form-item label="域名" prop="domain">
+              <el-input v-model="siteForm.domain" placeholder="例如 example.com" />
+            </el-form-item>
+            <el-form-item label="目标市场">
+              <el-select
+                v-model="siteForm.targetMarket"
+                class="w-full"
+                clearable
+                filterable
+                allow-create
+                default-first-option
+                placeholder="选择或输入市场代码"
+              >
+                <el-option
+                  v-for="item in targetMarketOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="输出语言" prop="contentLanguage">
+              <el-select v-model="siteForm.contentLanguage" class="w-full">
+                <el-option
+                  v-for="item in contentLanguageOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+              <p class="mt-1 text-xs text-gray-500">{{ outputLanguageHint }}</p>
+            </el-form-item>
+            <el-form-item label="品牌语气" prop="brandVoice">
+              <el-input
+                v-model="siteForm.brandVoice"
+                type="textarea"
+                :rows="2"
+                maxlength="2000"
+                show-word-limit
+                placeholder="例如：专业务实，面向采购与工程师读者"
+              />
+            </el-form-item>
+            <el-form-item label="负责人">
+              <el-select
+                v-model="siteForm.ownerUserId"
+                clearable
+                filterable
+                class="w-full"
+                placeholder="可选"
+              >
+                <el-option
+                  v-for="member in projectMembers"
+                  :key="member.userId"
+                  :label="`${member.email}${member.name ? ` (${member.name})` : ''}`"
+                  :value="member.userId"
+                />
+              </el-select>
+            </el-form-item>
+          </el-tab-pane>
+
+          <el-tab-pane label="写作素材" name="profile">
+            <p class="mb-4 text-sm text-gray-500">
+              填一次，该站点下每篇新文章生成时都会自动带上。
             </p>
-            <ul class="list-disc space-y-1 pl-5">
-              <li><strong>公司信息</strong>：行业、认证、起订量/交期 → 文章里写得更像你们公司、更有可信度</li>
-              <li><strong>文末询盘引导</strong>：统一按钮文案 + 链接（如「获取报价」跳到联系页）</li>
-            </ul>
-            <p class="mt-2 text-gray-600">可不填；做工业/B2B 外贸站建议填写。</p>
-          </div>
-        </el-alert>
-        <el-form-item label="主营行业 / 产品">
-          <el-input
-            v-model="siteForm.industry"
-            maxlength="200"
-            placeholder="例如：工业阀门制造商，面向石化、电力行业"
-          />
-        </el-form-item>
-        <el-form-item label="认证资质">
-          <el-input
-            v-model="siteForm.certifications"
-            type="textarea"
-            :rows="2"
-            maxlength="500"
-            placeholder="例如：ISO 9001、CE、UL（写买家常看的资质即可）"
-          />
-        </el-form-item>
-        <el-form-item label="起订量 / 交期">
-          <el-input
-            v-model="siteForm.moqLeadTime"
-            maxlength="300"
-            placeholder="例如：MOQ 100 件，常规交期 15–25 天（没有固定数字可写区间或「支持定制」）"
-          />
-        </el-form-item>
-        <el-form-item label="文末引导按钮文案">
-          <el-input
-            v-model="siteForm.ctaPrimaryText"
-            maxlength="120"
-            placeholder="例如：获取报价、联系工程师、下载产品目录"
-          />
-          <p class="mt-1 text-xs text-gray-500">CTA = Call To Action，即文末让读者去询盘/联系的那句行动号召。</p>
-        </el-form-item>
-        <el-form-item label="引导按钮链接">
-          <el-input
-            v-model="siteForm.ctaPrimaryUrl"
-            maxlength="500"
-            placeholder="https://你的站点.com/contact 或询盘表单页"
-          />
-        </el-form-item>
-        <el-form-item label="UTM 来源 (utm_source)">
-          <el-input v-model="siteForm.utmSource" maxlength="80" placeholder="例如：seo-factory" />
-        </el-form-item>
-        <el-form-item label="UTM 媒介 (utm_medium)">
-          <el-input v-model="siteForm.utmMedium" maxlength="80" placeholder="例如：blog" />
-        </el-form-item>
-        <el-form-item label="UTM 活动 (utm_campaign)">
-          <el-input v-model="siteForm.utmCampaign" maxlength="120" placeholder="例如：industrial-valves" />
-        </el-form-item>
-
-        <el-collapse class="mt-2">
-          <el-collapse-item title="高级写作素材（可选）" name="advanced">
+            <el-form-item label="主营行业">
+              <el-input
+                v-model="siteForm.industry"
+                maxlength="200"
+                placeholder="例如：工业阀门制造商，面向石化、电力行业"
+              />
+            </el-form-item>
             <el-form-item label="核心产品线">
               <el-input
                 v-model="siteForm.productLines"
                 type="textarea"
                 :rows="2"
                 maxlength="500"
-                placeholder="例如：球阀、蝶阀、闸阀；石化、电力、水处理应用"
+                placeholder="例如：球阀、蝶阀、闸阀；石化、电力、水处理"
               />
             </el-form-item>
             <el-form-item label="差异化卖点">
@@ -208,32 +260,69 @@
                   maxlength="200"
                   placeholder="卖点 1：例如 15 年 OEM/ODM 经验"
                 />
-                <el-input
-                  v-model="siteForm.differentiator2"
-                  maxlength="200"
-                  placeholder="卖点 2（可选）"
-                />
-                <el-input
-                  v-model="siteForm.differentiator3"
-                  maxlength="200"
-                  placeholder="卖点 3（可选）"
-                />
+                <el-input v-model="siteForm.differentiator2" maxlength="200" placeholder="卖点 2（可选）" />
+                <el-input v-model="siteForm.differentiator3" maxlength="200" placeholder="卖点 3（可选）" />
               </div>
             </el-form-item>
+            <p class="mb-4 text-xs text-gray-500">
+              填好「主营行业」和至少一项卖点（产品线或差异化卖点）即可创建文章任务。
+            </p>
+            <el-form-item label="认证资质">
+              <el-input
+                v-model="siteForm.certifications"
+                type="textarea"
+                :rows="2"
+                maxlength="500"
+                placeholder="例如：ISO 9001、CE、UL"
+              />
+            </el-form-item>
+            <el-form-item label="起订量 / 交期">
+              <el-input
+                v-model="siteForm.moqLeadTime"
+                maxlength="300"
+                placeholder="例如：MOQ 100 pcs, lead time 15–25 days"
+              />
+            </el-form-item>
+            <el-form-item v-if="contentProfilePreview" label="生成预览">
+              <div class="rounded bg-gray-50 px-3 py-2 text-sm leading-relaxed text-gray-700 whitespace-pre-wrap">
+                {{ contentProfilePreview }}
+              </div>
+            </el-form-item>
+          </el-tab-pane>
+
+          <el-tab-pane label="发布引导" name="publish">
+            <el-form-item label="文末引导文案">
+              <el-input
+                v-model="siteForm.ctaPrimaryText"
+                maxlength="120"
+                placeholder="例如：获取报价、联系工程师"
+              />
+              <p class="mt-1 text-xs text-gray-500">文末引导读者询盘或联系的按钮文案。</p>
+            </el-form-item>
+            <el-form-item label="引导链接">
+              <el-input
+                v-model="siteForm.ctaPrimaryUrl"
+                maxlength="500"
+                placeholder="https://example.com/contact"
+              />
+            </el-form-item>
+          </el-tab-pane>
+
+          <el-tab-pane label="更多" name="more">
             <el-form-item label="目标客户">
               <el-input
                 v-model="siteForm.targetBuyerType"
                 maxlength="120"
-                placeholder="例如：采购经理、工程承包商、OEM 品牌商"
+                placeholder="例如：采购经理、工程承包商"
               />
             </el-form-item>
-            <el-form-item label="案例 / 客户类型">
+            <el-form-item label="案例 / 客户">
               <el-input
                 v-model="siteForm.caseHighlights"
                 type="textarea"
                 :rows="2"
                 maxlength="500"
-                placeholder="例如：服务过北美石化分销商；支持匿名案例"
+                placeholder="例如：服务过北美石化分销商"
               />
             </el-form-item>
             <el-form-item label="禁用词">
@@ -242,18 +331,23 @@
                 type="textarea"
                 :rows="2"
                 maxlength="500"
-                placeholder="每行或逗号分隔，例如：最便宜、100% 保证、No.1"
+                placeholder="每行或逗号分隔，例如：最便宜、100% 保证"
               />
-              <p class="mt-1 text-xs text-gray-500">AI 生成时会避免使用这些词。</p>
             </el-form-item>
-          </el-collapse-item>
-        </el-collapse>
-
-        <el-form-item v-if="contentProfilePreview" label="生成时会带上">
-          <div class="rounded bg-gray-50 px-3 py-2 text-sm leading-relaxed text-gray-700 whitespace-pre-wrap">
-            {{ contentProfilePreview }}
-          </div>
-        </el-form-item>
+            <p class="mb-3 text-xs text-gray-500">
+              UTM 用于统计哪篇文章带来点击，配合「归因导出」与 Google Analytics。
+            </p>
+            <el-form-item label="UTM 来源">
+              <el-input v-model="siteForm.utmSource" maxlength="80" placeholder="seo-factory" />
+            </el-form-item>
+            <el-form-item label="UTM 媒介">
+              <el-input v-model="siteForm.utmMedium" maxlength="80" placeholder="blog" />
+            </el-form-item>
+            <el-form-item label="UTM 活动">
+              <el-input v-model="siteForm.utmCampaign" maxlength="120" placeholder="industrial-valves" />
+            </el-form-item>
+          </el-tab-pane>
+        </el-tabs>
       </el-form>
       <template #footer>
         <el-button @click="siteDialogVisible = false">取消</el-button>
@@ -272,9 +366,12 @@ import type { SiteItem } from "@/api/seo-factory/types";
 import { listProjectMembers, type OrgProjectMember } from "@/api/org/projects";
 import {
   CONTENT_LANGUAGE_OPTIONS,
+  TARGET_MARKET_OPTIONS,
   type ContentLanguageCode
 } from "@/constants/dicts/seo-factory";
+import { dictLabel } from "@/utils/dict";
 import { message } from "@/utils/message";
+import { siteItemHasMinWritingProfile } from "@/utils/seo-factory/site-writing-profile";
 import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
 
 defineOptions({ name: "SiteManageView" });
@@ -293,9 +390,11 @@ const sites = ref<SiteItem[]>([]);
 const projectMembers = ref<OrgProjectMember[]>([]);
 const siteDialogVisible = ref(false);
 const editingSiteId = ref("");
+const siteFormTab = ref<"basic" | "profile" | "publish" | "more">("basic");
 const siteFormRef = ref<FormInstance>();
 
 const contentLanguageOptions = CONTENT_LANGUAGE_OPTIONS;
+const targetMarketOptions = TARGET_MARKET_OPTIONS;
 
 const siteForm = reactive({
   domain: "",
@@ -334,11 +433,21 @@ const profileMissingFilter = computed(
 
 const displayedSites = computed(() => {
   if (!profileMissingFilter.value) return sites.value;
-  return sites.value.filter((site) => !hasWritingProfile(site));
+  return sites.value.filter((site) => !siteItemHasMinWritingProfile(site));
 });
 
 const sitesEmptyHint = computed(() =>
-  profileMissingFilter.value ? "所有站点均已填写公司卖点" : "暂无站点，请先新建站点"
+  profileMissingFilter.value ? "所有站点均已达标" : "暂无站点，请先新建站点"
+);
+
+function contentLanguageLabel(code?: string | null) {
+  return dictLabel(contentLanguageOptions, code, "-");
+}
+
+const outputLanguageHint = computed(() =>
+  siteForm.contentLanguage === "zh-CN"
+    ? "文章标题与正文将生成简体中文，建议下方写作素材也用中文填写。"
+    : "文章标题与正文将生成英文，建议下方写作素材也用英文填写。"
 );
 
 const contentProfilePreview = computed(() => {
@@ -407,24 +516,8 @@ function buildDifferentiators(): string[] | undefined {
   return items.length > 0 ? items : undefined;
 }
 
-function hasWritingProfile(site: SiteItem) {
-  const profile = site.contentProfile;
-  return Boolean(
-    profile?.industry?.trim() ||
-      profile?.certifications?.trim() ||
-      profile?.moqLeadTime?.trim() ||
-      profile?.ctaPrimaryText?.trim() ||
-      profile?.ctaPrimaryUrl?.trim() ||
-      profile?.productLines?.trim() ||
-      (profile?.differentiators?.length ?? 0) > 0 ||
-      profile?.targetBuyerType?.trim() ||
-      profile?.caseHighlights?.trim() ||
-      (profile?.forbiddenTerms?.length ?? 0) > 0
-  );
-}
-
 function siteRowClassName({ row }: { row: SiteItem }) {
-  return !hasWritingProfile(row) ? "site-row--profile-missing" : "";
+  return !siteItemHasMinWritingProfile(row) ? "site-row--profile-missing" : "";
 }
 
 function clearProfileFilter() {
@@ -454,14 +547,22 @@ function resetSiteForm() {
   siteForm.ownerUserId = "";
 }
 
+function handleSiteRowMore(command: string, site: SiteItem) {
+  if (command === "attribution") {
+    void downloadAttribution(site);
+  }
+}
+
 function openCreateDialog() {
   editingSiteId.value = "";
+  siteFormTab.value = "basic";
   resetSiteForm();
   siteDialogVisible.value = true;
 }
 
-function openEditDialog(site: SiteItem) {
+function openEditDialog(site: SiteItem, tab: "basic" | "profile" | "publish" | "more" = "basic") {
   editingSiteId.value = site.id;
+  siteFormTab.value = tab;
   siteForm.domain = site.domain;
   siteForm.targetMarket = site.targetMarket ?? "";
   siteForm.contentLanguage = (site.contentLanguage === "zh-CN" ? "zh-CN" : "en") as ContentLanguageCode;
@@ -533,7 +634,7 @@ async function submitSiteForm() {
             ownerUserId: siteForm.ownerUserId.trim()
           });
         }
-        message("站点已创建", { type: "success" });
+        message("站点已创建，请完善写作素材后再创建任务", { type: "success" });
       }
 
       siteDialogVisible.value = false;

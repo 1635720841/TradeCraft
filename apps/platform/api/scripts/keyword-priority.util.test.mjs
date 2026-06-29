@@ -35,18 +35,15 @@ describe('normalizeDifficultyScore', () => {
 describe('computeKeywordPriorityScore', () => {
   it('scores strong keywords above weak ones', () => {
     const high = computeKeywordPriorityScore({
-      searchVolume: 50_000,
-      keywordDifficulty: 20,
       businessValueScore: 0.9,
       contentFitScore: 0.9,
     });
     const low = computeKeywordPriorityScore({
-      searchVolume: 50,
-      keywordDifficulty: 90,
       businessValueScore: 0.2,
       contentFitScore: 0.2,
     });
     assert.ok(high > low);
-    assert.ok(high <= 100);
+    assert.equal(high, 90);
+    assert.equal(low, 20);
   });
 });

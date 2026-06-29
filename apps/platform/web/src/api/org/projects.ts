@@ -12,6 +12,12 @@ export type ProjectMyAccessStatus =
   | "member_expired"
   | "archived";
 
+export interface OrgProjectMemberPreview {
+  userId: string;
+  name: string | null;
+  email: string;
+}
+
 export interface OrgProjectItem {
   id: string;
   name: string;
@@ -20,6 +26,7 @@ export interface OrgProjectItem {
   accessStart: string | null;
   accessEnd: string | null;
   memberCount: number;
+  memberPreview?: OrgProjectMemberPreview[];
   accessActive: boolean;
   isMember: boolean;
   memberAccessActive: boolean;

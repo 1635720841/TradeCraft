@@ -73,6 +73,10 @@ export class ProjectAdminService {
             rows.map((row) => row.id),
             ctx.role,
           );
+    const memberPreviewMap = await this.loadMemberPreviewsByProject(
+      rows.map((row) => row.id),
+      ctx.role,
+    );
 
     return {
       items: items.map((item) => ({
@@ -83,6 +87,7 @@ export class ProjectAdminService {
         accessStart: item.accessStart,
         accessEnd: item.accessEnd,
         memberCount: memberCountMap?.get(item.id) ?? item._count.members,
+        memberPreview: memberPreviewMap.get(item.id) ?? [],
         accessActive: item.accessActive,
         isMember: item.isMember,
         memberAccessActive: item.memberAccessActive,
@@ -460,6 +465,59 @@ export class ProjectAdminService {
     });
 
     return new Map(rows.map((row) => [row.projectId, row._count._all]));
+  }
+
+  private async loadMemberPreviewsByProject(
+    projectIds: string[],
+    viewerRole: Role,
+    limit = 4,
+  ) {
+    if (projectIds.length === 0) {
+      return new Map<
+        string,
+        Array<{ userId: string; name: string | null; email: string }>
+      >();
+    }
+
+    const rows = await this.prisma.projectMember.findMany({
+      where: {
+        projectId: { in: projectIds },
+        ...(viewerRole === Role.SUPER_ADMIN
+          ? {}
+          : tenantVisibleProjectMemberUserFilter(viewerRole)),
+      },
+      orderBy: [{ projectId: 'asc' }, { createdAt: 'asc' }],
+      select: {
+        projectId: true,
+        userId: true,
+        user: { select: { email: true, name: true, role: true } },
+      },
+    });
+
+    const visibleRows =
+      viewerRole === Role.SUPER_ADMIN
+        ? rows
+        : rows.filter((row) => !isPlatformStaffOrgRole(row.user.role));
+
+    const map = new Map<
+      string,
+      Array<{ userId: string; name: string | null; email: string }>
+    >();
+
+    for (const row of visibleRows) {
+      const list = map.get(row.projectId) ?? [];
+      if (list.length >= limit) {
+        continue;
+      }
+      list.push({
+        userId: row.userId,
+        name: row.user.name,
+        email: row.user.email,
+      });
+      map.set(row.projectId, list);
+    }
+
+    return map;
   }
 
   private async assertTenantVisibleProjectMember(

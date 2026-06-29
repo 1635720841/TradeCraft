@@ -6,24 +6,23 @@
 -->
 <template>
   <div class="seo-overview">
-    <div v-if="sites.length > 1" class="seo-overview__toolbar">
-      <div class="site-filter">
-        <span class="site-filter__label">站点视图</span>
-        <el-select
-          v-model="filterSiteId"
-          clearable
-          placeholder="全部站点"
-          style="width: 220px"
-          @change="onSiteFilterChange"
-        >
-          <el-option
-            v-for="site in sites"
-            :key="site.id"
-            :label="site.domain"
-            :value="site.id"
-          />
-        </el-select>
-      </div>
+    <div v-if="sites.length > 1" class="seo-overview__scope">
+      <span class="seo-overview__scope-label">数据范围</span>
+      <el-select
+        v-model="filterSiteId"
+        clearable
+        size="small"
+        placeholder="全部站点"
+        style="width: 160px"
+        @change="onSiteFilterChange"
+      >
+        <el-option
+          v-for="site in sites"
+          :key="site.id"
+          :label="site.domain"
+          :value="site.id"
+        />
+      </el-select>
     </div>
 
     <SetupChecklistPanel
@@ -83,7 +82,7 @@
         </div>
       </section>
 
-      <section class="overview-panel">
+      <section v-if="stats?.siteCount === 0" class="overview-panel">
         <header class="overview-panel__head">
           <div>
             <span class="overview-panel__kicker">快速开始</span>
@@ -94,7 +93,7 @@
           </div>
         </header>
         <div class="overview-panel__body">
-          <div v-if="stats?.siteCount === 0" class="space-y-3">
+          <div class="space-y-3">
             <el-alert
               type="warning"
               :closable="false"
@@ -107,20 +106,6 @@
               去创建站点
             </el-button>
           </div>
-          <div v-else class="quick-actions">
-            <el-button
-              v-if="canCreateJob"
-              type="primary"
-              class="quick-action"
-              @click="goCreate"
-            >
-              <IconifyIconOnline icon="ri:add-line" class="mr-1" />
-              新建任务
-            </el-button>
-            <el-button class="quick-action" @click="goJobs">任务列表</el-button>
-            <el-button class="quick-action" @click="goKeywords">关键词池</el-button>
-            <el-button class="quick-action" @click="goSites">站点素材</el-button>
-          </div>
         </div>
       </section>
     </div>
@@ -128,7 +113,7 @@
     <section class="overview-panel">
       <header class="overview-panel__head">
         <div>
-          <span class="overview-panel__kicker">Pipeline</span>
+          <span class="overview-panel__kicker">内容流水线</span>
           <h2 class="overview-panel__title">内容流水线</h2>
           <p class="overview-panel__desc">
             从大纲确认、生成、审核到发布，把当前产能和阻塞点一眼看清。
@@ -156,22 +141,26 @@
       <section v-loading="clustersLoading" class="overview-panel">
         <header class="overview-panel__head">
           <div>
-            <span class="overview-panel__kicker">Topic Planning</span>
+            <span class="overview-panel__kicker">专题排产</span>
             <h2 class="overview-panel__title">
-              {{ clusterHighlights.length ? "主题排产" : "词库机会" }}
+              {{ clusterHighlights.length ? "专题排产" : "选题机会" }}
             </h2>
             <p class="overview-panel__desc">
-              以主题集群管理文章矩阵，优先处理待写数量最多的内容资产。
+              按专题管理文章矩阵，优先处理待写数量最多的内容组。
             </p>
           </div>
-          <el-button link type="primary" @click="goTopicClusters">全部主题</el-button>
+          <el-button link type="primary" @click="goTopicClusters">全部专题</el-button>
         </header>
         <div class="overview-panel__body">
           <div v-if="clusterHighlights.length" class="cluster-list">
             <div
               v-for="cluster in clusterHighlights"
               :key="cluster.id"
-              class="cluster-card"
+              class="cluster-card cluster-card--clickable"
+              role="button"
+              tabindex="0"
+              @click="goTopicCluster(cluster.id)"
+              @keydown.enter="goTopicCluster(cluster.id)"
             >
               <div class="cluster-card__head">
                 <span class="cluster-card__name">{{ cluster.name }}</span>
@@ -189,10 +178,10 @@
           </div>
           <template v-else-if="stats && stats.keywordQueueableCount > 0">
             <p class="mb-3 text-sm text-gray-600">
-              {{ stats.keywordQueueableCount }} 个关键词可入队，建议先归入主题再批量排产。
+              {{ stats.keywordQueueableCount }} 个关键词待写，建议先加入专题再批量创建任务。
             </p>
             <el-button type="primary" size="small" @click="goKeywordsQueueable">
-              去入队
+              查看待写
             </el-button>
           </template>
           <el-empty v-else description="暂无主题排产数据" :image-size="72" />
@@ -214,7 +203,7 @@
             <el-collapse-item title="一篇文章从创建到上线" name="flow">
               <ol class="list-decimal space-y-2 pl-5 text-sm leading-relaxed text-gray-700">
                 <li><strong>站点</strong>：填域名、品牌语气、<strong>公司卖点（AI 写作素材）</strong>。</li>
-                <li><strong>词库</strong>：把相关词归到同一主题，按组排产、看完成进度。</li>
+                <li><strong>选题</strong>：把相关词归到同一专题，按组创建文章任务、看完成进度。</li>
                 <li><strong>新建任务</strong>：选站点与关键词，可选<strong>搜索意图</strong>。</li>
                 <li><strong>大纲待确认</strong>：核对 AI 大纲，确认后再生成正文。</li>
                 <li><strong>等待生成</strong>：系统自动分析搜索结果并生成正文，可在任务详情看进度。</li>
@@ -225,7 +214,7 @@
             <el-collapse-item title="核心名词" name="glossary">
               <dl class="space-y-3 text-sm leading-relaxed text-gray-700">
                 <div>
-                  <dt class="font-medium">大纲（Brief）</dt>
+                  <dt class="font-medium">大纲</dt>
                   <dd class="text-gray-600">生成正文前的写作方案，可人工确认后再写稿。</dd>
                 </div>
                 <div>
@@ -233,8 +222,8 @@
                   <dd class="text-gray-600">在站点里填一次，每篇文章自动带上行业、资质与文末询盘引导。</dd>
                 </div>
                 <div>
-                  <dt class="font-medium">主题集群</dt>
-                  <dd class="text-gray-600">把一组相关关键词归在一起，方便按主题排产。</dd>
+                  <dt class="font-medium">专题</dt>
+                  <dd class="text-gray-600">把一组相关关键词归在一起，方便按专题排产。</dd>
                 </div>
                 <div>
                   <dt class="font-medium">Google 搜索表现</dt>
@@ -269,7 +258,6 @@ const router = useRouter();
 const projectId = route.params.projectId as string;
 
 const { can } = useProjectSeoAccess();
-const canCreateJob = computed(() => can("seo:job:create"));
 const canManageGsc = computed(() => can("seo:site:manage"));
 const {
   loading: projectSetupLoading,
@@ -427,42 +415,6 @@ const todoItems = computed<TodoItem[]>(() => {
     });
   }
 
-  if (s.pendingBriefCount > 0) {
-    items.push({
-      id: "brief",
-      tagLabel: "大纲",
-      tagType: "warning",
-      text: `${s.pendingBriefCount} 篇大纲等待确认，确认后才会生成正文`,
-      actionLabel: "去确认",
-      buttonType: "warning",
-      action: goBriefPending
-    });
-  }
-
-  if (s.pendingReviewCount > 0) {
-    items.push({
-      id: "ymyl",
-      tagLabel: "审核",
-      tagType: "warning",
-      text: `${s.pendingReviewCount} 篇敏感内容待人工审核`,
-      actionLabel: "去审核",
-      buttonType: "warning",
-      action: goReviews
-    });
-  }
-
-  if (s.staleDraftCount > 0) {
-    items.push({
-      id: "stale-draft",
-      tagLabel: "稿件",
-      tagType: "warning",
-      text: `${s.staleDraftCount} 篇正文改过后待处理，需重新检查评分或导出`,
-      actionLabel: "去处理",
-      buttonType: "warning",
-      action: goStaleDraft
-    });
-  }
-
   if (cmsUiEnabled && s.cmsPublishFailedCount > 0) {
     items.push({
       id: "cms-failed",
@@ -472,30 +424,6 @@ const todoItems = computed<TodoItem[]>(() => {
       actionLabel: "查看失败",
       buttonType: "danger",
       action: goCmsPublishFailed
-    });
-  }
-
-  if (cmsUiEnabled && s.pendingPublishCount > 0) {
-    items.push({
-      id: "cms-pending",
-      tagLabel: "发布",
-      tagType: "info",
-      text: `${s.pendingPublishCount} 篇已完成但未推送到 CMS`,
-      actionLabel: "去推送",
-      buttonType: "primary",
-      action: goPublishPending
-    });
-  }
-
-  if (s.failedJobs > 0) {
-    items.push({
-      id: "failed",
-      tagLabel: "失败",
-      tagType: "danger",
-      text: `${s.failedJobs} 篇任务生成失败，可在列表批量重新生成`,
-      actionLabel: "查看失败",
-      buttonType: "default",
-      action: goFailedJobs
     });
   }
 
@@ -587,10 +515,6 @@ async function loadClusters() {
   } finally {
     clustersLoading.value = false;
   }
-}
-
-function goCreate() {
-  router.push({ name: "SeoFactoryJobCreate", params: { projectId } });
 }
 
 function goJobs() {
@@ -686,6 +610,14 @@ function goKeywordsQueueable() {
 
 function goTopicClusters() {
   router.push({ name: "SeoFactoryTopicClusters", params: { projectId } });
+}
+
+function goTopicCluster(clusterId: string) {
+  router.push({
+    name: "SeoFactoryTopicClusters",
+    params: { projectId },
+    query: { clusterId }
+  });
 }
 
 function goGsc() {

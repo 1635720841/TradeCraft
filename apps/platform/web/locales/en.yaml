@@ -67,11 +67,6 @@ menus:
   purePageNotFound: "404"
   pureAccessDenied: "403"
   pureServerError: "500"
-  purePermission: Permission Manage
-  purePermissionPage: Page Permission
-  purePermissionButton: Button Permission
-  purePermissionButtonRouter: Route return button permission
-  purePermissionButtonLogin: Login interface return button permission
 status:
   pureLoad: Loading...
   pureMessage: Message

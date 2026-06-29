@@ -50,7 +50,6 @@ export function useProjectSetupChecklist(projectId: MaybeRefOrGetter<string>) {
     return (
       s.siteCount > 0 &&
       s.sitesMissingProfileCount === 0 &&
-      s.keywordTotalCount > 0 &&
       s.totalJobs > 0 &&
       s.completedJobs > 0
     );
@@ -71,7 +70,8 @@ export function useProjectSetupChecklist(projectId: MaybeRefOrGetter<string>) {
         label: "创建至少一个站点",
         done: siteDone,
         actionLabel: "去站点",
-        onAction: () => router.push(`/projects/${pid}/seo-factory/sites`)
+        onAction: () =>
+          router.push({ name: "SeoFactorySites", params: { projectId: pid } })
       },
       {
         id: "profile",
@@ -79,28 +79,34 @@ export function useProjectSetupChecklist(projectId: MaybeRefOrGetter<string>) {
         done: profileDone,
         actionLabel: "去填写",
         onAction: () =>
-          router.push(`/projects/${pid}/seo-factory/sites?profile=missing`)
+          router.push({
+            name: "SeoFactorySites",
+            params: { projectId: pid },
+            query: { profile: "missing" }
+          })
       },
       {
         id: "keywords",
-        label: "导入或添加关键词",
+        label: "维护选题库（推荐）",
         done: keywordDone,
         actionLabel: "去词库",
-        onAction: () => router.push(`/projects/${pid}/seo-factory/keywords`)
+        onAction: () =>
+          router.push({ name: "SeoFactoryKeywords", params: { projectId: pid } })
       },
       {
         id: "job",
         label: "创建首篇文章任务",
         done: jobCreated,
         actionLabel: "去新建",
-        onAction: () => router.push(`/projects/${pid}/seo-factory/jobs/create`)
+        onAction: () =>
+          router.push({ name: "SeoFactoryJobCreate", params: { projectId: pid } })
       },
       {
         id: "complete",
         label: "完成首篇文章生成",
         done: jobCompleted,
         actionLabel: "看任务",
-        onAction: () => router.push(`/projects/${pid}/seo-factory/jobs`)
+        onAction: () => router.push({ name: "SeoFactoryJobs", params: { projectId: pid } })
       }
     ];
   });

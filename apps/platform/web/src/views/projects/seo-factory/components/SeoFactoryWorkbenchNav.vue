@@ -63,8 +63,8 @@ const NAV_ITEMS: Array<{
   },
   {
     key: "keywords",
-    label: "关键词池",
-    description: "选题与排产",
+    label: "选题",
+    description: "关键词与专题",
     icon: "ri:search-2-line",
     route: "SeoFactoryKeywords",
     seoPermission: "seo:job:read"

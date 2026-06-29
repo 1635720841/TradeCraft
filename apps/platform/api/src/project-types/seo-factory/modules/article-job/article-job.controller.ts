@@ -230,6 +230,7 @@ export class ArticleJobController {
     @Query('siteOwner') siteOwner?: string,
     @Query('status') status?: string,
     @Query('siteId') siteId?: string,
+    @Query('keyword') keyword?: string,
   ) {
     await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
     const result = await this.articleJobService.findMany(
@@ -249,6 +250,7 @@ export class ArticleJobController {
         actorUserId: ctx.userId,
         status: status === 'FAILED' ? 'FAILED' : undefined,
         siteId: siteId?.trim() || undefined,
+        keyword: keyword?.trim() || undefined,
       },
     );
     const traceId = result.items[0]?.traceId ?? ctx.traceId;

@@ -1,5 +1,5 @@
 /**
- * 关键词池服务：CRUD、批量导入、AI 种子生成、Semrush 指标回填、优先级计算与任务入队。
+ * 关键词池服务：CRUD、批量导入、AI 种子生成、优先级计算与任务入队。
  *
  * 边界：
  * - 不负责：Semrush RPA 写作助手检测
@@ -27,11 +27,13 @@ import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { LoggerService } from '../../../../core/logger/logger.service';
 import { ArticleJobService } from '../article-job/article-job.service';
 import { MAX_BATCH_JOB_LIMIT } from '../../constants/serp-filter';
+import { MAX_BATCH_ACTION_LIMIT } from '../../constants/batch-actions';
 import { enrichBrandVoiceForPrompt } from '../../constants/site-settings';
 import type { CreateKeywordDto } from './dto/create-keyword.dto';
+import type { ConfirmKeywordSeedsDto } from './dto/confirm-keyword-seeds.dto';
 import type { GenerateKeywordSeedsDto } from './dto/generate-keyword-seeds.dto';
 import type { UpdateKeywordDto } from './dto/update-keyword.dto';
-import { computeKeywordPriorityScore } from './keyword-priority.util';
+import { computeKeywordPriorityScore, KEYWORD_HIGH_PRIORITY_THRESHOLD } from './keyword-priority.util';
 import { BillingService } from '../../../../modules/billing/billing.service';
 import { KeywordClusterService } from './keyword-cluster.service';
 
@@ -58,6 +60,8 @@ const keywordSelect = {
 
 @Injectable()
 export class KeywordPoolService {
+  private readonly sanitizedProjects = new Set<string>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly articleJobService: ArticleJobService,
@@ -70,6 +74,64 @@ export class KeywordPoolService {
     private readonly keywordClusterService: KeywordClusterService,
   ) {}
 
+  /** 搜索指标 API 是否已配置（未配置时不写入 Stub 假数据） */
+  isKeywordMetricsConfigured(): boolean {
+    return Boolean(process.env.SEMRUSH_API_KEY?.trim());
+  }
+
+  /** 清除历史 Stub 指标并按当前公式重算优先级（每项目进程内仅执行一次） */
+  async sanitizeLegacyMetricsIfNeeded(organizationId: string, projectId: string) {
+    if (this.isKeywordMetricsConfigured()) return;
+
+    const cacheKey = `${organizationId}:${projectId}`;
+    if (this.sanitizedProjects.has(cacheKey)) return;
+
+    const entries = await this.prisma.keywordEntry.findMany({
+      where: { organizationId, projectId },
+      select: {
+        id: true,
+        businessValueScore: true,
+        contentFitScore: true,
+        priorityScore: true,
+        searchVolume: true,
+        keywordDifficulty: true,
+        cpc: true,
+      },
+    });
+
+    let updated = 0;
+    for (const entry of entries) {
+      const priorityScore = computeKeywordPriorityScore({
+        businessValueScore: entry.businessValueScore,
+        contentFitScore: entry.contentFitScore,
+      });
+      const needsUpdate =
+        entry.searchVolume != null ||
+        entry.keywordDifficulty != null ||
+        entry.cpc != null ||
+        entry.priorityScore !== priorityScore;
+
+      if (!needsUpdate) continue;
+
+      await this.prisma.keywordEntry.update({
+        where: { id: entry.id },
+        data: {
+          searchVolume: null,
+          keywordDifficulty: null,
+          cpc: null,
+          priorityScore,
+        },
+      });
+      updated += 1;
+    }
+
+    this.sanitizedProjects.add(cacheKey);
+
+    if (updated > 0) {
+      this.logger.info('Keyword stub metrics sanitized', { projectId, updated });
+    }
+  }
+
   async findMany(
     organizationId: string,
     projectId: string,
@@ -81,10 +143,14 @@ export class KeywordPoolService {
       clusterId?: string;
       unclustered?: boolean;
       queueable?: boolean;
+      excludeArchived?: boolean;
     } = {},
   ) {
+    await this.sanitizeLegacyMetricsIfNeeded(organizationId, projectId);
+
     const page = Math.max(options.page ?? 1, 1);
-    const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
+    const maxLimit = options.clusterId ? 200 : 100;
+    const limit = Math.min(Math.max(options.limit ?? 20, 1), maxLimit);
     const skip = (page - 1) * limit;
 
     const where: Prisma.KeywordEntryWhereInput = {
@@ -96,6 +162,9 @@ export class KeywordPoolService {
       ...(options.unclustered ? { clusterId: null } : {}),
       ...(options.queueable
         ? { status: { in: [KeywordStatus.PENDING, KeywordStatus.APPROVED] } }
+        : {}),
+      ...(options.excludeArchived && !options.status && !options.queueable
+        ? { status: { not: KeywordStatus.ARCHIVED } }
         : {}),
     };
 
@@ -113,32 +182,103 @@ export class KeywordPoolService {
     return { items, total, page, limit };
   }
 
+  async getSummary(organizationId: string, projectId: string) {
+    await this.sanitizeLegacyMetricsIfNeeded(organizationId, projectId);
+
+    const base = { organizationId, projectId };
+    const pendingStatuses = [KeywordStatus.PENDING, KeywordStatus.APPROVED];
+
+    const [queueableCount, unclusteredCount, archivedCount, clusterCount, highPriorityQueueableCount] =
+      await Promise.all([
+      this.prisma.keywordEntry.count({
+        where: { ...base, status: { in: pendingStatuses } },
+      }),
+      this.prisma.keywordEntry.count({
+        where: {
+          ...base,
+          clusterId: null,
+          status: { not: KeywordStatus.ARCHIVED },
+        },
+      }),
+      this.prisma.keywordEntry.count({
+        where: { ...base, status: KeywordStatus.ARCHIVED },
+      }),
+      this.prisma.keywordCluster.count({ where: base }),
+      this.prisma.keywordEntry.count({
+        where: {
+          ...base,
+          status: { in: pendingStatuses },
+          priorityScore: { gte: KEYWORD_HIGH_PRIORITY_THRESHOLD },
+        },
+      }),
+    ]);
+
+    return {
+      queueableCount,
+      unclusteredCount,
+      archivedCount,
+      clusterCount,
+      highPriorityQueueableCount,
+    };
+  }
+
   async create(organizationId: string, projectId: string, dto: CreateKeywordDto) {
     return this.createEntry(organizationId, projectId, dto, KeywordSource.MANUAL);
   }
 
-  async generateSeeds(
+  async previewSeeds(
     organizationId: string,
     projectId: string,
     dto: GenerateKeywordSeedsDto,
   ) {
     const site = await this.resolveSiteForSeeds(organizationId, projectId, dto.siteId);
-    const count = Math.min(Math.max(dto.count ?? 15, 5), 30);
+    const seedResult = await this.fetchSeedKeywordsFromLlm(site, dto);
 
-    const seedResult = await this.llmProvider.generateKeywordSeeds({
-      siteDomain: site.domain,
-      brandVoice: enrichBrandVoiceForPrompt(site.brandVoice, site.settings) ?? undefined,
-      targetMarket: site.targetMarket ?? undefined,
-      contentLanguage: site.contentLanguage === 'zh-CN' ? 'zh-CN' : 'en',
-      count,
-      topicHint: dto.topicHint,
-    });
+    const normalizedKeywords = seedResult.keywords.map((item) => this.normalizeKeyword(item.keyword));
+    const existingRows =
+      normalizedKeywords.length > 0
+        ? await this.prisma.keywordEntry.findMany({
+            where: {
+              organizationId,
+              projectId,
+              OR: normalizedKeywords.map((keyword) => ({
+                keyword: { equals: keyword, mode: 'insensitive' as const },
+              })),
+            },
+            select: { keyword: true },
+          })
+        : [];
+
+    const existingKeys = new Set(existingRows.map((row) => this.keywordKey(row.keyword)));
+
+    const keywords = seedResult.keywords.map((item) => ({
+      keyword: this.normalizeKeyword(item.keyword),
+      intent: item.intent,
+      businessValueScore: item.businessValueScore,
+      contentFitScore: item.contentFitScore,
+      rationale: item.rationale,
+      alreadyExists: existingKeys.has(this.keywordKey(item.keyword)),
+    }));
+
+    return {
+      siteId: site.id,
+      keywords,
+      promptVersion: seedResult.promptVersion,
+    };
+  }
+
+  async confirmSeeds(
+    organizationId: string,
+    projectId: string,
+    dto: ConfirmKeywordSeedsDto,
+  ) {
+    const site = await this.resolveSiteForSeeds(organizationId, projectId, dto.siteId);
 
     let created = 0;
     let skipped = 0;
     const items = [];
 
-    for (const seed of seedResult.keywords) {
+    for (const seed of dto.keywords) {
       try {
         const row = await this.createEntry(
           organizationId,
@@ -164,14 +304,39 @@ export class KeywordPoolService {
       }
     }
 
-    this.logger.info('Keyword seeds generated', {
-      projectId,
-      created,
-      skipped,
-      promptVersion: seedResult.promptVersion,
-    });
+    this.logger.info('Keyword seeds confirmed', { projectId, created, skipped });
 
-    return { created, skipped, items, promptVersion: seedResult.promptVersion };
+    return { created, skipped, items };
+  }
+
+  /** @deprecated 兼容旧调用；请使用 previewSeeds + confirmSeeds */
+  async generateSeeds(
+    organizationId: string,
+    projectId: string,
+    dto: GenerateKeywordSeedsDto,
+  ) {
+    const preview = await this.previewSeeds(organizationId, projectId, dto);
+    const confirmed = await this.confirmSeeds(organizationId, projectId, {
+      siteId: preview.siteId,
+      keywords: preview.keywords.filter((item) => !item.alreadyExists),
+    });
+    return { ...confirmed, promptVersion: preview.promptVersion };
+  }
+
+  private async fetchSeedKeywordsFromLlm(
+    site: { id: string; domain: string; brandVoice: string | null; targetMarket: string | null; contentLanguage: string | null; settings: unknown },
+    dto: GenerateKeywordSeedsDto,
+  ) {
+    const count = Math.min(Math.max(dto.count ?? 15, 5), 30);
+
+    return this.llmProvider.generateKeywordSeeds({
+      siteDomain: site.domain,
+      brandVoice: enrichBrandVoiceForPrompt(site.brandVoice, site.settings) ?? undefined,
+      targetMarket: site.targetMarket ?? undefined,
+      contentLanguage: site.contentLanguage === 'zh-CN' ? 'zh-CN' : 'en',
+      count,
+      topicHint: dto.topicHint,
+    });
   }
 
   async enrichMetrics(
@@ -179,6 +344,13 @@ export class KeywordPoolService {
     projectId: string,
     options: { ids?: string[]; allMissing?: boolean } = {},
   ) {
+    if (!this.isKeywordMetricsConfigured()) {
+      throw new BusinessException(
+        ErrorCodes.EXTERNAL_API_ERROR,
+        '搜索指标 API 尚未接入，暂不支持回填',
+      );
+    }
+
     const where: Prisma.KeywordEntryWhereInput = {
       organizationId,
       projectId,
@@ -272,8 +444,6 @@ export class KeywordPoolService {
     }
 
     const priorityScore = computeKeywordPriorityScore({
-      searchVolume: dto.searchVolume,
-      keywordDifficulty: dto.keywordDifficulty,
       businessValueScore: dto.businessValueScore,
       contentFitScore: dto.contentFitScore,
     });
@@ -287,9 +457,11 @@ export class KeywordPoolService {
         keyword,
         intent: (dto.intent as KeywordIntent) ?? KeywordIntent.INFORMATIONAL,
         source,
-        searchVolume: dto.searchVolume ?? null,
-        keywordDifficulty: dto.keywordDifficulty ?? null,
-        cpc: dto.cpc ?? null,
+        searchVolume: this.isKeywordMetricsConfigured() ? (dto.searchVolume ?? null) : null,
+        keywordDifficulty: this.isKeywordMetricsConfigured()
+          ? (dto.keywordDifficulty ?? null)
+          : null,
+        cpc: this.isKeywordMetricsConfigured() ? (dto.cpc ?? null) : null,
         businessValueScore: dto.businessValueScore ?? 0.5,
         contentFitScore: dto.contentFitScore ?? 0.5,
         priorityScore,
@@ -344,15 +516,11 @@ export class KeywordPoolService {
           )
         : undefined;
 
-    const searchVolume = dto.searchVolume === undefined ? current.searchVolume : dto.searchVolume;
-    const keywordDifficulty =
-      dto.keywordDifficulty === undefined ? current.keywordDifficulty : dto.keywordDifficulty;
     const businessValueScore = dto.businessValueScore ?? current.businessValueScore;
     const contentFitScore = dto.contentFitScore ?? current.contentFitScore;
+    const metricsConfigured = this.isKeywordMetricsConfigured();
 
     const priorityScore = computeKeywordPriorityScore({
-      searchVolume,
-      keywordDifficulty,
       businessValueScore,
       contentFitScore,
     });
@@ -364,10 +532,17 @@ export class KeywordPoolService {
         clusterId: clusterId === undefined ? undefined : clusterId,
         intent: dto.intent as KeywordIntent | undefined,
         status: dto.status as KeywordStatus | undefined,
-        searchVolume: dto.searchVolume === undefined ? undefined : dto.searchVolume,
-        keywordDifficulty:
-          dto.keywordDifficulty === undefined ? undefined : dto.keywordDifficulty,
-        cpc: dto.cpc === undefined ? undefined : dto.cpc,
+        searchVolume: metricsConfigured
+          ? dto.searchVolume === undefined
+            ? undefined
+            : dto.searchVolume
+          : null,
+        keywordDifficulty: metricsConfigured
+          ? dto.keywordDifficulty === undefined
+            ? undefined
+            : dto.keywordDifficulty
+          : null,
+        cpc: metricsConfigured ? (dto.cpc === undefined ? undefined : dto.cpc) : null,
         businessValueScore: dto.businessValueScore,
         contentFitScore: dto.contentFitScore,
         priorityScore,
@@ -483,6 +658,39 @@ export class KeywordPoolService {
       skipped: archived.length,
       jobs,
     };
+  }
+
+  async remove(organizationId: string, projectId: string, id: string) {
+    const entry = await this.findOne(organizationId, projectId, id);
+
+    await this.prisma.keywordEntry.delete({ where: { id } });
+
+    return { id: entry.id, keyword: entry.keyword, deleted: true as const };
+  }
+
+  async batchRemove(organizationId: string, projectId: string, ids: string[]) {
+    if (ids.length > MAX_BATCH_ACTION_LIMIT) {
+      throw new BusinessException(
+        ErrorCodes.VALIDATION_ERROR,
+        `单次最多删除 ${MAX_BATCH_ACTION_LIMIT} 个关键词`,
+      );
+    }
+
+    const uniqueIds = [...new Set(ids)];
+    const entries = await this.prisma.keywordEntry.findMany({
+      where: { id: { in: uniqueIds }, organizationId, projectId },
+      select: { id: true },
+    });
+
+    if (entries.length !== uniqueIds.length) {
+      throw new BusinessException(ErrorCodes.KEYWORD_NOT_FOUND, '部分关键词不存在或无权访问');
+    }
+
+    const result = await this.prisma.keywordEntry.deleteMany({
+      where: { id: { in: uniqueIds }, organizationId, projectId },
+    });
+
+    return { deleted: result.count };
   }
 
   private async findOne(organizationId: string, projectId: string, id: string) {

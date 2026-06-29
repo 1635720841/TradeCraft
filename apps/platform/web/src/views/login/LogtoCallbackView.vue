@@ -6,7 +6,7 @@ import { initRouter, resolveEntryPath } from "@/router/utils";
 import { useUserStoreHook } from "@/store/modules/user";
 import { storageLocal } from "@pureadmin/utils";
 import { userKey } from "@/utils/auth";
-import { logtoCallback } from "@/api/user";
+import { getLogtoConfig, logtoCallback } from "@/api/user";
 
 defineOptions({
   name: "LogtoCallback"
@@ -19,7 +19,6 @@ const errorText = ref("");
 
 onMounted(async () => {
   const code = typeof route.query.code === "string" ? route.query.code : "";
-  const redirectUri = `${window.location.origin}${window.location.pathname}${window.location.hash.split("?")[0]}`;
 
   if (!code) {
     errorText.value = "缺少授权码，请从登录页重新发起 Logto 登录";
@@ -28,6 +27,13 @@ onMounted(async () => {
   }
 
   try {
+    const cfg = await getLogtoConfig();
+    const redirectUri = cfg?.data?.redirectUri?.trim();
+    if (!redirectUri) {
+      errorText.value = "Logto 未配置 redirectUri";
+      return;
+    }
+
     const inviteToken =
       sessionStorage.getItem("wm:invite-token") ??
       (typeof route.query.inviteToken === "string" ? route.query.inviteToken : undefined);

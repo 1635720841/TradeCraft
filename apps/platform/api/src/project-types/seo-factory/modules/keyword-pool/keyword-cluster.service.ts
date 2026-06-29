@@ -18,6 +18,29 @@ import type { CreateKeywordClusterDto } from './dto/create-keyword-cluster.dto';
 import type { UpdateKeywordClusterDto } from './dto/update-keyword-cluster.dto';
 import { KeywordPoolService } from './keyword-pool.service';
 
+const KEYWORD_NEXT_BATCH_SIZE = 5;
+
+const clusterKeywordSelect = {
+  id: true,
+  keyword: true,
+  siteId: true,
+  clusterId: true,
+  cluster: { select: { id: true, name: true } },
+  intent: true,
+  status: true,
+  source: true,
+  searchVolume: true,
+  keywordDifficulty: true,
+  cpc: true,
+  businessValueScore: true,
+  contentFitScore: true,
+  priorityScore: true,
+  notes: true,
+  lastJobId: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
 const clusterSelect = {
   id: true,
   name: true,
@@ -37,6 +60,8 @@ export class KeywordClusterService {
   ) {}
 
   async findMany(organizationId: string, projectId: string) {
+    await this.keywordPoolService.sanitizeLegacyMetricsIfNeeded(organizationId, projectId);
+
     const clusters = await this.prisma.keywordCluster.findMany({
       where: { organizationId, projectId },
       select: clusterSelect,
@@ -71,17 +96,68 @@ export class KeywordClusterService {
       statsMap.set(row.clusterId, current);
     }
 
-    return clusters.map((cluster) => {
-      const counts = statsMap.get(cluster.id) ?? { total: 0, pending: 0, used: 0 };
-      return {
-        ...cluster,
-        keywordCount: counts.total,
-        pendingCount: counts.pending,
-        usedCount: counts.used,
-        progressPercent:
-          counts.total > 0 ? Math.round((counts.used / counts.total) * 100) : 0,
-      };
-    });
+    return clusters
+      .map((cluster) => {
+        const counts = statsMap.get(cluster.id) ?? { total: 0, pending: 0, used: 0 };
+        return {
+          ...cluster,
+          keywordCount: counts.total,
+          pendingCount: counts.pending,
+          usedCount: counts.used,
+          progressPercent:
+            counts.total > 0 ? Math.round((counts.used / counts.total) * 100) : 0,
+        };
+      })
+      .sort((a, b) => {
+        const pendingDiff = (b.pendingCount ?? 0) - (a.pendingCount ?? 0);
+        if (pendingDiff !== 0) return pendingDiff;
+        return a.name.localeCompare(b.name, 'zh-CN');
+      });
+  }
+
+  async findOneDetail(
+    organizationId: string,
+    projectId: string,
+    id: string,
+    options: { page?: number; limit?: number } = {},
+  ) {
+    await this.keywordPoolService.sanitizeLegacyMetricsIfNeeded(organizationId, projectId);
+
+    const cluster = await this.findOne(organizationId, projectId, id);
+    const counts = await this.getClusterCounts(organizationId, projectId, id);
+    const page = Math.max(options.page ?? 1, 1);
+    const limit = Math.min(Math.max(options.limit ?? 20, 1), 200);
+    const skip = (page - 1) * limit;
+    const keywordWhere = { organizationId, projectId, clusterId: id };
+    const pendingWhere = {
+      ...keywordWhere,
+      status: { in: [KeywordStatus.PENDING, KeywordStatus.APPROVED] as KeywordStatus[] },
+    };
+
+    const [keywords, keywordTotal, nextBatchKeywords] = await Promise.all([
+      this.prisma.keywordEntry.findMany({
+        where: keywordWhere,
+        select: clusterKeywordSelect,
+        orderBy: [{ priorityScore: 'desc' }, { updatedAt: 'desc' }],
+        skip,
+        take: limit,
+      }),
+      this.prisma.keywordEntry.count({ where: keywordWhere }),
+      this.prisma.keywordEntry.findMany({
+        where: pendingWhere,
+        select: clusterKeywordSelect,
+        orderBy: [{ priorityScore: 'desc' }, { updatedAt: 'desc' }],
+        take: KEYWORD_NEXT_BATCH_SIZE,
+      }),
+    ]);
+
+    return {
+      ...cluster,
+      ...counts,
+      keywords,
+      nextBatchKeywords,
+      keywordPagination: { page, limit, total: keywordTotal },
+    };
   }
 
   async create(organizationId: string, projectId: string, dto: CreateKeywordClusterDto) {
@@ -93,10 +169,10 @@ export class KeywordClusterService {
     });
 
     if (existing) {
-      throw new BusinessException(ErrorCodes.KEYWORD_CLUSTER_EXISTS, '该项目下已存在同名主题集群');
+      throw new BusinessException(ErrorCodes.KEYWORD_CLUSTER_EXISTS, '该项目下已存在同名专题');
     }
 
-    return this.prisma.keywordCluster.create({
+    const cluster = await this.prisma.keywordCluster.create({
       data: {
         organizationId,
         projectId,
@@ -105,6 +181,15 @@ export class KeywordClusterService {
       },
       select: clusterSelect,
     });
+
+    if (dto.keywordIds?.length) {
+      await this.assignKeywords(organizationId, projectId, cluster.id, {
+        keywordIds: dto.keywordIds,
+      });
+    }
+
+    const counts = await this.getClusterCounts(organizationId, projectId, cluster.id);
+    return { ...cluster, ...counts };
   }
 
   async update(
@@ -210,6 +295,7 @@ export class KeywordClusterService {
     projectId: string,
     clusterId: string,
     siteId?: string,
+    limit?: number,
   ) {
     await this.findOne(organizationId, projectId, clusterId);
 
@@ -222,12 +308,13 @@ export class KeywordClusterService {
       },
       select: { id: true },
       orderBy: [{ priorityScore: 'desc' }, { updatedAt: 'desc' }],
+      ...(limit ? { take: limit } : {}),
     });
 
     if (entries.length === 0) {
       throw new BusinessException(
         ErrorCodes.VALIDATION_ERROR,
-        '该主题下没有可入队的关键词（需为待筛选或已通过，且未归档）',
+        '该专题下没有待写关键词',
       );
     }
 
@@ -269,10 +356,38 @@ export class KeywordClusterService {
     });
 
     if (!cluster) {
-      throw new BusinessException(ErrorCodes.KEYWORD_CLUSTER_NOT_FOUND, '主题集群不存在');
+      throw new BusinessException(ErrorCodes.KEYWORD_CLUSTER_NOT_FOUND, '专题不存在');
     }
 
     return cluster;
+  }
+
+  private async getClusterCounts(organizationId: string, projectId: string, clusterId: string) {
+    const stats = await this.prisma.keywordEntry.groupBy({
+      by: ['status'],
+      where: { organizationId, projectId, clusterId },
+      _count: { _all: true },
+    });
+
+    let keywordCount = 0;
+    let pendingCount = 0;
+    let usedCount = 0;
+
+    for (const row of stats) {
+      keywordCount += row._count._all;
+      if (row.status === KeywordStatus.USED) {
+        usedCount += row._count._all;
+      } else if (row.status === KeywordStatus.PENDING || row.status === KeywordStatus.APPROVED) {
+        pendingCount += row._count._all;
+      }
+    }
+
+    return {
+      keywordCount,
+      pendingCount,
+      usedCount,
+      progressPercent: keywordCount > 0 ? Math.round((usedCount / keywordCount) * 100) : 0,
+    };
   }
 
   private normalizeName(value: string): string {

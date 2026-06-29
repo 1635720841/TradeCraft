@@ -113,8 +113,9 @@
   }
 }
 
-.main-content .el-button--primary:not(.is-link):not(.is-text) {
+.main-content .el-button--primary:not(.is-link):not(.is-text):not(.is-plain) {
   font-weight: 650;
+  color: #fff;
   background: var(--shell-accent) !important;
   border-color: var(--shell-accent) !important;
   border-radius: var(--shell-radius-sm);
@@ -126,9 +127,30 @@
 
   &:hover,
   &:focus {
+    color: #fff;
     background: var(--shell-accent-hover-button) !important;
     border-color: var(--shell-accent-hover-button) !important;
     box-shadow: var(--mw-shadow-btn);
+  }
+}
+
+.main-content .el-button--primary.is-plain:not(.is-link):not(.is-text) {
+  font-weight: 650;
+  color: var(--shell-accent);
+  background: var(--shell-accent-soft);
+  border-color: var(--el-color-primary-light-5);
+  border-radius: var(--shell-radius-sm);
+  box-shadow: none;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease;
+
+  &:hover,
+  &:focus {
+    color: #fff;
+    background: var(--shell-accent-hover-button);
+    border-color: var(--shell-accent-hover-button);
   }
 }
 

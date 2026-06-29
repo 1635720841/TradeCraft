@@ -7,14 +7,14 @@ import type {
 } from "@/api/seo-factory/types";
 
 const WORKFLOW_STEP_LABELS: Record<ArticleJobWorkflowStep, string> = {
-  serp: "SERP 采集",
-  brief: "Brief 大纲",
-  draft: "初稿生成",
-  linking: "内链注入",
-  images: "配图生成",
-  optimizing: "SEO 优化",
-  paraphrasing: "原创表达优化",
-  ymyl: "YMYL 审查"
+  serp: "分析搜索结果",
+  brief: "生成大纲",
+  draft: "撰写正文",
+  linking: "植入站内链接",
+  images: "生成配图",
+  optimizing: "SEO 评分优化",
+  paraphrasing: "原创度优化",
+  ymyl: "内容安全审查"
 };
 
 export function workflowStepLabel(step?: ArticleJobWorkflowStep | string): string {

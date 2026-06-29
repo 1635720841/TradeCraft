@@ -2,9 +2,11 @@
 import { isAllEmpty } from "@pureadmin/utils";
 import { useNav } from "@/layout/hooks/useNav";
 import { transformI18n } from "@/plugins/i18n";
+import { isProjectWorkbenchPath } from "@/layout/utils/route-shell";
+import LayTopBarLogo from "../lay-topbar/LayTopBarLogo.vue";
 import LayTopBarTitle from "../lay-topbar/LayTopBarTitle.vue";
 import LayTopBarRight from "../lay-topbar/LayTopBarRight.vue";
-import { ref, toRaw, watch, onMounted, nextTick } from "vue";
+import { computed, ref, toRaw, watch, onMounted, nextTick } from "vue";
 import { useRenderIcon } from "@/components/ReIcon/src/hooks";
 import { getParentPaths, findRouteByPath } from "@/router/utils";
 import { useTranslationLang } from "../../hooks/useTranslationLang";
@@ -16,6 +18,7 @@ const defaultActive = ref(null);
 
 const { route } = useTranslationLang(menuRef);
 const { device, resolvePath, getDivStyle } = useNav();
+const hidePlatformSidebar = computed(() => isProjectWorkbenchPath(route.path));
 
 function getDefaultActive(routePath) {
   const wholeMenus = usePermissionStoreHook().wholeMenus;
@@ -48,6 +51,7 @@ watch(
     v-loading="usePermissionStoreHook().wholeMenus.length === 0"
     class="horizontal-header shell-header merwise-topbar merwise-topbar--mix"
   >
+    <LayTopBarLogo v-if="hidePlatformSidebar" />
     <LayTopBarTitle class="merwise-topbar__title" />
     <el-menu
       ref="menuRef"

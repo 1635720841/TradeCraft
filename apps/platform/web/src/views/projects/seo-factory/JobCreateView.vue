@@ -8,7 +8,12 @@
   <div class="p-4">
     <el-card shadow="never" class="max-w-2xl">
       <template #header>
-        <span class="font-medium">新建文章任务</span>
+        <div>
+          <span class="font-medium">新建文章任务</span>
+          <p class="mt-1 text-sm text-gray-500 font-normal">
+            提交后自动排队生成，可在任务列表查看进度。
+          </p>
+        </div>
       </template>
 
       <el-alert
@@ -20,36 +25,34 @@
         class="mb-4"
       />
 
-      <el-tabs v-model="activeTab" :class="{ 'pointer-events-none opacity-60': !canCreateJob }">
-        <el-tab-pane label="单条关键词" name="single">
-          <el-alert
-            v-if="!sitesLoading && sites.length === 0"
-            class="mt-2 mb-4"
-            type="warning"
-            :closable="false"
-            show-icon
-            title="请先创建站点"
-            description="文章任务必须绑定站点。请前往「站点管理」填写域名与公司卖点后再提交。"
-          >
-            <template #default>
-              <el-button type="primary" size="small" class="mt-2" @click="goSites">
-                去站点管理
-              </el-button>
-            </template>
-          </el-alert>
+      <el-alert
+        v-if="!sitesLoading && sites.length === 0"
+        class="mb-4"
+        type="warning"
+        :closable="false"
+        show-icon
+        title="请先创建站点"
+        description="创建任务前需先添加站点。"
+      >
+        <template #default>
+          <el-button type="primary" size="small" class="mt-2" @click="goSites">
+            去站点管理
+          </el-button>
+        </template>
+      </el-alert>
 
-          <el-form
-            ref="singleFormRef"
-            :model="singleForm"
-            :rules="singleRules"
-            label-width="120px"
-            class="mt-2"
-            @submit.prevent
-          >
-            <el-form-item label="发到哪个网站" prop="siteId">
+      <el-form
+        ref="singleFormRef"
+        :model="singleForm"
+        :rules="singleRules"
+        label-width="100px"
+        :class="{ 'pointer-events-none opacity-60': !canCreateJob }"
+        @submit.prevent
+      >
+            <el-form-item label="目标网站" prop="siteId">
               <el-select
                 v-model="singleForm.siteId"
-                placeholder="选择要发文章的网站"
+                placeholder="选择站点"
                 class="w-full"
                 :loading="sitesLoading"
               >
@@ -72,40 +75,56 @@
               </p>
             </el-form-item>
 
-            <el-form-item label="想排什么搜索词" prop="targetKeyword">
+            <el-form-item label="目标关键词" prop="targetKeyword">
               <el-input
+                ref="keywordInputRef"
                 v-model="singleForm.targetKeyword"
-                placeholder="例如：industrial valve supplier（英文站写英文词）"
+                placeholder="例如：industrial valve supplier"
                 maxlength="200"
                 show-word-limit
               />
-              <p class="mt-1 text-xs text-gray-500">
-                填读者在 Google 会搜的词；系统会分析该词的搜索结果，并围绕它写一篇文章。
-              </p>
+              <p class="mt-1 text-xs text-gray-500">用户在 Google 会搜的词。</p>
             </el-form-item>
 
-            <el-form-item label="读者想做什么">
+            <el-form-item label="搜索意图">
               <el-select v-model="singleForm.searchIntent" class="w-full" placeholder="请选择">
-                <el-option
-                  v-for="item in keywordIntentDict"
-                  :key="item.value"
-                  :label="item.label"
-                  :value="item.value"
-                >
-                  <div class="py-0.5">
-                    <div>{{ item.label }}</div>
-                    <div v-if="item.description" class="text-xs text-gray-400 leading-tight">
-                      {{ item.description }}
+                <el-option-group label="按读者目的">
+                  <el-option
+                    v-for="item in keywordIntentByPurposeDict"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value"
+                  >
+                    <div class="py-0.5">
+                      <div>{{ item.label }}</div>
+                      <div v-if="item.description" class="text-xs text-gray-400 leading-tight">
+                        {{ item.description }}
+                      </div>
                     </div>
-                  </div>
-                </el-option>
+                  </el-option>
+                </el-option-group>
+                <el-option-group label="按词类型（仅品牌/竞品词）">
+                  <el-option
+                    v-for="item in keywordIntentByKeywordTypeDict"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value"
+                  >
+                    <div class="py-0.5">
+                      <div>{{ item.label }}</div>
+                      <div v-if="item.description" class="text-xs text-gray-400 leading-tight">
+                        {{ item.description }}
+                      </div>
+                    </div>
+                  </el-option>
+                </el-option-group>
               </el-select>
               <p class="mt-1 text-xs text-gray-500">
-                {{ dictDescription(keywordIntentDict, singleForm.searchIntent) }}
+                大多数产品词选「对比选购」；仅当关键词本身是品牌名时才选下方两类。
               </p>
             </el-form-item>
 
-            <el-form-item label="写成什么样式">
+            <el-form-item label="内容形态">
               <el-select v-model="singleForm.contentForm" class="w-full" placeholder="请选择">
                 <el-option
                   v-for="item in articleContentFormDict"
@@ -121,9 +140,6 @@
                   </div>
                 </el-option>
               </el-select>
-              <p class="mt-1 text-xs text-gray-500">
-                {{ dictDescription(articleContentFormDict, singleForm.contentForm) }}
-              </p>
             </el-form-item>
 
             <el-form-item label="输出语言" prop="contentLanguage">
@@ -135,6 +151,7 @@
                   :value="item.value"
                 />
               </el-select>
+              <p class="mt-1 text-xs text-gray-500">默认跟随站点，可手动覆盖。</p>
             </el-form-item>
 
             <el-alert
@@ -179,22 +196,22 @@
               </el-button>
               <el-button @click="goBack">返回列表</el-button>
             </el-form-item>
-          </el-form>
-        </el-tab-pane>
+      </el-form>
 
-        <el-tab-pane label="批量采集（高级）" name="batch">
+      <el-collapse class="mt-4 max-w-2xl">
+        <el-collapse-item title="更多创建方式（网站抓取）" name="batch">
           <el-form
             ref="batchFormRef"
             :model="batchForm"
             :rules="batchRules"
-            label-width="120px"
-            class="mt-2"
+            label-width="100px"
+            :class="{ 'pointer-events-none opacity-60': !canCreateJob }"
             @submit.prevent
           >
-            <el-form-item label="发到哪个网站" prop="siteId">
+            <el-form-item label="目标网站" prop="siteId">
               <el-select
                 v-model="batchForm.siteId"
-                placeholder="选择要发文章的网站"
+                placeholder="选择站点"
                 class="w-full"
                 :loading="sitesLoading"
                 @change="handleBatchSiteChange"
@@ -227,11 +244,12 @@
                   :value="item.value"
                 />
               </el-select>
+              <p class="mt-1 text-xs text-gray-500">默认跟随站点，可手动覆盖。</p>
             </el-form-item>
 
             <el-form-item label="来源">
               <el-radio-group v-model="batchForm.source">
-                <el-radio value="site-crawl">站点 sitemap 采集</el-radio>
+                <el-radio value="site-crawl">从网站自动抓取</el-radio>
                 <el-radio value="keywords">手动输入列表</el-radio>
               </el-radio-group>
             </el-form-item>
@@ -245,7 +263,7 @@
               />
             </el-form-item>
 
-            <el-form-item v-else label="采集预览">
+            <el-form-item v-else label="抓取预览">
               <div class="w-full">
                 <el-button
                   size="small"
@@ -253,10 +271,10 @@
                   :disabled="!batchForm.siteId"
                   @click="loadPreview"
                 >
-                  预览采集结果
+                  预览抓取结果
                 </el-button>
                 <div v-if="previewItems.length" class="mt-2 text-sm text-gray-600">
-                  预览到 {{ previewItems.length }} 条 SEO 文章（将按下方「运行条数」截取）
+                  预览到 {{ previewItems.length }} 篇，将按「运行条数」截取
                 </div>
                 <el-table
                   v-if="previewItems.length"
@@ -276,48 +294,53 @@
             </el-form-item>
 
             <el-collapse class="mb-2">
-              <el-collapse-item title="高级选项" name="advanced">
-                <el-form-item label="只采博客页">
+              <el-collapse-item title="更多选项" name="advanced">
+                <el-form-item label="仅博客页">
                   <el-switch v-model="batchForm.seoArticlesOnly" />
                   <p class="mt-1 text-xs text-gray-500">
-                    从站点 sitemap 采集时，只挑博客/资讯类 URL；关掉会纳入更多页面。
+                    开启后只抓取博客/资讯页；关闭会纳入更多页面。
                   </p>
                 </el-form-item>
               </el-collapse-item>
             </el-collapse>
 
-            <p class="text-sm text-gray-500 mb-3">{{ quotaPreview.previewText(batchJobCount) }}</p>
             <el-alert
               v-if="!quotaCanConsume(batchJobCount)"
               class="mb-4"
               type="error"
               :closable="false"
               show-icon
-              title="配额不足，无法批量提交"
-            />
+              :title="quotaPreview.previewText(batchJobCount)"
+            >
+              <template #default>
+                <router-link to="/org/billing">查看用量与续期</router-link>
+              </template>
+            </el-alert>
+            <p v-else class="text-sm text-gray-500 mb-3">
+              {{ quotaPreview.previewText(batchJobCount) }}
+            </p>
 
             <el-form-item>
               <el-button
                 type="primary"
                 :loading="submitting"
-                :disabled="!quotaCanConsume(batchJobCount)"
+                :disabled="sites.length === 0 || !canCreateJob || !quotaCanConsume(batchJobCount)"
                 @click="handleBatchSubmit"
               >
                 批量提交
               </el-button>
-              <el-button @click="goBack">返回列表</el-button>
             </el-form-item>
           </el-form>
-        </el-tab-pane>
-      </el-tabs>
+        </el-collapse-item>
+      </el-collapse>
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import type { FormInstance, FormRules } from "element-plus";
+import type { FormInstance, FormRules, InputInstance } from "element-plus";
 import { ElMessageBox } from "element-plus";
 import { createArticleJob, createBatchArticleJobs } from "@/api/seo-factory/article-job";
 import {
@@ -329,11 +352,11 @@ import { listSiteSeoArticles, listSites } from "@/api/seo-factory/site";
 import type { DiscoveredSeoArticle, SiteItem } from "@/api/seo-factory/types";
 import {
   CONTENT_LANGUAGE_OPTIONS,
-  keywordIntentDict,
+  keywordIntentByKeywordTypeDict,
+  keywordIntentByPurposeDict,
   articleContentFormDict,
   type ContentLanguageCode
 } from "@/constants/dicts/seo-factory";
-import { dictDescription } from "@/utils/dict";
 import { message } from "@/utils/message";
 import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
 import { useArticleQuotaPreview } from "@/composables/useArticleQuotaPreview";
@@ -351,16 +374,16 @@ function quotaCanConsume(count: number) {
   return quotaPreview.canConsume(count);
 }
 
-const activeTab = ref<"single" | "batch">("single");
 const singleFormRef = ref<FormInstance>();
 const batchFormRef = ref<FormInstance>();
+const keywordInputRef = ref<InputInstance>();
 
 const contentLanguageOptions = CONTENT_LANGUAGE_OPTIONS;
 
 const singleForm = reactive({
   siteId: "",
   targetKeyword: "",
-  searchIntent: "INFORMATIONAL",
+  searchIntent: "COMMERCIAL",
   contentForm: "ARTICLE" as "ARTICLE" | "PRODUCT_ENHANCED" | "FAQ_PAGE",
   contentLanguage: "en" as ContentLanguageCode
 });
@@ -375,15 +398,15 @@ const batchForm = reactive({
 });
 
 const singleRules: FormRules = {
-  siteId: [{ required: true, message: "请选择要发文的网站", trigger: "change" }],
+  siteId: [{ required: true, message: "请选择目标网站", trigger: "change" }],
   targetKeyword: [
-    { required: true, message: "请输入搜索词", trigger: "blur" },
-    { min: 2, message: "搜索词至少 2 个字符", trigger: "blur" }
+    { required: true, message: "请输入目标关键词", trigger: "blur" },
+    { min: 2, message: "关键词至少 2 个字符", trigger: "blur" }
   ]
 };
 
 const batchRules: FormRules = {
-  siteId: [{ required: true, message: "请选择要发文的网站", trigger: "change" }],
+  siteId: [{ required: true, message: "请选择目标网站", trigger: "change" }],
   keywordsText: [
     {
       validator: (_rule, value, callback) => {
@@ -440,13 +463,8 @@ function siteOptionSubline(site: SiteItem): string | undefined {
 }
 
 function siteFieldDescription(site?: SiteItem): string {
-  if (!site) {
-    return "选择要发文章的网站，AI 会读取该站的公司卖点、认证与文末询盘按钮来写稿。";
-  }
-  const meta = siteOptionSubline(site);
-  return meta
-    ? `已选 ${site.domain}（${meta}），生成内容将按该站配置写作与发布。`
-    : `已选 ${site.domain}，生成内容将按该站配置写作与发布。`;
+  if (!site) return "将按该站配置写稿。";
+  return siteOptionSubline(site) ? "将按该站语言与市场配置生成。" : "将按该站配置写稿。";
 }
 
 function lastSiteStorageKey() {
@@ -501,9 +519,9 @@ async function confirmKeywordConflictsIfNeeded(): Promise<boolean> {
   if (keywordConflicts.value.length === 0) return true;
   try {
     await ElMessageBox.confirm(
-      `该站点已有 ${keywordConflicts.value.length} 个相似关键词任务，继续入队可能导致内容同质化。是否仍要提交？`,
-      "关键词冲突提示",
-      { type: "warning", confirmButtonText: "仍要提交", cancelButtonText: "取消" }
+      `该站点已有 ${keywordConflicts.value.length} 个相似任务，可能产出重复内容。仍要创建吗？`,
+      "相似关键词提示",
+      { type: "warning", confirmButtonText: "仍要创建", cancelButtonText: "取消" }
     );
     return true;
   } catch {
@@ -556,7 +574,7 @@ async function loadPreview() {
       batchForm.seoArticlesOnly
     );
     if (previewItems.value.length === 0) {
-      message("未采集到 SEO 文章，请检查站点 sitemap", { type: "warning" });
+      message("未抓取到文章，请检查站点是否已配置 sitemap", { type: "warning" });
     }
   } finally {
     previewLoading.value = false;
@@ -635,12 +653,27 @@ function goBack() {
   router.push({ name: "SeoFactoryJobs", params: { projectId } });
 }
 
+function applyRoutePrefill() {
+  const siteId = route.query.siteId;
+  const keyword = route.query.keyword;
+  if (typeof siteId === "string" && sites.value.some((s) => s.id === siteId)) {
+    singleForm.siteId = siteId;
+    const site = sites.value.find((s) => s.id === siteId);
+    if (site) applySiteDefaults(site);
+  }
+  if (typeof keyword === "string" && keyword.trim()) {
+    singleForm.targetKeyword = keyword.trim();
+    void nextTick(() => keywordInputRef.value?.focus());
+  }
+}
+
 function goSites() {
   router.push({ name: "SeoFactorySites", params: { projectId } });
 }
 
-onMounted(() => {
-  void loadSites();
+onMounted(async () => {
+  await loadSites();
+  applyRoutePrefill();
   void quotaPreview.refreshQuota();
 });
 </script>

@@ -11,6 +11,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -26,9 +27,11 @@ import { CreateJobFromKeywordDto } from './dto/create-job-from-keyword.dto';
 import { CreateJobsFromKeywordsDto } from './dto/create-jobs-from-keywords.dto';
 import { CreateKeywordDto } from './dto/create-keyword.dto';
 import { EnrichKeywordMetricsDto } from './dto/enrich-keyword-metrics.dto';
+import { ConfirmKeywordSeedsDto } from './dto/confirm-keyword-seeds.dto';
 import { GenerateKeywordSeedsDto } from './dto/generate-keyword-seeds.dto';
 import { ImportKeywordsDto } from './dto/import-keywords.dto';
 import { UpdateKeywordDto } from './dto/update-keyword.dto';
+import { BatchDeleteKeywordsDto } from './dto/batch-delete-keywords.dto';
 import { KeywordPoolService } from './keyword-pool.service';
 import { seoFactoryRoutes } from '../../constants/seo-factory-routes';
 
@@ -38,6 +41,13 @@ export class KeywordPoolController {
     private readonly keywordPoolService: KeywordPoolService,
     private readonly projectService: ProjectService,
   ) {}
+
+  @Get('summary')
+  async summary(@ReqCtx() ctx: RequestContext, @Param('projectId') projectId: string) {
+    await this.projectService.assertSeoKeywordRead(ctx.organizationId, projectId, ctx);
+    const data = await this.keywordPoolService.getSummary(ctx.organizationId, projectId);
+    return { data, meta: { traceId: ctx.traceId } };
+  }
 
   @Get()
   async list(
@@ -50,8 +60,14 @@ export class KeywordPoolController {
     @Query('clusterId') clusterId?: string,
     @Query('unclustered') unclustered?: string,
     @Query('queueable') queueable?: string,
+    @Query('excludeArchived') excludeArchived?: string,
   ) {
     await this.projectService.assertSeoKeywordRead(ctx.organizationId, projectId, ctx);
+    const isQueueable = queueable === '1' || queueable === 'true';
+    const excludeArchivedFlag =
+      excludeArchived === '0' || excludeArchived === 'false'
+        ? false
+        : !status && !isQueueable;
     const result = await this.keywordPoolService.findMany(ctx.organizationId, projectId, {
       page: page ? Number(page) : 1,
       limit: limit ? Number(limit) : 20,
@@ -59,7 +75,8 @@ export class KeywordPoolController {
       intent,
       clusterId,
       unclustered: unclustered === '1' || unclustered === 'true',
-      queueable: queueable === '1' || queueable === 'true',
+      queueable: isQueueable,
+      excludeArchived: excludeArchivedFlag,
     });
 
     return {
@@ -98,6 +115,32 @@ export class KeywordPoolController {
       projectId,
       dto.items,
     );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Post('generate-seeds/preview')
+  async previewSeeds(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Body() dto: GenerateKeywordSeedsDto,
+  ) {
+    await this.projectService.assertSeoKeywordManage(ctx.organizationId, projectId, ctx);
+    const data = await this.keywordPoolService.previewSeeds(
+      ctx.organizationId,
+      projectId,
+      dto,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Post('generate-seeds/confirm')
+  async confirmSeeds(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Body() dto: ConfirmKeywordSeedsDto,
+  ) {
+    await this.projectService.assertSeoKeywordManage(ctx.organizationId, projectId, ctx);
+    const data = await this.keywordPoolService.confirmSeeds(ctx.organizationId, projectId, dto);
     return { data, meta: { traceId: ctx.traceId } };
   }
 
@@ -147,6 +190,22 @@ export class KeywordPoolController {
     return { data, meta: { traceId: ctx.traceId } };
   }
 
+  @Post('batch/delete')
+  @HttpCode(HttpStatus.OK)
+  async batchDelete(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Body() dto: BatchDeleteKeywordsDto,
+  ) {
+    await this.projectService.assertSeoKeywordManage(ctx.organizationId, projectId, ctx);
+    const data = await this.keywordPoolService.batchRemove(
+      ctx.organizationId,
+      projectId,
+      dto.ids,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
   @Patch(':id')
   async update(
     @ReqCtx() ctx: RequestContext,
@@ -156,6 +215,17 @@ export class KeywordPoolController {
   ) {
     await this.projectService.assertSeoKeywordManage(ctx.organizationId, projectId, ctx);
     const data = await this.keywordPoolService.update(ctx.organizationId, projectId, id, dto);
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Delete(':id')
+  async remove(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+  ) {
+    await this.projectService.assertSeoKeywordManage(ctx.organizationId, projectId, ctx);
+    const data = await this.keywordPoolService.remove(ctx.organizationId, projectId, id);
     return { data, meta: { traceId: ctx.traceId } };
   }
 

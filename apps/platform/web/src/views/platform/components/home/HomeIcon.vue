@@ -6,12 +6,17 @@ import { computed, type Component } from "vue";
 import {
   Calendar,
   ChartColumn,
+  CircleAlert,
+  CircleCheck,
+  ClipboardCheck,
   FileSearch,
+  FileText,
   Globe,
   Info,
   Plus,
   RefreshCw,
   Route,
+  Send,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles
@@ -30,7 +35,12 @@ type HomeIconName =
   | "usage"
   | "info"
   | "calendar"
-  | "seo";
+  | "seo"
+  | "check"
+  | "brief"
+  | "review"
+  | "publish"
+  | "alert";
 
 const props = withDefaults(
   defineProps<{
@@ -55,7 +65,12 @@ const iconMap: Record<HomeIconName, Component> = {
   usage: ChartColumn,
   info: Info,
   calendar: Calendar,
-  seo: FileSearch
+  seo: FileSearch,
+  check: CircleCheck,
+  brief: FileText,
+  review: ClipboardCheck,
+  publish: Send,
+  alert: CircleAlert
 };
 
 const IconComponent = computed(() => iconMap[props.name]);

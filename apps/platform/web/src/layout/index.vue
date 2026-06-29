@@ -24,6 +24,7 @@ import {
   useResizeObserver
 } from "@pureadmin/utils";
 import { useRoute } from "vue-router";
+import { isProjectWorkbenchPath } from "./utils/route-shell";
 
 // import LayTag from "./components/lay-tag/index.vue"; // 暂时隐藏标签栏
 import LayNavbar from "./components/lay-navbar/index.vue";
@@ -43,9 +44,7 @@ const pureSetting = useSettingStoreHook();
 const { $storage } = useGlobal<GlobalPropertiesApi>();
 
 /** 项目工作台自带侧栏，进入时收起平台左侧导航 */
-const hidePlatformSidebar = computed(() =>
-  /\/projects\/[^/]+\/seo-factory(?:\/|$)/.test(route.path)
-);
+const hidePlatformSidebar = computed(() => isProjectWorkbenchPath(route.path));
 
 const showPlatformSidebar = computed(
   () => !pureSetting.hiddenSideBar && !hidePlatformSidebar.value
@@ -137,6 +136,13 @@ onBeforeMount(() => {
   useDataThemeChange().dataThemeChange($storage.layout?.overallStyle);
 });
 
+const showLayNavbar = computed(
+  () =>
+    layout.value.includes("vertical") ||
+    layout.value.includes("mix") ||
+    (layout.value.includes("horizontal") && hidePlatformSidebar.value)
+);
+
 const LayHeader = defineComponent({
   name: "LayHeader",
   render() {
@@ -147,9 +153,7 @@ const LayHeader = defineComponent({
       },
       {
         default: () => [
-          (layout.value.includes("vertical") || layout.value.includes("mix"))
-            ? h(LayNavbar)
-            : null,
+          showLayNavbar.value ? h(LayNavbar) : null,
           showPlatformSidebar.value && layout.value.includes("horizontal")
             ? h(NavHorizontal)
             : null

@@ -32,16 +32,14 @@ export function normalizeDifficultyScore(keywordDifficulty?: number | null): num
 }
 
 export function computeKeywordPriorityScore(input: KeywordPriorityInput): number {
-  const searchVolumeScore = normalizeSearchVolumeScore(input.searchVolume);
-  const keywordDifficultyScore = normalizeDifficultyScore(input.keywordDifficulty);
   const businessValueScore = clamp01(input.businessValueScore ?? 0.5);
   const contentFitScore = clamp01(input.contentFitScore ?? 0.5);
 
-  const raw =
-    searchVolumeScore * 0.25 +
-    businessValueScore * 0.35 +
-    keywordDifficultyScore * 0.2 +
-    contentFitScore * 0.2;
+  // 搜索指标 API 未接入前，仅按商业价值与内容匹配计分；接入后可恢复 searchVolume/KD 权重。
+  const raw = businessValueScore * 0.5 + contentFitScore * 0.5;
 
   return Math.round(raw * 1000) / 10;
 }
+
+/** 与前端 keyword-display 高优先级阈值一致（0–100 分制） */
+export const KEYWORD_HIGH_PRIORITY_THRESHOLD = 75;

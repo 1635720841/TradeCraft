@@ -5,8 +5,8 @@
   - 不负责：评分计算（后端 seo-checker 模块）
 -->
 <template>
-  <div class="seo-score-panel">
-    <div class="seo-score-panel__toolbar">
+  <div class="seo-score-panel" :class="panelSectionClass">
+    <div v-if="showToolbar" class="seo-score-panel__toolbar">
       <div class="seo-score-panel__actions">
         <el-button
           type="primary"
@@ -75,7 +75,7 @@
       </span>
     </div>
 
-    <div v-if="compactNotices.length" class="seo-score-panel__notices">
+    <div v-if="compactNotices.length && showNotices" class="seo-score-panel__notices">
       <div
         v-for="(notice, i) in compactNotices"
         :key="i"
@@ -88,8 +88,8 @@
       </div>
     </div>
 
-    <div v-if="hasData" class="seo-score-panel__body">
-      <div class="seo-score-panel__left">
+    <div v-if="hasData && showScoreBody" class="seo-score-panel__body">
+      <div v-if="showLeftColumn" class="seo-score-panel__left">
         <div v-if="breakdownItems.length" class="seo-score-block">
           <div class="seo-score-block__head">本地预检分项</div>
           <div class="seo-score-block__body">
@@ -140,7 +140,7 @@
         </div>
       </div>
 
-      <div class="seo-score-panel__right">
+      <div v-if="showRightColumn" class="seo-score-panel__right">
         <div class="seo-score-block">
           <el-tabs v-model="detailTab" class="seo-score-detail-tabs">
             <el-tab-pane :label="`问题定位${issueItems.length ? ` (${issueItems.length})` : ''}`" name="issues">
@@ -232,7 +232,10 @@
       </div>
     </div>
 
-    <div v-if="hasData && (optimizeScoreRows.length || optimizeHistory.length)" class="seo-score-panel__footer">
+    <div
+      v-if="showFooter && hasData && (optimizeScoreRows.length || optimizeHistory.length)"
+      class="seo-score-panel__footer"
+    >
       <el-collapse v-model="footerPanels">
         <el-collapse-item
           v-if="optimizeScoreRows.length"
@@ -336,11 +339,19 @@
       </el-collapse>
     </div>
 
-    <ArticleJobSeoAnalysisSnapshotsPanel :snapshots="analysisSnapshots" />
+    <ArticleJobSeoAnalysisSnapshotsPanel v-if="showSnapshots" :snapshots="analysisSnapshots" />
 
     <el-empty
-      v-if="!hasData && !canCheck"
+      v-if="!hasData && !canCheck && sectionMode === 'full'"
       description="暂无 SEO 评分（任务尚未进入优化阶段）"
+    />
+    <el-empty
+      v-else-if="!hasData && sectionMode === 'fixes'"
+      description="正文生成后可查看待修复项"
+    />
+    <el-empty
+      v-else-if="!hasData && sectionMode === 'scores'"
+      description="暂无评分明细"
     />
   </div>
 </template>
@@ -382,6 +393,8 @@ const props = defineProps<{
   semrushPassThreshold?: number;
   /** 站点已开启本地对齐 Sem（实际生效见 seoCheck.local.gateMode） */
   localAlignEnabled?: boolean;
+  /** full=详情默认；fixes=仅待修复/建议；scores=仅分项与历史 */
+  section?: "full" | "fixes" | "scores";
 }>();
 
 const localPassThreshold = computed(
@@ -397,6 +410,30 @@ const emit = defineEmits<{
   rewrite: [];
   "rerun-optimization": [];
 }>();
+
+const sectionMode = computed(() => props.section ?? "full");
+const showToolbar = computed(() => sectionMode.value === "full");
+const showLeftColumn = computed(
+  () => sectionMode.value === "full" || sectionMode.value === "scores"
+);
+const showRightColumn = computed(
+  () => sectionMode.value === "full" || sectionMode.value === "fixes"
+);
+const showScoreBody = computed(() => showLeftColumn.value || showRightColumn.value);
+const showFooter = computed(
+  () => sectionMode.value === "full" || sectionMode.value === "scores"
+);
+const showSnapshots = computed(
+  () => sectionMode.value === "full" || sectionMode.value === "scores"
+);
+const showNotices = computed(
+  () => sectionMode.value === "full" || sectionMode.value === "fixes"
+);
+const panelSectionClass = computed(() => {
+  if (sectionMode.value === "fixes") return "is-section-fixes";
+  if (sectionMode.value === "scores") return "is-section-scores";
+  return "";
+});
 
 const local = computed(() => props.seoCheckData?.local);
 const semrush = computed(() => props.seoCheckData?.semrush);

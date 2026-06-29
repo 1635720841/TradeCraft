@@ -18,6 +18,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import type { RequestContext } from '@wm/shared-core';
 import { ReqCtx } from '../../../../core/decorators/request-context.decorator';
@@ -40,6 +41,27 @@ export class KeywordClusterController {
   async list(@ReqCtx() ctx: RequestContext, @Param('projectId') projectId: string) {
     await this.projectService.assertSeoKeywordRead(ctx.organizationId, projectId, ctx);
     const data = await this.keywordClusterService.findMany(ctx.organizationId, projectId);
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Get(':id')
+  async findOne(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    await this.projectService.assertSeoKeywordRead(ctx.organizationId, projectId, ctx);
+    const data = await this.keywordClusterService.findOneDetail(
+      ctx.organizationId,
+      projectId,
+      id,
+      {
+        page: page ? Number(page) : undefined,
+        limit: limit ? Number(limit) : undefined,
+      },
+    );
     return { data, meta: { traceId: ctx.traceId } };
   }
 
@@ -113,6 +135,7 @@ export class KeywordClusterController {
       projectId,
       id,
       dto.siteId,
+      dto.limit,
     );
     return { data, meta: { traceId: ctx.traceId } };
   }

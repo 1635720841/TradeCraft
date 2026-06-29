@@ -21,6 +21,22 @@
   padding: 0 32px;
 }
 
+.shell-topbar-logo {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  margin-right: 4px;
+
+  &__img {
+    display: block;
+    width: auto;
+    height: 36px;
+    object-fit: contain;
+    object-position: left center;
+    filter: drop-shadow(0 4px 10px rgb(16 86 193 / 14%));
+  }
+}
+
 .shell-topbar-title {
   flex-shrink: 0;
   margin: 0;

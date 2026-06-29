@@ -138,7 +138,9 @@ export default [
     component: Layout,
     meta: {
       title: "SEO 工厂",
-      showLink: false
+      showLink: false,
+      fillViewport: true,
+      hideFooter: true
     },
     beforeEnter: async (to) => {
       const allowed = await ensureProjectRouteAccess(to);
@@ -214,7 +216,7 @@ export default [
                 name: "SeoFactoryKeywords",
                 component: () => import("@/views/projects/seo-factory/KeywordPoolView.vue"),
                 meta: {
-                  title: "关键词池",
+                  title: "选题",
                   seoPermission: "seo:job:read",
                   showLink: false
                 }
@@ -224,7 +226,7 @@ export default [
                 name: "SeoFactoryTopicClusters",
                 component: () => import("@/views/projects/seo-factory/TopicClusterView.vue"),
                 meta: {
-                  title: "主题集群",
+                  title: "按主题",
                   seoPermission: "seo:job:read",
                   showLink: false
                 }

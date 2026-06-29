@@ -17,26 +17,6 @@
           <p>
             在这里浏览并进入你参与的内容生产项目，从选题、关键词到文章任务与发布协作，保持同一工作节奏。
           </p>
-          <div class="mw-home__actions">
-            <button
-              v-if="isAdmin"
-              type="button"
-              class="mw-home__btn mw-home__btn--primary"
-              @click="goProjectManage"
-            >
-              <HomeIcon name="settings" :size="16" />
-              项目管理
-            </button>
-            <button
-              type="button"
-              class="mw-home__btn"
-              :disabled="loading"
-              @click="fetchProjects"
-            >
-              <HomeIcon name="refresh" :size="16" />
-              刷新
-            </button>
-          </div>
         </div>
         <div class="mw-home__hero-illustration" aria-hidden="true">
           <img :src="heroIllustration" alt="" />
@@ -119,51 +99,56 @@
     <section
       v-if="production"
       v-loading="productionLoading"
-      class="mw-home__production-card"
+      class="mw-home__production-section"
       aria-label="本月生产看板"
     >
-      <div class="mw-home__production-head">
-        <h2>本月生产 · {{ production.periodLabel }}</h2>
-        <span class="mw-home__production-quota">
-          配额 {{ production.quota.remaining }} / {{ production.quota.periodQuota }} 篇
-        </span>
-      </div>
-      <div class="mw-home__production-grid">
-        <button
-          v-for="tile in productionTiles"
-          :key="tile.key"
-          type="button"
-          class="mw-home__production-tile"
-          :disabled="tile.count <= 0"
-          @click="tile.onClick()"
-        >
-          <b>{{ tile.count }}</b>
-          <span>{{ tile.label }}</span>
-        </button>
-      </div>
-      <p v-if="production.myTodos.reviewPendingCount || production.myTodos.assignedCount" class="mw-home__production-todos">
-        <template v-if="production.myTodos.assignedCount">
-          指派给我 {{ production.myTodos.assignedCount }} 项
-        </template>
-        <template v-if="production.myTodos.reviewPendingCount">
-          <span v-if="production.myTodos.assignedCount"> · </span>
-          等我审核 {{ production.myTodos.reviewPendingCount }} 项
-        </template>
-      </p>
-    </section>
+      <article class="mw-home__production-card">
+        <div class="mw-home__production-header">
+          <h2>
+            本月生产
+            <span class="mw-home__section-sub">/ {{ production.periodLabel }}</span>
+          </h2>
+        </div>
 
-    <section class="mw-home__feature-grid" aria-label="项目运营重点">
-      <article
-        v-for="item in operationCards"
-        :key="item.title"
-        class="mw-home__feature-card"
-      >
-        <span class="mw-home__feature-icon">
-          <HomeIcon :name="item.icon" :size="22" />
-        </span>
-        <div>
-          <h3>{{ item.title }}</h3>
-          <p>{{ item.text }}</p>
+        <div class="mw-home__production-body">
+          <div class="mw-home__production-pipeline">
+            <button
+              v-for="tile in productionTiles"
+              :key="tile.key"
+              type="button"
+              class="mw-home__production-stat"
+              :class="`mw-home__production-stat--${tile.tone}`"
+              :disabled="tile.count <= 0"
+              @click="tile.onClick()"
+            >
+              <b>{{ tile.count }}</b>
+              <span>{{ tile.label }}</span>
+            </button>
+          </div>
+
+          <div
+            v-if="production.myTodos.reviewPendingCount || production.myTodos.assignedCount"
+            class="mw-home__production-todos"
+          >
+            <button
+              v-if="production.myTodos.assignedCount"
+              type="button"
+              class="mw-home__production-stat mw-home__production-stat--warning"
+              @click="goProductionAssigned"
+            >
+              <b>{{ production.myTodos.assignedCount }}</b>
+              <span>指派给我</span>
+            </button>
+            <button
+              v-if="production.myTodos.reviewPendingCount"
+              type="button"
+              class="mw-home__production-stat mw-home__production-stat--warning"
+              @click="goProductionReview"
+            >
+              <b>{{ production.myTodos.reviewPendingCount }}</b>
+              <span>等我审核</span>
+            </button>
+          </div>
         </div>
       </article>
     </section>
@@ -176,15 +161,15 @@
               企业项目
               <span class="mw-home__section-sub">/ Project Workspace</span>
             </h2>
-            <p>
-              展示您可进入的项目；未开放或未加入的项目请前往「项目管理」查看。
+            <p class="mw-home__workspace-desc">
+              展示您可进入的项目；其余请前往「项目管理」。
             </p>
           </div>
           <div class="mw-home__workspace-actions">
             <button
               v-if="isAdmin"
               type="button"
-              class="mw-home__btn"
+              class="mw-home__btn mw-home__btn--primary"
               @click="goProjectManage"
             >
               <HomeIcon name="settings" :size="16" />
@@ -202,7 +187,7 @@
           </div>
         </div>
 
-        <div v-if="enterableProjects.length" class="mb-4 flex flex-wrap gap-2">
+        <div v-if="enterableProjects.length" class="mw-home__workspace-tags">
           <span class="mw-home__summary-tag mw-home__summary-tag--success">
             可进入 {{ enterableProjects.length }}
           </span>
@@ -255,11 +240,17 @@
                 {{ projectTypeHint(project.projectType) }}
               </p>
               <div v-if="project.memberCount" class="mw-home__members">
-                <span class="mw-home__member" />
-                <span class="mw-home__member" />
-                <span class="mw-home__member" />
-                <span class="mw-home__member" />
-                <span>{{ project.memberCount }} 位成员</span>
+                <span
+                  v-for="(member, index) in project.memberPreview ?? []"
+                  :key="member.userId"
+                  class="mw-home__member"
+                  :style="{
+                    ...memberAvatarStyle(member.userId),
+                    zIndex: index + 1
+                  }"
+                  :title="memberDisplayName(member.name, member.email)"
+                />
+                <span class="mw-home__members-label">{{ project.memberCount }} 位成员</span>
               </div>
               <div class="mw-home__project-foot">
                 <div class="mw-home__p-date">
@@ -307,6 +298,21 @@
             </article>
           </template>
 
+          <button
+            v-if="isAdmin"
+            type="button"
+            class="mw-home__project-item mw-home__new-project"
+            @click="openCreateDialog"
+          >
+            <div>
+              <div class="mw-home__new-plus" aria-hidden="true">
+                <HomeIcon name="plus" :size="28" />
+              </div>
+              <b>新建企业项目</b>
+              <p>为新的站点、品牌或国家市场创建独立内容生产线</p>
+            </div>
+          </button>
+
           <p
             v-if="!loading && otherProjects.length && !showOtherProjects"
             class="mw-home__empty"
@@ -330,17 +336,55 @@
         </p>
       </article>
     </section>
+
+    <el-dialog
+      v-model="createVisible"
+      title="新建企业项目"
+      width="480px"
+      destroy-on-close
+    >
+      <p class="mw-home__dialog-tip">
+        项目归属当前企业，团队成员可按权限共同使用。建议以品牌、地区或业务线命名，
+        便于区分多条内容生产线。
+      </p>
+      <el-form
+        ref="createFormRef"
+        :model="createForm"
+        :rules="createRules"
+        label-width="88px"
+      >
+        <el-form-item label="项目名称" prop="name">
+          <el-input
+            v-model="createForm.name"
+            placeholder="例如：北美官网 SEO、欧洲博客矩阵"
+          />
+        </el-form-item>
+        <el-form-item label="项目类型" prop="projectType">
+          <el-select v-model="createForm.projectType" class="w-full">
+            <el-option label="SEO 内容工厂" value="seo-factory" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="createVisible = false">取消</el-button>
+        <el-button type="primary" :loading="creating" @click="submitCreate">
+          创建并进入
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
+import type { FormInstance, FormRules } from "element-plus";
 import {
   getOrganizationProfile,
   type OrganizationProfile
 } from "@/api/org/organization";
 import {
+  createOrgProject,
   listOrgProjects,
   type OrgProjectItem
 } from "@/api/org/projects";
@@ -352,6 +396,10 @@ import {
 import { projectMyAccessStatusDict, projectStatusDict } from "@/constants/dicts/platform";
 import { useUserStoreHook } from "@/store/modules/user";
 import { dictLabel } from "@/utils/dict";
+import {
+  memberAvatarTone,
+  memberDisplayName
+} from "@/utils/member-display";
 import { formatPeriodEnd } from "@/utils/period";
 import { message } from "@/utils/message";
 import HomeIcon from "./components/home/HomeIcon.vue";
@@ -367,6 +415,9 @@ const userStore = useUserStoreHook();
 
 const loading = ref(false);
 const profileLoading = ref(false);
+const creating = ref(false);
+const createVisible = ref(false);
+const createFormRef = ref<FormInstance>();
 const showOtherProjects = ref(false);
 const applyingProjectId = ref<string | null>(null);
 const projects = ref<OrgProjectItem[]>([]);
@@ -374,23 +425,17 @@ const profile = ref<OrganizationProfile | null>(null);
 const production = ref<OrgProductionSummary | null>(null);
 const productionLoading = ref(false);
 
-const operationCards = [
-  {
-    icon: "globe" as const,
-    title: "多市场拆分",
-    text: "按国家、语种和站点独立推进，避免不同市场的关键词与内容计划互相干扰。"
-  },
-  {
-    icon: "workflow" as const,
-    title: "流程集中",
-    text: "把关键词池、SERP 分析、文章任务与发布检查收束到同一条工作流。"
-  },
-  {
-    icon: "quality" as const,
-    title: "质量可控",
-    text: "持续关注配额、成员协作和项目状态，让内容生产保持稳定交付。"
-  }
-];
+const createForm = reactive({
+  name: "",
+  projectType: "seo-factory" as const
+});
+
+const createRules: FormRules = {
+  name: [{ required: true, message: "请输入项目名称", trigger: "blur" }],
+  projectType: [
+    { required: true, message: "请选择项目类型", trigger: "change" }
+  ]
+};
 
 const isAdmin = computed(() => userStore.roles.includes("admin"));
 const {
@@ -471,35 +516,62 @@ const productionTiles = computed(() => {
     {
       key: "completed",
       label: "已完成",
+      icon: "check" as const,
+      tone: "success",
       count: t.completedJobs,
       onClick: () => pid && router.push(`${base}?status=COMPLETED`)
     },
     {
       key: "brief",
       label: "待确认大纲",
+      icon: "brief" as const,
+      tone: "blue",
       count: t.pendingBriefCount,
       onClick: () => pid && router.push(`${base}?stage=outlinePending`)
     },
     {
       key: "review",
       label: "待审核",
+      icon: "review" as const,
+      tone: "warning",
       count: t.pendingReviewCount,
       onClick: () => pid && router.push(`${base}?stage=reviewPending`)
     },
     {
       key: "publish",
       label: "待发布",
+      icon: "publish" as const,
+      tone: "blue",
       count: t.pendingPublishCount,
       onClick: () => pid && router.push(`${base}?cmsPublishPending=1`)
     },
     {
       key: "failed",
       label: "失败",
+      icon: "alert" as const,
+      tone: "danger",
       count: t.failedJobs,
       onClick: () => pid && router.push(`${base}?status=FAILED`)
     }
   ];
 });
+
+function goProductionJobs(query: Record<string, string>) {
+  const pid = firstEnterableProject.value?.id;
+  if (!pid) return;
+  router.push({
+    path: `/projects/${pid}/seo-factory/jobs`,
+    query
+  });
+}
+
+function goProductionAssigned() {
+  goProductionJobs({ assignedToMe: "1" });
+}
+
+function goProductionReview() {
+  goProductionJobs({ stage: "reviewPending" });
+}
 
 function projectTypeLabel(type: string) {
   if (type === "seo-factory") return "SEO 内容工厂";
@@ -515,6 +587,14 @@ function projectTypeHint(type: string) {
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("zh-CN");
+}
+
+function memberAvatarStyle(userId: string) {
+  const tone = memberAvatarTone(userId);
+  return {
+    background: tone.bg,
+    boxShadow: `inset 0 -3px 6px ${tone.shadow}`
+  };
 }
 
 function canEnter(project: OrgProjectItem) {
@@ -602,6 +682,35 @@ function goOrganization() {
 
 function goProjectManage() {
   router.push({ name: "OrgProjects" });
+}
+
+function openCreateDialog() {
+  createForm.name = "";
+  createForm.projectType = "seo-factory";
+  createVisible.value = true;
+}
+
+async function submitCreate() {
+  const form = createFormRef.value;
+  if (!form) return;
+  await form.validate(async valid => {
+    if (!valid) return;
+    creating.value = true;
+    try {
+      const project = await createOrgProject({
+        name: createForm.name.trim(),
+        projectType: createForm.projectType
+      });
+      message("企业项目创建成功", { type: "success" });
+      createVisible.value = false;
+      await Promise.all([fetchProjects(), loadProfile()]);
+      if (project.projectType === "seo-factory" && project.canEnter) {
+        enterProject(project);
+      }
+    } finally {
+      creating.value = false;
+    }
+  });
 }
 
 function goBilling() {

@@ -1,11 +1,17 @@
 <script setup lang="ts">
+import { computed } from "vue";
+import { useRoute } from "vue-router";
 import { useNav } from "@/layout/hooks/useNav";
+import { isProjectWorkbenchPath } from "@/layout/utils/route-shell";
 import LayNavMix from "../lay-sidebar/NavMix.vue";
 import LaySidebarTopCollapse from "../lay-sidebar/components/SidebarTopCollapse.vue";
+import LayTopBarLogo from "../lay-topbar/LayTopBarLogo.vue";
 import LayTopBarTitle from "../lay-topbar/LayTopBarTitle.vue";
 import LayTopBarRight from "../lay-topbar/LayTopBarRight.vue";
 
+const route = useRoute();
 const { layout, device, pureApp, toggleSideBar } = useNav();
+const hidePlatformSidebar = computed(() => isProjectWorkbenchPath(route.path));
 </script>
 
 <template>
@@ -25,6 +31,7 @@ const { layout, device, pureApp, toggleSideBar } = useNav();
     </template>
 
     <template v-else-if="device !== 'mobile'">
+      <LayTopBarLogo v-if="hidePlatformSidebar" />
       <LayTopBarTitle />
       <LayTopBarRight />
     </template>
