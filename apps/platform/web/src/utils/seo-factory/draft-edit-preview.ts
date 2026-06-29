@@ -23,7 +23,9 @@ import {
   canContentScoreSubstituteSemrushStale,
   prePublishChecklistAllDone as sharedPrePublishAllDone,
   type ContentScoreSnapshot,
+  type PrePublishChecklistItem,
 } from "@wm/shared-core";
+import { resolveJobReleaseReadiness } from "@/utils/seo-factory/release-readiness";
 
 export interface DraftEditPreviewFields {
   title?: string;
@@ -61,6 +63,7 @@ export type PublishChecklistAction =
   | "go_edit"
   | "go_internal_links"
   | "go_images"
+  | "go_seo"
   | "publish_cms"
   | "go_sites";
 
@@ -72,6 +75,7 @@ export type PublishChecklistItemId =
   | "internal_links"
   | "images"
   | "export_ready"
+  | "seo_ready"
   | "cta"
   | "cms_ready";
 
@@ -330,6 +334,7 @@ export function buildPrePublishChecklist(input: {
     input.siteContentProfile?.ctaPrimaryUrl?.trim() ||
       input.siteContentProfile?.ctaPrimaryText?.trim()
   );
+  const release = resolveJobReleaseReadiness(input.job);
 
   const sharedItems = buildPrePublishChecklistItems({
     status: input.job.status,
@@ -350,6 +355,10 @@ export function buildPrePublishChecklist(input: {
     cmsPublished: cmsStatus === "published" || cmsStatus === "draft",
     canPublishCms: canPublishJobToCms(input.job),
     cmsBlocked: !input.job.outputUrl || ymylBlocked || Boolean(input.exportStale),
+    seoReleaseReady: release.releaseReady,
+    seoReadyHint: release.releaseReady
+      ? "本地与 Semrush 均已达标"
+      : release.gapText ?? "分数未达标，建议先优化",
     resolvingAction: input.resolvingAction,
     publishingCms: input.publishingCms
   });
@@ -358,7 +367,7 @@ export function buildPrePublishChecklist(input: {
 }
 
 export function prePublishChecklistAllDone(items: PublishChecklistItem[]): boolean {
-  return sharedPrePublishAllDone(items);
+  return sharedPrePublishAllDone(items as PrePublishChecklistItem[]);
 }
 
 export function draftEditStatusLabel(job: Pick<ArticleJobItem, "draftData">): string | null {

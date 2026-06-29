@@ -35,9 +35,29 @@ describe('pre-publish-checklist', () => {
 
   it('returns checklist items for completed job', () => {
     const items = buildPrePublishChecklistItems(base);
-    assert.ok(items.length >= 6);
+    assert.ok(items.length >= 7);
     assert.equal(items.find((item) => item.id === 'title')?.done, true);
     assert.equal(items.find((item) => item.id === 'internal_links')?.done, true);
+  });
+
+  it('includes seo_ready item', () => {
+    const items = buildPrePublishChecklistItems({
+      ...base,
+      seoReleaseReady: false,
+      seoReadyHint: '本地还差 5 分',
+    });
+    const seo = items.find((item) => item.id === 'seo_ready');
+    assert.equal(seo?.done, false);
+    assert.equal(seo?.action, 'go_seo');
+  });
+
+  it('disables cms when seo not ready', () => {
+    const items = buildPrePublishChecklistItems({
+      ...base,
+      seoReleaseReady: false,
+    });
+    const cms = items.find((item) => item.id === 'cms_ready');
+    assert.equal(cms?.disabled, true);
   });
 
   it('flags long title as incomplete', () => {
@@ -52,6 +72,7 @@ describe('pre-publish-checklist', () => {
     const items = buildPrePublishChecklistItems({
       ...base,
       cmsPublished: true,
+      seoReleaseReady: true,
     });
     assert.equal(prePublishChecklistAllDone(items), true);
   });

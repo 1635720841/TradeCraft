@@ -3,9 +3,12 @@
  */
 
 import type { ArticleJobSeoCheckData } from "@/api/seo-factory/types";
+import { getLocalMetrics, isSeoReleaseReady } from "@wm/shared-core";
+
+export { isSeoReleaseReady };
 
 export function countSeoIssueItems(seoCheckData?: ArticleJobSeoCheckData | null): number {
-  const m = seoCheckData?.local?.metrics;
+  const m = getLocalMetrics(seoCheckData);
   if (!m) return 0;
   return (
     (m.longParagraphSamples?.length ?? 0) +
@@ -27,11 +30,6 @@ export function countSeoSuggestions(seoCheckData?: ArticleJobSeoCheckData | null
       (details.originality?.length ?? 0)
     : 0;
   return Math.max(local + semrush, detailCount);
-}
-
-/** 本地与 Semrush 均已过发布门控 */
-export function isSeoReleaseReady(localPassed: boolean, semrushPassed: boolean): boolean {
-  return localPassed && semrushPassed;
 }
 
 export function buildSeoVerdictTitle(input: {

@@ -81,12 +81,20 @@ export const MENU_CATALOG: MenuDefinition[] = [
     sortOrder: 23,
   },
   {
+    id: 'console:health',
+    title: '系统健康',
+    routePath: '/console/health',
+    permissionId: 'console:tenant:read',
+    targetRoles: CONSOLE_OPS_ROLES,
+    sortOrder: 24,
+  },
+  {
     id: 'console:audit',
     title: '操作审计',
     routePath: '/console/audit',
     permissionId: 'console:audit:read',
     targetRoles: CONSOLE_OPS_ROLES,
-    sortOrder: 24,
+    sortOrder: 25,
   },
 ];
 
@@ -102,6 +110,7 @@ export const DEFAULT_MEMBER_MENU_IDS = ['org:profile', 'org:projects'];
 export const DEFAULT_PLATFORM_OPERATOR_MENU_IDS = [
   'console:overview',
   'console:tenants',
+  'console:health',
   'console:audit',
 ];
 

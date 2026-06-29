@@ -81,6 +81,7 @@ const CONSOLE_MENU_PATH_ORDER: Array<{ menuKey: string; path: string }> = [
   { menuKey: "console:tenants", path: "/console/tenants" },
   { menuKey: "console:prompts", path: "/console/prompts" },
   { menuKey: "console:access", path: "/console/access" },
+  { menuKey: "console:health", path: "/console/health" },
   { menuKey: "console:audit", path: "/console/audit" }
 ];
 

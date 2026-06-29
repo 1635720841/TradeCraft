@@ -13,7 +13,7 @@ import { Injectable } from '@nestjs/common';
 import { JobStatus, KeywordStatus, Prisma } from '@prisma/client';
 import { Queue } from 'bullmq';
 import { v4 as uuidv4 } from 'uuid';
-import { isSeoArticleUrl, keywordFromArticleUrl, normalizeContentLanguage } from '@wm/shared-core';
+import { isSeoArticleUrl, keywordFromArticleUrl, normalizeContentLanguage, evaluateReleaseReadiness } from '@wm/shared-core';
 import { BusinessException } from '../../../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { PrismaService } from '../../../../core/database/prisma.service';
@@ -303,6 +303,7 @@ export class ArticleJobService {
       cmsPublishPending?: boolean;
       staleDraft?: boolean;
       reviewPending?: boolean;
+      seoNotReady?: boolean;
       assignedToMe?: boolean;
       siteOwnerMe?: boolean;
       status?: 'FAILED';
@@ -347,6 +348,17 @@ export class ArticleJobService {
 
     if (options.staleDraft) {
       return this.findManyStaleDraft(
+        organizationId,
+        projectId,
+        page,
+        limit,
+        siteScope,
+        options.keyword,
+      );
+    }
+
+    if (options.seoNotReady) {
+      return this.findManySeoNotReady(
         organizationId,
         projectId,
         page,
@@ -555,6 +567,59 @@ export class ArticleJobService {
     return { items, total, page: safePage, limit: safeLimit };
   }
 
+  private async findManySeoNotReady(
+    organizationId: string,
+    projectId: string,
+    page = 1,
+    limit = 20,
+    siteScope: { siteId?: string; siteIds?: string[] } = {},
+    keyword?: string,
+  ) {
+    const safePage = Math.max(page, 1);
+    const safeLimit = Math.min(Math.max(limit, 1), 100);
+
+    const rows = await this.prisma.articleJob.findMany({
+      where: {
+        organizationId,
+        projectId,
+        status: 'COMPLETED',
+        outputUrl: { not: null },
+        ...this.buildSiteWhere(siteScope),
+      },
+      select: {
+        id: true,
+        traceId: true,
+        status: true,
+        targetKeyword: true,
+        searchIntent: true,
+        semrushScore: true,
+        localSeoScore: true,
+        errorMessage: true,
+        seoCheckData: true,
+        briefData: true,
+        draftData: true,
+        outputUrl: true,
+        siteId: true,
+        site: { select: JOB_LIST_SITE_SELECT },
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 500,
+    });
+
+    const notReady = rows.filter(
+      (row) =>
+        !this.isJobReleaseReady(row) &&
+        this.matchesKeyword(row.targetKeyword, keyword),
+    );
+    const total = notReady.length;
+    const skip = (safePage - 1) * safeLimit;
+    const items = notReady.slice(skip, skip + safeLimit).map((row) => this.toListItem(row));
+
+    return { items, total, page: safePage, limit: safeLimit };
+  }
+
   private async findManyReviewPending(
     organizationId: string,
     projectId: string,
@@ -659,6 +724,7 @@ export class ArticleJobService {
     const pending = rows.filter(
       (row) =>
         this.isCmsPublishPending(row.seoCheckData, row.site.cmsType) &&
+        this.isJobReleaseReady(row) &&
         this.matchesKeyword(row.targetKeyword, keyword),
     );
     const total = pending.length;
@@ -718,6 +784,26 @@ export class ArticleJobService {
     const items = failed.slice(skip, skip + safeLimit).map((row) => this.toListItem(row));
 
     return { items, total, page: safePage, limit: safeLimit };
+  }
+
+  private isJobReleaseReady(row: {
+    localSeoScore: number | null;
+    semrushScore: number | null;
+    seoCheckData: unknown;
+  }): boolean {
+    const thresholds = (row.seoCheckData as {
+      scoreThresholds?: {
+        localPassThreshold?: number;
+        semrushPassThreshold?: number;
+      };
+    } | null)?.scoreThresholds;
+
+    return evaluateReleaseReadiness({
+      localScore: row.localSeoScore,
+      semrushScore: row.semrushScore,
+      localPassThreshold: thresholds?.localPassThreshold,
+      semrushPassThreshold: thresholds?.semrushPassThreshold,
+    }).releaseReady;
   }
 
   private isCmsPublishFailed(seoCheckData: unknown): boolean {

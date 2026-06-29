@@ -22,6 +22,7 @@
               <el-option label="敏感内容待审核" value="reviewPending" />
               <el-option label="生成中" value="generating" />
               <el-option label="生成失败" value="failed" />
+              <el-option label="SEO 未达标" value="seoNotReady" />
               <el-option v-if="cmsUiEnabled" label="待发布" value="publishPending" />
               <el-option label="稿件待处理" value="staleDraft" />
               <el-option v-if="cmsUiEnabled" label="发布失败" value="publishFailed" />
@@ -276,6 +277,7 @@ import { WORDPRESS_CMS_UI_ENABLED } from "@/constants/feature-flags";
 import { message } from "@/utils/message";
 import { canPublishJobToCms } from "@/utils/seo-factory/cms-publish-status";
 import { isBriefPending, isReviewPending } from "@/utils/seo-factory/job-progress";
+import { isJobReleaseReady } from "@/utils/seo-factory/release-readiness";
 import { resolveJobListPrimaryTag } from "@/utils/seo-factory/job-list-status";
 import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
 
@@ -326,6 +328,7 @@ type JobListStage =
   | "reviewPending"
   | "generating"
   | "failed"
+  | "seoNotReady"
   | "publishPending"
   | "staleDraft"
   | "publishFailed";
@@ -363,6 +366,12 @@ const stageAlert = computed(() => {
         title: "仅显示生成失败的任务",
         description: "可勾选后批量重试，或逐条点击「重新生成」。"
       };
+    case "seoNotReady":
+      return {
+        type: "warning" as const,
+        title: "仅显示 SEO 未达标的任务",
+        description: "本地或 Semrush 分数未过线，建议进详情诊断并重新优化。"
+      };
     case "publishPending":
       return {
         type: "info" as const,
@@ -390,6 +399,7 @@ const outlinePendingFilter = computed(() => listFilter.value === "outlinePending
 const reviewPendingFilter = computed(() => listFilter.value === "reviewPending");
 const generatingFilter = computed(() => listFilter.value === "generating");
 const failedFilter = computed(() => listFilter.value === "failed");
+const seoNotReadyFilter = computed(() => listFilter.value === "seoNotReady");
 const publishPendingFilter = computed(() => listFilter.value === "publishPending");
 const staleDraftFilter = computed(() => listFilter.value === "staleDraft");
 const publishFailedFilter = computed(() => listFilter.value === "publishFailed");
@@ -433,7 +443,9 @@ const briefApprovableSelected = computed(() =>
 );
 
 const publishableSelected = computed(() =>
-  selectedJobs.value.filter((job) => canPublishJobToCms(job))
+  selectedJobs.value.filter(
+    (job) => canPublishJobToCms(job) && isJobReleaseReady(job)
+  )
 );
 
 const exportableSelected = computed(() =>
@@ -480,6 +492,7 @@ async function fetchJobs(showLoading = true) {
       generating: generatingFilter.value,
       cmsPublishFailed: publishFailedFilter.value,
       cmsPublishPending: publishPendingFilter.value,
+      seoNotReady: seoNotReadyFilter.value,
       staleDraft: staleDraftFilter.value,
       assignedToMe: assignedToMeFilter.value,
       siteOwner: siteOwnerMeFilter.value ? "me" : undefined,
@@ -817,6 +830,7 @@ function resolveStageFromRoute(): JobListStage {
       "reviewPending",
       "generating",
       "failed",
+      "seoNotReady",
       "publishPending",
       "staleDraft",
       "publishFailed"
@@ -836,6 +850,9 @@ function resolveStageFromRoute(): JobListStage {
   }
   if (route.query.staleDraft === "1" || route.query.staleDraft === "true") {
     return "staleDraft";
+  }
+  if (route.query.seoNotReady === "1" || route.query.seoNotReady === "true") {
+    return "seoNotReady";
   }
   if (route.query.cmsPublishFailed === "1" || route.query.cmsPublishFailed === "true") {
     return "publishFailed";

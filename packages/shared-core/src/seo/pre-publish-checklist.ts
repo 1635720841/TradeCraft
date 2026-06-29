@@ -21,6 +21,8 @@ export interface PrePublishChecklistInput {
   cmsPublished: boolean;
   canPublishCms: boolean;
   cmsBlocked: boolean;
+  seoReleaseReady?: boolean;
+  seoReadyHint?: string;
   resolvingAction?: string | null;
   publishingCms?: boolean;
 }
@@ -31,6 +33,7 @@ export type PrePublishChecklistAction =
   | "go_edit"
   | "go_internal_links"
   | "go_images"
+  | "go_seo"
   | "publish_cms";
 
 export interface PrePublishChecklistItem {
@@ -87,6 +90,13 @@ export function buildPrePublishChecklistItems(
       action: input.ymylNeedsReview ? "go_ymyl" : undefined,
     },
     {
+      id: "seo_ready",
+      label: "SEO 达标",
+      hint: input.seoReadyHint ?? (input.seoReleaseReady ? "本地与 Semrush 均已达标" : "分数未达标，建议先优化"),
+      done: input.seoReleaseReady === true,
+      action: input.seoReleaseReady ? undefined : "go_seo",
+    },
+    {
       id: "export_ready",
       label: "导出物",
       hint: input.exportStale
@@ -119,7 +129,7 @@ export function buildPrePublishChecklistItems(
       done: input.cmsPublished,
       action: input.canPublishCms ? "publish_cms" : undefined,
       loading: Boolean(input.publishingCms),
-      disabled: input.cmsBlocked,
+      disabled: input.cmsBlocked || input.seoReleaseReady === false,
     });
   }
 

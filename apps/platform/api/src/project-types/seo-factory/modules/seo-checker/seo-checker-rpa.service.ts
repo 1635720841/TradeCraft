@@ -22,12 +22,14 @@ import {
 } from '../../utils/seo-pipeline-flow-log.util';
 import type { SemrushCheckPending, SemrushRpaInFlight } from '../../constants/semrush-check';
 import { flowCtx } from './seo-checker-scoring.util';
+import { SeoCheckerProgressService } from './seo-checker-progress.service';
 
 @Injectable()
 export class SeoCheckerRpaService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly semrushQueue: SemrushQueueService,
+    private readonly progressService: SeoCheckerProgressService,
     private readonly logger: LoggerService,
   ) {}
 
@@ -90,10 +92,27 @@ export class SeoCheckerRpaService {
     let result: SeoScore;
     let shouldClearRpaInFlight = true;
     try {
-      result = await this.semrushQueue.runCheck(resolved, {
-        traceId: ctx.traceId,
-        jobId: ctx.jobId,
-      });
+      result = await this.semrushQueue.runCheck(
+        resolved,
+        {
+          traceId: ctx.traceId,
+          jobId: ctx.jobId,
+        },
+        {
+          onEnqueued: async (bullJobId) => {
+            await this.patchRpaBullJobId(ctx, bullJobId);
+            const queueStatus = await this.semrushQueue.resolveJobQueueStatus(bullJobId);
+            await this.progressService.touchWorkflowProgress(ctx, {
+              phase: 'semrush-queue',
+              message:
+                queueStatus.waitingAhead != null && queueStatus.waitingAhead > 0
+                  ? `Semrush 排队中，前面还有 ${queueStatus.waitingAhead} 个任务…`
+                  : 'Semrush 排队中，请稍候…',
+              waitingAhead: queueStatus.waitingAhead ?? undefined,
+            });
+          },
+        },
+      );
 
       await persistSemrushQueueCheckpoint(
         this.prisma,
@@ -177,6 +196,32 @@ export class SeoCheckerRpaService {
           semrush: {
             ...prevSemrush,
             rpaInFlight,
+          },
+        } as object,
+      },
+    });
+  }
+
+  async patchRpaBullJobId(ctx: LlmJobContext, bullJobId: string): Promise<void> {
+    const job = await this.prisma.articleJob.findFirst({
+      where: { id: ctx.jobId, organizationId: ctx.organizationId, projectId: ctx.projectId },
+      select: { seoCheckData: true },
+    });
+    const prevCheck = (job?.seoCheckData ?? {}) as Record<string, unknown>;
+    const prevSemrush = (prevCheck.semrush ?? {}) as Record<string, unknown>;
+    const prevInFlight = (prevSemrush.rpaInFlight ?? {}) as SemrushRpaInFlight;
+
+    await this.prisma.articleJob.updateMany({
+      where: { id: ctx.jobId, organizationId: ctx.organizationId, projectId: ctx.projectId },
+      data: {
+        seoCheckData: {
+          ...prevCheck,
+          semrush: {
+            ...prevSemrush,
+            rpaInFlight: {
+              ...prevInFlight,
+              bullJobId,
+            },
           },
         } as object,
       },

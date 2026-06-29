@@ -62,6 +62,15 @@
           去审查
         </el-button>
         <el-button
+          v-else-if="item.action === 'go_seo' && !item.done"
+          size="small"
+          type="warning"
+          plain
+          @click="emit('go-seo')"
+        >
+          去诊断
+        </el-button>
+        <el-button
           v-else-if="item.action === 'go_edit' && !item.done"
           size="small"
           plain
@@ -89,9 +98,10 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
-  action: [action: Exclude<PublishChecklistAction, "go_ymyl" | "go_edit" | "go_internal_links" | "go_images" | "go_sites">];
+  action: [action: Exclude<PublishChecklistAction, "go_ymyl" | "go_edit" | "go_internal_links" | "go_images" | "go_sites" | "go_seo">];
   "go-ymyl": [];
   "go-edit": [];
+  "go-seo": [];
   "go-tab": [tab: "internalLinks" | "images"];
   "go-sites": [];
 }>();
@@ -103,7 +113,7 @@ const headerTitle = computed(() =>
 );
 
 function isActionButton(action: PublishChecklistAction): boolean {
-  return !["go_ymyl", "go_edit", "go_internal_links", "go_images", "go_sites"].includes(action);
+  return !["go_ymyl", "go_edit", "go_internal_links", "go_images", "go_sites", "go_seo"].includes(action);
 }
 
 function emitAction(action: PublishChecklistAction) {

@@ -305,12 +305,19 @@ export interface DraftEditHistoryResult {
 }
 
 export interface ArticleJobWorkflowProgress {
-  phase: "local-scoring" | "local" | "semrush-check" | "semrush" | "paraphrasing";
+  phase:
+    | "local-scoring"
+    | "local"
+    | "semrush-check"
+    | "semrush"
+    | "semrush-queue"
+    | "paraphrasing";
   round?: number;
   maxRounds?: number;
   message: string;
   localScore?: number;
   semrushScore?: number;
+  waitingAhead?: number;
   updatedAt: string;
 }
 

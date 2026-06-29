@@ -30,6 +30,15 @@ export interface SemrushQueueMeta {
   jobId: string;
 }
 
+export interface SemrushQueueRunHooks {
+  onEnqueued?: (bullJobId: string) => Promise<void>;
+}
+
+export interface SemrushQueueJobStatus {
+  state: string;
+  waitingAhead: number | null;
+}
+
 export interface PlaywrightJobPayload {
   input: SeoCheckInput;
   traceId: string;
@@ -60,7 +69,11 @@ export class SemrushQueueService implements OnModuleInit, OnModuleDestroy {
     await this.queueEvents?.close();
   }
 
-  async runCheck(input: SeoCheckInput, meta: SemrushQueueMeta): Promise<SeoScore> {
+  async runCheck(
+    input: SeoCheckInput,
+    meta: SemrushQueueMeta,
+    hooks?: SemrushQueueRunHooks,
+  ): Promise<SeoScore> {
     if (!isPlaywrightQueueEnabled()) {
       return this.semrushChecker.checkScore(input);
     }
@@ -85,6 +98,10 @@ export class SemrushQueueService implements OnModuleInit, OnModuleDestroy {
       bullJobId: bullJob.id,
     });
 
+    if (bullJob.id != null) {
+      await hooks?.onEnqueued?.(String(bullJob.id));
+    }
+
     const result = await waitForPlaywrightJobResult(
       bullJob,
       this.queue,
@@ -103,5 +120,19 @@ export class SemrushQueueService implements OnModuleInit, OnModuleDestroy {
       },
     );
     return result as SeoScore;
+  }
+
+  async resolveJobQueueStatus(bullJobId: string): Promise<SemrushQueueJobStatus> {
+    const job = await this.queue.getJob(bullJobId);
+    if (!job) return { state: 'unknown', waitingAhead: null };
+
+    const state = await job.getState();
+    if (state !== 'waiting') {
+      return { state, waitingAhead: null };
+    }
+
+    const waiting = await this.queue.getWaiting(0, 200);
+    const index = waiting.findIndex((item) => String(item.id) === bullJobId);
+    return { state, waitingAhead: index >= 0 ? index : null };
   }
 }

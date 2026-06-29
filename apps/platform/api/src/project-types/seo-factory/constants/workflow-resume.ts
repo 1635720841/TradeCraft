@@ -1,18 +1,9 @@
 /** 工作流步骤：SERP → Brief → 初稿 → 内链 → 配图 → Semrush 优化 → QuillBot → YMYL 审查 */
+import { WORKFLOW_STEPS, type WorkflowStep } from '@wm/shared-core';
 import { SEMRUSH_PASS_THRESHOLD } from './seo-score';
 
-export const WORKFLOW_STEPS = [
-  'serp',
-  'brief',
-  'draft',
-  'linking',
-  'images',
-  'optimizing',
-  'paraphrasing',
-  'ymyl',
-] as const;
-
-export type WorkflowResumeStep = (typeof WORKFLOW_STEPS)[number];
+export { WORKFLOW_STEPS };
+export type WorkflowResumeStep = WorkflowStep;
 
 export interface WorkflowMeta {
   failedStep?: WorkflowResumeStep;

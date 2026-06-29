@@ -54,6 +54,17 @@
           </span>
           <strong class="job-outcome-summary__title">{{ outcomeTitle }}</strong>
           <p class="job-outcome-summary__desc">{{ outcomeDesc }}</p>
+          <el-tag
+            v-if="summary.isCompleted"
+            size="small"
+            :type="releaseReady ? 'success' : 'warning'"
+            class="job-outcome-summary__readiness"
+          >
+            {{ readinessLabel }}
+          </el-tag>
+          <p v-if="!releaseReady && readinessGap" class="job-outcome-summary__gap">
+            {{ readinessGap }}
+          </p>
 
           <div class="job-outcome-summary__scores">
             <button
@@ -222,6 +233,7 @@ import {
   countSeoIssueItems,
   isSeoReleaseReady
 } from "@/utils/seo-factory/job-seo-issues";
+import { resolveJobReleaseReadiness } from "@/utils/seo-factory/release-readiness";
 import { message } from "@/utils/message";
 
 defineOptions({ name: "ArticleJobOutcomeSummaryCard" });
@@ -266,6 +278,9 @@ const issueCount = computed(() => countSeoIssueItems(props.job.seoCheckData));
 const releaseReady = computed(() =>
   isSeoReleaseReady(summary.value.localPassed, summary.value.semrushPassed)
 );
+const releaseReadiness = computed(() => resolveJobReleaseReadiness(props.job));
+const readinessLabel = computed(() => releaseReadiness.value.label);
+const readinessGap = computed(() => releaseReadiness.value.gapText);
 const hasTdk = computed(() =>
   Boolean(resolvedMeta.value.title && resolvedMeta.value.metaDescription)
 );

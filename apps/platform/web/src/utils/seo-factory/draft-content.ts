@@ -1,187 +1,38 @@
 /**
- * 稿件正文 Markdown ↔ HTML（与 api semrush-content.ts 对齐，供 Quill 编辑）。
+ * 稿件正文 Markdown ↔ HTML（与 api semrush-content 对齐，供 Quill 编辑）。
  */
 
-import { buildSemrushTableHtml, repairMarkdownStructureArtifacts, repairMarkdownTables } from "@wm/shared-core";
+import {
+  markdownToHtml as sharedMarkdownToHtml,
+  markdownToSemrushHtml as sharedMarkdownToSemrushHtml,
+  renderDraftStandaloneImageHtml,
+  repairMarkdownStructureArtifacts,
+  renderMarkdownTableMarkdown,
+  splitTableRow,
+  isMarkdownTableStart,
+  readMarkdownTable,
+  countMarkdownTables,
+} from "@wm/shared-core";
 
 import {
-  isMarkdownTableRow,
-  isMarkdownTableStart,
-  isTableSeparatorLine,
-  readMarkdownTable,
-  renderMarkdownTableHtml,
-  renderMarkdownTableMarkdown,
-  splitTableRow
-} from "./markdown-table";
-import {
-  buildImageWidthStyleAttr,
   imageElementToMarkdown,
   MARKDOWN_IMAGE_WITH_TITLE_RE,
-  parseImageWidthTitle,
   renderMarkdownImageHtml
 } from "./draft-image-width";
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function escapeHtmlAttr(text: string): string {
-  return escapeHtml(text).replace(/'/g, "&#39;");
-}
-
-const INLINE_MARKDOWN_RE =
-  /!\[([^\]]*)\]\(([^\s)]+)(?:\s+"([^"]*)")?\)|\[([^\]]+)\]\(([^)]+)\)|\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`/g;
-
-function inlineMarkdownToHtml(text: string): string {
-  let html = "";
-  let lastIndex = 0;
-
-  for (const match of text.matchAll(INLINE_MARKDOWN_RE)) {
-    const index = match.index ?? 0;
-    if (index > lastIndex) {
-      html += escapeHtml(text.slice(lastIndex, index));
-    }
-
-    if (match[1] !== undefined && match[2] !== undefined) {
-      html += renderMarkdownImageHtml(match[1], match[2], match[3]);
-    } else if (match[4] !== undefined && match[5] !== undefined) {
-      html += `<a href="${escapeHtmlAttr(match[5])}">${escapeHtml(match[4])}</a>`;
-    } else if (match[6] !== undefined) {
-      html += `<strong>${escapeHtml(match[6])}</strong>`;
-    } else if (match[7] !== undefined) {
-      html += `<em>${escapeHtml(match[7])}</em>`;
-    } else if (match[8] !== undefined) {
-      html += `<code>${escapeHtml(match[8])}</code>`;
-    }
-
-    lastIndex = index + match[0].length;
-  }
-
-  if (lastIndex < text.length) {
-    html += escapeHtml(text.slice(lastIndex));
-  }
-
-  return html;
-}
-
-/** Markdown → HTML（TipTap / 导出预览；保留真实 table） */
 export function markdownToHtml(markdown: string): string {
-  return markdownToHtmlInternal(markdown, false);
+  return sharedMarkdownToHtml(markdown, {
+    blockquote: true,
+    draftImageBlocks: true,
+    draftTableClass: true,
+    renderImage: renderMarkdownImageHtml,
+    matchStandaloneImageLine: (line) => line.match(MARKDOWN_IMAGE_WITH_TITLE_RE),
+    renderStandaloneImage: renderDraftStandaloneImageHtml
+  });
 }
 
-/** Semrush Quill 粘贴专用：表格展平为段落，避免 Quill 丢 table 后粘连文字 */
 export function markdownToSemrushHtml(markdown: string): string {
-  return markdownToHtmlInternal(markdown, true);
-}
-
-function markdownToHtmlInternal(markdown: string, semrushTables: boolean): string {
-  const lines = repairMarkdownStructureArtifacts(repairMarkdownTables(markdown))
-    .replace(/\r\n/g, "\n")
-    .split("\n");
-  const html: string[] = [];
-  let inUl = false;
-  let inOl = false;
-
-  const closeLists = () => {
-    if (inUl) {
-      html.push("</ul>");
-      inUl = false;
-    }
-    if (inOl) {
-      html.push("</ol>");
-      inOl = false;
-    }
-  };
-
-  for (let i = 0; i < lines.length; i += 1) {
-    const rawLine = lines[i];
-    const trimmed = rawLine.trimEnd().trim();
-
-    if (!trimmed) {
-      closeLists();
-      continue;
-    }
-
-    if (isMarkdownTableStart(lines, i)) {
-      closeLists();
-      const table = readMarkdownTable(lines, i);
-      html.push(
-        semrushTables
-          ? buildSemrushTableHtml(table.header, table.rows, inlineMarkdownToHtml)
-          : renderMarkdownTableHtml(table.header, table.rows, inlineMarkdownToHtml)
-      );
-      i = table.nextIndex - 1;
-      continue;
-    }
-
-    const heading = trimmed.match(/^(#{1,6})\s+(.+)$/);
-    if (heading) {
-      closeLists();
-      const level = heading[1].length;
-      html.push(`<h${level}>${inlineMarkdownToHtml(heading[2])}</h${level}>`);
-      continue;
-    }
-
-    if (/^[-*]\s+/.test(trimmed)) {
-      if (inOl) {
-        html.push("</ol>");
-        inOl = false;
-      }
-      if (!inUl) {
-        html.push("<ul>");
-        inUl = true;
-      }
-      html.push(`<li>${inlineMarkdownToHtml(trimmed.replace(/^[-*]\s+/, ""))}</li>`);
-      continue;
-    }
-
-    const ordered = trimmed.match(/^\d+\.\s+(.+)$/);
-    if (ordered) {
-      if (inUl) {
-        html.push("</ul>");
-        inUl = false;
-      }
-      if (!inOl) {
-        html.push("<ol>");
-        inOl = true;
-      }
-      html.push(`<li>${inlineMarkdownToHtml(ordered[1])}</li>`);
-      continue;
-    }
-
-    if (trimmed.startsWith("> ")) {
-      closeLists();
-      html.push(`<blockquote>${inlineMarkdownToHtml(trimmed.slice(2))}</blockquote>`);
-      continue;
-    }
-
-    const imageOnly = trimmed.match(MARKDOWN_IMAGE_WITH_TITLE_RE);
-    if (imageOnly) {
-      closeLists();
-      const width = parseImageWidthTitle(imageOnly[3]);
-      const style = buildImageWidthStyleAttr(width);
-      html.push(
-        `<p class="draft-image-block"><img alt="${escapeHtml(imageOnly[1])}" src="${escapeHtmlAttr(imageOnly[2])}"${style}></p>`
-      );
-      continue;
-    }
-
-    if (isMarkdownTableRow(rawLine) && !isTableSeparatorLine(trimmed)) {
-      closeLists();
-      html.push(`<p>${inlineMarkdownToHtml(trimmed)}</p>`);
-      continue;
-    }
-
-    closeLists();
-    html.push(`<p>${inlineMarkdownToHtml(trimmed)}</p>`);
-  }
-
-  closeLists();
-  return html.join("") || "<p><br></p>";
+  return sharedMarkdownToSemrushHtml(markdown);
 }
 
 function inlineNodesToMarkdown(parent: ParentNode): string {
@@ -319,4 +170,4 @@ export function htmlToMarkdown(html: string): string {
   );
 }
 
-export { splitTableRow, isMarkdownTableStart, readMarkdownTable };
+export { splitTableRow, isMarkdownTableStart, readMarkdownTable, countMarkdownTables };

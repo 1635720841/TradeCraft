@@ -11,6 +11,7 @@ import {
 } from "@/utils/seo-factory/cms-publish-status";
 import { draftEditStatusLabel } from "@/utils/seo-factory/draft-edit-preview";
 import { isBriefPending, isReviewPending } from "@/utils/seo-factory/job-progress";
+import { isJobReleaseReady } from "@/utils/seo-factory/release-readiness";
 import { WORDPRESS_CMS_UI_ENABLED } from "@/constants/feature-flags";
 
 export interface JobListPrimaryTag {
@@ -28,6 +29,9 @@ export function resolveJobListPrimaryTag(job: ArticleJobItem): JobListPrimaryTag
   const staleLabel = draftEditStatusLabel(job);
   if (staleLabel) {
     return { label: "改稿待处理", type: "warning" };
+  }
+  if (job.status === "COMPLETED" && !isJobReleaseReady(job)) {
+    return { label: "SEO 未达标", type: "warning" };
   }
   if (WORDPRESS_CMS_UI_ENABLED) {
     const cmsStatus = resolveCmsPublishStatus(job);

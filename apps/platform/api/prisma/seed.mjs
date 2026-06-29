@@ -143,7 +143,8 @@ async function ensureCatalogs() {
     ['console:tenants', '租户管理', '/console/tenants', 'console:tenant:list', ['SUPER_ADMIN', 'PLATFORM_OPERATOR'], 21],
     ['console:prompts', 'Prompt 运营', '/console/prompts', 'console:prompt:read', ['SUPER_ADMIN'], 22],
     ['console:access', '访问控制', '/console/access', 'console:menu:manage', ['SUPER_ADMIN'], 23],
-    ['console:audit', '操作审计', '/console/audit', 'console:audit:read', ['SUPER_ADMIN', 'PLATFORM_OPERATOR'], 24],
+    ['console:health', '系统健康', '/console/health', 'console:tenant:read', ['SUPER_ADMIN', 'PLATFORM_OPERATOR'], 24],
+    ['console:audit', '操作审计', '/console/audit', 'console:audit:read', ['SUPER_ADMIN', 'PLATFORM_OPERATOR'], 25],
   ];
 
   for (const [id, title, routePath, permissionId, targetRoles, sortOrder] of menus) {
@@ -156,7 +157,7 @@ async function ensureCatalogs() {
 
   const adminMenus = ['org:profile', 'org:members', 'org:projects', 'org:billing'];
   const memberMenus = ['org:profile', 'org:projects'];
-  const operatorMenus = ['console:overview', 'console:tenants', 'console:audit'];
+  const operatorMenus = ['console:overview', 'console:tenants', 'console:health', 'console:audit'];
   for (const menuId of adminMenus) {
     await prisma.roleMenuGrant.upsert({
       where: { role_menuId: { role: 'ADMIN', menuId } },

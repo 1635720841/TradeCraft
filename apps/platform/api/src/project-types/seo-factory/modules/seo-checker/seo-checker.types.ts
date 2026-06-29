@@ -6,12 +6,19 @@ import type { SeoScore } from '@wm/provider-interfaces';
 import type { SeoOptimizeHistoryEntry } from '../../utils/seo-pipeline.util';
 
 export interface WorkflowProgress {
-  phase: 'local-scoring' | 'local' | 'semrush-check' | 'semrush';
+  phase:
+    | 'local-scoring'
+    | 'local'
+    | 'semrush-check'
+    | 'semrush'
+    | 'semrush-queue'
+    | 'paraphrasing';
   round?: number;
   maxRounds?: number;
   message: string;
   localScore?: number;
   semrushScore?: number;
+  waitingAhead?: number;
   updatedAt: string;
 }
 

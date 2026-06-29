@@ -64,6 +64,7 @@ export async function listArticleJobs(
     cmsPublishFailed?: boolean;
     cmsPublishPending?: boolean;
     staleDraft?: boolean;
+    seoNotReady?: boolean;
     reviewPending?: boolean;
     assignedToMe?: boolean;
     siteOwner?: "me";
@@ -78,6 +79,7 @@ export async function listArticleJobs(
   if (options.cmsPublishFailed) params.cmsPublishFailed = "1";
   if (options.cmsPublishPending) params.cmsPublishPending = "1";
   if (options.staleDraft) params.staleDraft = "1";
+  if (options.seoNotReady) params.seoNotReady = "1";
   if (options.reviewPending) params.reviewPending = "1";
   if (options.assignedToMe) params.assignedToMe = "1";
   if (options.siteOwner === "me") params.siteOwner = "me";

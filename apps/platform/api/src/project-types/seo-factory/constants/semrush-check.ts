@@ -17,6 +17,7 @@ export interface SemrushRpaInFlight {
   round?: number;
   contentHash?: string;
   submittedKeywords?: string[];
+  bullJobId?: string;
 }
 
 export function isSemrushCheckStale(startedAt: string, now = Date.now()): boolean {

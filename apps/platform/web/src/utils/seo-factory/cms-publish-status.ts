@@ -81,8 +81,8 @@ export function cmsPublishActionLabel(job: ArticleJobItem): string {
     if (job.siteCmsType === "wordpress") return "更新 WordPress 内容";
     return "更新 CMS 内容";
   }
-  if (shopifyProduct) return "推送到产品页";
-  if (job.siteCmsType === "shopify") return "推送到 Shopify";
-  if (job.siteCmsType === "wordpress") return "推送到 WordPress";
-  return "推送到 CMS";
+  if (shopifyProduct) return "推送到产品页草稿";
+  if (job.siteCmsType === "shopify") return "推送到 Shopify 草稿";
+  if (job.siteCmsType === "wordpress") return "推送到 WordPress 草稿";
+  return "推送到 CMS 草稿";
 }

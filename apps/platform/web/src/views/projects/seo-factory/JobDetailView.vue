@@ -250,6 +250,7 @@
             :items="prePublishChecklistItems"
             @action="handlePrePublishChecklistAction"
             @go-ymyl="goDetailTab('diagnose', 'ymyl')"
+            @go-seo="goDetailTab('diagnose', 'seo')"
             @go-edit="goDetailTab('article')"
             @go-tab="handleChecklistGoTab"
             @go-sites="goSiteManage"
@@ -497,11 +498,7 @@ import {
   cancelSemrushCheck,
   discardArticleRewrite,
   deleteArticleJob,
-  downloadArticleExportHtml,
-  downloadArticleExportJsonLd,
-  downloadArticleExportPackage,
   patchArticleDraft,
-  publishArticleJob,
   resolveArticleDraftStale,
   refreshArticleJobSerp,
   rerunArticleOptimization,
@@ -533,6 +530,8 @@ import {
 } from "@/utils/seo-factory/draft-edit-preview";
 import { ElMessageBox } from "element-plus";
 import { useArticleJobPolling } from "@/composables/seo-factory/useArticleJobPolling";
+import { useJobNextStep } from "@/composables/seo-factory/useJobNextStep";
+import { useJobExportActions } from "@/composables/seo-factory/useJobExportActions";
 import { WORDPRESS_CMS_UI_ENABLED } from "@/constants/feature-flags";
 import { message } from "@/utils/message";
 import {
@@ -544,12 +543,9 @@ import {
   SEMRUSH_PASS_THRESHOLD
 } from "@/constants/seo-factory";
 import { dictLabel, dictTagType } from "@/utils/dict";
-import {
-  canPublishJobToCms,
-  cmsPublishActionLabel
-} from "@/utils/seo-factory/cms-publish-status";
 import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
 import { isBriefPending } from "@/utils/seo-factory/job-progress";
+import { formatWorkflowProgressShort } from "@/utils/seo-factory/workflow-progress";
 import type { DiagnoseSection } from "@/utils/seo-factory/job-detail-summary";
 import { resolveEffectiveLocalSeoScore } from "@/utils/seo-factory/local-seo-display";
 import ArticleJobBriefPanel from "./components/ArticleJobBriefPanel.vue";
@@ -654,8 +650,6 @@ const rewriteDrawerOpen = ref(false);
 const rewriteSubmitting = ref(false);
 const rewriteAccepting = ref(false);
 const rewriteDiscarding = ref(false);
-const exportDownloading = ref<"html" | "jsonld" | "package" | null>(null);
-const cmsPublishing = ref(false);
 const draftViewMode = ref<"preview" | "edit">("preview");
 const draftViewOptions = [
   { label: "预览", value: "preview" },
@@ -700,6 +694,23 @@ const draftStaleness = computed(() => job.value?.draftData?.staleness ?? null);
 const exportStale = computed(
   () => draftStaleness.value?.affected?.export === true
 );
+
+const {
+  exportDownloading,
+  cmsPublishing,
+  cmsPublishResult,
+  canPublishToCms,
+  cmsPublishButtonLabel,
+  handlePublishToCms,
+  handleDownloadExport
+} = useJobExportActions({
+  projectId,
+  jobId,
+  job,
+  exportStale,
+  onPublished: fetchOnce
+});
+
 const draftEditHistory = computed(() =>
   [...(job.value?.draftData?.manualEditHistory ?? [])].reverse()
 );
@@ -924,7 +935,8 @@ const optimizingProgressMessage = computed(() => {
   if (job.value?.status === "ILLUSTRATING")
     return "正文配图补足中（Semrush 终检前）…";
   if (job.value?.status !== "OPTIMIZING") return "";
-  if (workflowProgress.value?.message) return workflowProgress.value.message;
+  const progressText = formatWorkflowProgressShort(workflowProgress.value);
+  if (progressText) return progressText;
   if (semrushPending.value) return "Semrush 终检中（手动触发，约 2–5 分钟）…";
   return "工作流优化中（本地预检 + Semrush 终检，全程约 5–20 分钟）…";
 });
@@ -974,174 +986,31 @@ const briefPending = computed(() =>
   job.value ? isBriefPending(job.value) : false
 );
 
-interface NextStepAction {
-  title: string;
-  description?: string;
-  label: string;
-  alertType: "success" | "warning" | "info" | "error";
-  buttonType: "primary" | "success" | "warning" | "danger";
-  handler: () => void;
-}
-
-const nextStep = computed<NextStepAction | null>(() => {
-  const j = job.value;
-  if (!j) return null;
-
-  if (briefPending.value) {
-    return {
-      title: "下一步：确认大纲",
-      description: "核对 AI 大纲后确认，系统才会开始生成正文。",
-      label: "去确认大纲",
-      alertType: "warning",
-      buttonType: "warning",
-      handler: () => {
-        goDetailTab("brief");
-      }
-    };
+const nextStep = useJobNextStep({
+  job,
+  briefPending,
+  exportStale,
+  requiresHumanReview,
+  ymylHumanReviewStatus: computed(
+    () => ymylReview.value?.humanReviewStatus
+  ),
+  cmsUiEnabled,
+  canPublishToCms,
+  cmsPublishButtonLabel,
+  handlers: {
+    goBrief: () => goDetailTab("brief"),
+    goDiagnose: (section) => goDetailTab("diagnose", section as DiagnoseSection),
+    goArticle: () => goDetailTab("article"),
+    handleRetry,
+    handlePublishToCms,
+    handleDownloadHtml: () => handleDownloadExport("html"),
+    handleRerunOptimization: () => goDetailTab("diagnose", "seo")
   }
-
-  if (j.status === "FAILED") {
-    return {
-      title: "下一步：重新生成",
-      description: j.errorMessage || "任务生成失败，可从失败步骤继续。",
-      label: "重新生成",
-      alertType: "error",
-      buttonType: "danger",
-      handler: () => {
-        void handleRetry();
-      }
-    };
-  }
-
-  if (
-    requiresHumanReview.value &&
-    ymylReview.value?.humanReviewStatus !== "approved"
-  ) {
-    return {
-      title: "下一步：敏感内容审核",
-      description: "需人工审核通过后才能导出或发布。",
-      label: "去审核",
-      alertType: "warning",
-      buttonType: "warning",
-      handler: () => {
-        goDetailTab("diagnose", "ymyl");
-      }
-    };
-  }
-
-  if (exportStale.value) {
-    return {
-      title: "下一步：处理稿件变更",
-      description: "正文已编辑，导出物已失效，请按黄色提示重新处理。",
-      label: "去处理稿件",
-      alertType: "warning",
-      buttonType: "warning",
-      handler: () => {
-        goDetailTab("article");
-      }
-    };
-  }
-
-  if (cmsUiEnabled && canPublishToCms.value) {
-    return {
-      title: "下一步：发布到网站",
-      description: "文章已就绪，可推送到 CMS。",
-      label: cmsPublishButtonLabel.value,
-      alertType: "success",
-      buttonType: "success",
-      handler: () => {
-        void handlePublishToCms();
-      }
-    };
-  }
-
-  if (j.status === "COMPLETED" && j.outputUrl && !exportStale.value) {
-    return {
-      title: "下一步：下载文章",
-      description: "文章已生成完成，可下载 HTML 或资产包。",
-      label: "下载 HTML",
-      alertType: "success",
-      buttonType: "primary",
-      handler: () => {
-        void handleDownloadExport("html");
-      }
-    };
-  }
-
-  return null;
 });
 
 async function handleBriefUpdated() {
   startPolling();
   await fetchOnce();
-}
-
-const cmsPublishResult = computed(
-  () => job.value?.seoCheckData?.cmsPublish ?? null
-);
-
-const canPublishToCms = computed(
-  () =>
-    job.value?.status === "COMPLETED" &&
-    Boolean(job.value.outputUrl) &&
-    canPublishJobToCms(job.value)
-);
-
-const cmsPublishButtonLabel = computed(() =>
-  job.value ? cmsPublishActionLabel(job.value) : "推送到 CMS"
-);
-
-async function handlePublishToCms() {
-  if (!canPublishToCms.value || cmsPublishing.value || !job.value) return;
-
-  cmsPublishing.value = true;
-  try {
-    const result = await publishArticleJob(projectId.value, jobId.value);
-    const published =
-      result.status === "publish" ||
-      result.status === "published" ||
-      (result.provider === "shopify" && result.publishedRequested);
-    message(published ? "已发布到 CMS" : "已推送到 CMS 草稿", {
-      type: "success"
-    });
-    await fetchOnce();
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : "CMS 发布失败";
-    message(msg, { type: "error" });
-  } finally {
-    cmsPublishing.value = false;
-  }
-}
-
-async function handleDownloadExport(kind: "html" | "jsonld" | "package") {
-  if (!job.value?.outputUrl || exportDownloading.value) return;
-
-  exportDownloading.value = kind;
-  try {
-    const blob =
-      kind === "html"
-        ? await downloadArticleExportHtml(projectId.value, jobId.value)
-        : kind === "jsonld"
-          ? await downloadArticleExportJsonLd(projectId.value, jobId.value)
-          : await downloadArticleExportPackage(projectId.value, jobId.value);
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    const baseName = job.value.targetKeyword || "article";
-    anchor.href = url;
-    anchor.download =
-      kind === "html"
-        ? `${baseName}.html`
-        : kind === "jsonld"
-          ? `${baseName}.jsonld`
-          : `${baseName}.zip`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : "导出下载失败";
-    message(msg, { type: "error" });
-  } finally {
-    exportDownloading.value = null;
-  }
 }
 
 async function handleRetry() {
@@ -1370,7 +1239,7 @@ function handleChecklistAction(action: DraftResolveStaleAction) {
 function handlePrePublishChecklistAction(
   action: Exclude<
     PublishChecklistAction,
-    "go_ymyl" | "go_edit" | "go_internal_links" | "go_images" | "go_sites"
+    "go_ymyl" | "go_edit" | "go_internal_links" | "go_images" | "go_sites" | "go_seo"
   >
 ) {
   if (action === "publish_cms") {
