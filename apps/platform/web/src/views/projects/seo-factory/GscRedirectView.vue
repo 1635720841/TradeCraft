@@ -1,8 +1,8 @@
 <!--
-  旧 /gsc 路径重定向到设置页搜索表现区块。
+  旧 /gsc 路径重定向到站点详情搜索表现 Tab。
 
   边界：
-  - 不负责：GSC 业务逻辑（ProjectSettingsView）
+  - 不负责：GSC 业务逻辑（SiteDetailView / GscPerformanceView）
 -->
 <template>
   <div />
@@ -18,10 +18,16 @@ const route = useRoute();
 const router = useRouter();
 
 onMounted(() => {
-  void router.replace({
-    name: "SeoFactorySettings",
-    params: route.params,
-    hash: "#gsc"
-  });
+  const projectId = route.params.projectId;
+  const siteId = route.query.siteId;
+  if (typeof siteId === "string" && siteId) {
+    void router.replace({
+      name: "SeoFactorySiteDetail",
+      params: { projectId, siteId },
+      query: { tab: "search" }
+    });
+    return;
+  }
+  void router.replace({ name: "SeoFactorySites", params: { projectId } });
 });
 </script>

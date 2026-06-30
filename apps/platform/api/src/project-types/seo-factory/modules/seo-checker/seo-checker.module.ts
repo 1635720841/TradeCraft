@@ -8,6 +8,8 @@ import { ScoreCalibrationModule } from '../score-calibration/score-calibration.m
 import { LlmModule } from '../llm/llm.module';
 import { SeoCheckerService } from './seo-checker.service';
 import { SeoCheckerPipelineService } from './seo-checker-pipeline.service';
+import { SeoCheckerLocalPipelineService } from './seo-checker-local-pipeline.service';
+import { SeoCheckerSemrushPipelineService } from './seo-checker-semrush-pipeline.service';
 import { SeoCheckerLifecycleService } from './seo-checker-lifecycle.service';
 import { SeoCheckerProgressService } from './seo-checker-progress.service';
 import { SeoCheckerRpaService } from './seo-checker-rpa.service';
@@ -20,6 +22,8 @@ import { SeoCheckerSemrushOptimizeService } from './seo-checker-semrush-optimize
     SeoCheckerRpaService,
     SeoCheckerSemrushOptimizeService,
     SeoCheckerLifecycleService,
+    SeoCheckerLocalPipelineService,
+    SeoCheckerSemrushPipelineService,
     SeoCheckerPipelineService,
     SeoCheckerService,
   ],

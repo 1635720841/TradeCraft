@@ -66,9 +66,22 @@ export class OrgBillingController {
 
   @Get('requests')
   @Permissions('org:billing:read')
-  async listRequests(@ReqCtx() ctx: RequestContext) {
-    const data = await this.billingRequestService.listForOrg(ctx.organizationId);
-    return { data, meta: { traceId: ctx.traceId } };
+  async listRequests(
+    @ReqCtx() ctx: RequestContext,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const result = await this.billingRequestService.listForOrg(ctx.organizationId, {
+      page: page ? Number(page) : 1,
+      limit: limit ? Number(limit) : 20,
+    });
+    return {
+      data: result.items,
+      meta: {
+        traceId: ctx.traceId,
+        pagination: { page: result.page, limit: result.limit, total: result.total },
+      },
+    };
   }
 
   @Post('requests')

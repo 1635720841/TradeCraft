@@ -12,6 +12,7 @@ import { PermissionService } from '../access/permission.service';
 import { AddQuotaTopUpDto } from '../billing/dto/add-quota-topup.dto';
 import { ConsoleService } from './console.service';
 import { ConsoleTenantService } from './console-tenant.service';
+import { ConsoleSiteService } from './console-site.service';
 import { ConsoleAccessService } from './console-access.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { ImpersonateDto } from './dto/impersonate.dto';
@@ -25,6 +26,7 @@ export class ConsoleController {
   constructor(
     private readonly consoleService: ConsoleService,
     private readonly consoleTenantService: ConsoleTenantService,
+    private readonly consoleSiteService: ConsoleSiteService,
     private readonly consoleAccessService: ConsoleAccessService,
     private readonly permissionService: PermissionService,
   ) {}
@@ -63,6 +65,46 @@ export class ConsoleController {
   async createTenant(@ReqCtx() ctx: RequestContext, @Body() dto: CreateTenantDto) {
     const data = await this.consoleTenantService.createTenant(ctx.userId, ctx.traceId, dto);
     return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Get('tenants/:organizationId/projects')
+  @Permissions('console:tenant:read')
+  async listTenantProjects(
+    @ReqCtx() ctx: RequestContext,
+    @Param('organizationId') organizationId: string,
+  ) {
+    const data = await this.consoleTenantService.listTenantProjects(organizationId);
+    return { data, meta: { traceId: ctx.traceId, pagination: { total: data.length } } };
+  }
+
+  @Get('sites')
+  @Permissions('console:tenant:read')
+  async listSites(
+    @ReqCtx() ctx: RequestContext,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('keyword') keyword?: string,
+    @Query('organizationId') organizationId?: string,
+    @Query('projectId') projectId?: string,
+    @Query('profileReady') profileReady?: 'true' | 'false',
+    @Query('gscConnected') gscConnected?: 'true' | 'false',
+  ) {
+    const result = await this.consoleSiteService.listOverview({
+      page: page ? Number(page) : 1,
+      limit: limit ? Number(limit) : 20,
+      keyword,
+      organizationId,
+      projectId,
+      profileReady,
+      gscConnected,
+    });
+    return {
+      data: result.items,
+      meta: {
+        traceId: ctx.traceId,
+        pagination: { page: result.page, limit: result.limit, total: result.total },
+      },
+    };
   }
 
   @Get('tenants/:organizationId')
@@ -249,7 +291,7 @@ export class ConsoleController {
     @ReqCtx() ctx: RequestContext,
     @Param('requestId') requestId: string,
   ) {
-    const data = await this.consoleService.approveBillingRequest(requestId, ctx.userId);
+    const data = await this.consoleService.approveBillingRequest(requestId, ctx.userId, ctx.traceId);
     return { data, meta: { traceId: ctx.traceId } };
   }
 
@@ -259,7 +301,7 @@ export class ConsoleController {
     @ReqCtx() ctx: RequestContext,
     @Param('requestId') requestId: string,
   ) {
-    const data = await this.consoleService.rejectBillingRequest(requestId, ctx.userId);
+    const data = await this.consoleService.rejectBillingRequest(requestId, ctx.userId, ctx.traceId);
     return { data, meta: { traceId: ctx.traceId } };
   }
 

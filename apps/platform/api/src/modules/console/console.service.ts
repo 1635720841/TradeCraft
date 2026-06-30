@@ -95,12 +95,12 @@ export class ConsoleService {
     return this.billingRequestService.listPending();
   }
 
-  approveBillingRequest(requestId: string, reviewerId: string) {
-    return this.billingRequestService.approve(requestId, reviewerId);
+  approveBillingRequest(requestId: string, reviewerId: string, traceId?: string) {
+    return this.billingRequestService.approve(requestId, reviewerId, traceId);
   }
 
-  rejectBillingRequest(requestId: string, reviewerId: string) {
-    return this.billingRequestService.reject(requestId, reviewerId);
+  rejectBillingRequest(requestId: string, reviewerId: string, traceId?: string) {
+    return this.billingRequestService.reject(requestId, reviewerId, traceId);
   }
 
   async impersonate(

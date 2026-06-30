@@ -13,6 +13,7 @@ import {
   BILLING_REQUEST_CREATED_EVENT,
   type BillingRequestCreatedPayload,
 } from '../../core/event-bus/events';
+import { AuditService } from '../access/audit.service';
 import { SubscriptionPlanService } from './subscription-plan.service';
 
 @Injectable()
@@ -21,6 +22,7 @@ export class BillingRequestService {
     private readonly prisma: PrismaService,
     private readonly subscriptionPlanService: SubscriptionPlanService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly auditService: AuditService,
   ) {}
 
   async create(
@@ -57,15 +59,35 @@ export class BillingRequestService {
       requestedById: ctx.userId,
     } satisfies BillingRequestCreatedPayload);
 
+    await this.auditService.log({
+      organizationId: ctx.organizationId,
+      actorUserId: ctx.userId,
+      action: 'org.billing.request.create',
+      targetType: 'BillingChangeRequest',
+      targetId: request.id,
+      metadata: { type: input.type },
+      traceId: ctx.traceId,
+    });
+
     return request;
   }
 
-  async listForOrg(organizationId: string) {
-    return this.prisma.billingChangeRequest.findMany({
-      where: { organizationId },
-      orderBy: { createdAt: 'desc' },
-      take: 20,
-    });
+  async listForOrg(organizationId: string, options?: { page?: number; limit?: number }) {
+    const page = Math.max(1, options?.page ?? 1);
+    const limit = Math.min(100, Math.max(1, options?.limit ?? 20));
+
+    const where = { organizationId };
+    const [total, items] = await Promise.all([
+      this.prisma.billingChangeRequest.count({ where }),
+      this.prisma.billingChangeRequest.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ]);
+
+    return { items, page, limit, total };
   }
 
   async listPending() {
@@ -89,7 +111,7 @@ export class BillingRequestService {
     }));
   }
 
-  async approve(requestId: string, reviewerId: string) {
+  async approve(requestId: string, reviewerId: string, traceId?: string) {
     const request = await this.prisma.billingChangeRequest.findFirst({
       where: { id: requestId, status: 'PENDING' },
     });
@@ -108,13 +130,24 @@ export class BillingRequestService {
       );
     }
 
-    return this.prisma.billingChangeRequest.update({
+    const updated = await this.prisma.billingChangeRequest.update({
       where: { id: requestId },
       data: { status: 'APPROVED', reviewedById: reviewerId, reviewedAt: new Date() },
     });
+
+    await this.auditService.log({
+      organizationId: request.organizationId,
+      actorUserId: reviewerId,
+      action: 'console.billing.request.approve',
+      targetType: 'BillingChangeRequest',
+      targetId: requestId,
+      traceId,
+    });
+
+    return updated;
   }
 
-  async reject(requestId: string, reviewerId: string) {
+  async reject(requestId: string, reviewerId: string, traceId?: string) {
     const request = await this.prisma.billingChangeRequest.findFirst({
       where: { id: requestId, status: 'PENDING' },
     });
@@ -122,9 +155,20 @@ export class BillingRequestService {
       throw new BusinessException(ErrorCodes.NOT_FOUND, '申请不存在');
     }
 
-    return this.prisma.billingChangeRequest.update({
+    const updated = await this.prisma.billingChangeRequest.update({
       where: { id: requestId },
       data: { status: 'REJECTED', reviewedById: reviewerId, reviewedAt: new Date() },
     });
+
+    await this.auditService.log({
+      organizationId: request.organizationId,
+      actorUserId: reviewerId,
+      action: 'console.billing.request.reject',
+      targetType: 'BillingChangeRequest',
+      targetId: requestId,
+      traceId,
+    });
+
+    return updated;
   }
 }

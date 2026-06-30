@@ -28,9 +28,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { auditActionDict } from "@/constants/dicts/platform";
-import { dictLabel } from "@/utils/dict";
-import { http } from "@/utils/http";
-import type { WmApiResponse } from "@/api/platform/types";
+import { dictLabel, dictTagType } from "@/utils/dict";
+import { listOrgAuditLogs } from "@/api/org/audit";
 
 defineOptions({ name: "OrgAuditView" });
 
@@ -57,12 +56,7 @@ function actionLabel(action: string) {
 async function load() {
   loading.value = true;
   try {
-    const res = await http.request<WmApiResponse<AuditRow[]>>(
-      "get",
-      "/api/v1/org/audit-logs",
-      { params: { limit: 50 } }
-    );
-    rows.value = res.data ?? [];
+    rows.value = await listOrgAuditLogs({ limit: 50 });
   } finally {
     loading.value = false;
   }

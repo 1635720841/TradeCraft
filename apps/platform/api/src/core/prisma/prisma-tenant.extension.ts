@@ -1,5 +1,21 @@
 /**
  * Prisma Client Extension：按请求上下文自动注入 organizationId 租户隔离。
+ *
+ * ## 自动隔离（TENANT_MODELS）
+ * 下列模型在 find/count/update/delete 时会自动追加 `where.organizationId`。
+ *
+ * ## 手动 scoping（未纳入扩展）
+ * 以下模型**不能**依赖扩展自动注入，Service 查询必须显式带 orgId / projectId / siteId：
+ *
+ * | 模型 | 原因 |
+ * |------|------|
+ * | `SiteGscConnection` | 以 `siteId` 为业务主键（@unique），跨租户关联通过 Site 级联；Console 代运营需按 site 批量操作 |
+ * | `SitePage` | 页面库按 site 维度索引，内链匹配走 siteId；扩展若只注入 orgId 无法覆盖 Console 无 org 上下文的任务 |
+ * | `PlatformGscCredential` | 平台级单例（id=`default`），无 organizationId 字段，仅 super_admin / platform_operator 可访问 |
+ * | `WebhookDeliveryLog` | 日志表带 orgId 但查询常经 webhookId 反查，需在 Service 双重校验 hook 归属 |
+ * | `PromptTemplate` / 平台配置表 | 平台 Console 资源，无租户字段 |
+ *
+ * 新增模型时：若有 `organizationId` 且所有读写均在租户 JWT 上下文内，加入 TENANT_MODELS；否则在对应 Service 写 IDOR 校验并在此文档补充一行。
  */
 
 import { Prisma } from '@prisma/client';

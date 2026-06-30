@@ -14,9 +14,22 @@ export class OrgWebhookController {
 
   @Get()
   @Permissions('org:integration:manage')
-  async list(@ReqCtx() ctx: RequestContext) {
-    const data = await this.webhookService.list(ctx.organizationId);
-    return { data, meta: { traceId: ctx.traceId } };
+  async list(
+    @ReqCtx() ctx: RequestContext,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const result = await this.webhookService.list(ctx.organizationId, {
+      page: page ? Number(page) : 1,
+      limit: limit ? Number(limit) : 20,
+    });
+    return {
+      data: result.items,
+      meta: {
+        traceId: ctx.traceId,
+        pagination: { page: result.page, limit: result.limit, total: result.total },
+      },
+    };
   }
 
   @Post()
@@ -25,7 +38,12 @@ export class OrgWebhookController {
     @ReqCtx() ctx: RequestContext,
     @Body() body: { url: string; events: string[] },
   ) {
-    const data = await this.webhookService.create(ctx.organizationId, body);
+    const data = await this.webhookService.create(
+      ctx.organizationId,
+      ctx.userId,
+      ctx.traceId,
+      body,
+    );
     return { data, meta: { traceId: ctx.traceId } };
   }
 
@@ -36,14 +54,25 @@ export class OrgWebhookController {
     @Param('id') id: string,
     @Body() body: { url?: string; events?: string[]; isActive?: boolean },
   ) {
-    const data = await this.webhookService.update(ctx.organizationId, id, body);
+    const data = await this.webhookService.update(
+      ctx.organizationId,
+      ctx.userId,
+      ctx.traceId,
+      id,
+      body,
+    );
     return { data, meta: { traceId: ctx.traceId } };
   }
 
   @Delete(':id')
   @Permissions('org:integration:manage')
   async remove(@ReqCtx() ctx: RequestContext, @Param('id') id: string) {
-    const data = await this.webhookService.remove(ctx.organizationId, id);
+    const data = await this.webhookService.remove(
+      ctx.organizationId,
+      ctx.userId,
+      ctx.traceId,
+      id,
+    );
     return { data, meta: { traceId: ctx.traceId } };
   }
 

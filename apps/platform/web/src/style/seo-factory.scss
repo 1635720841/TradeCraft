@@ -215,6 +215,11 @@
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
+  padding: 16px;
+  background: var(--content-surface);
+  border: 1px solid var(--shell-border);
+  border-radius: var(--shell-radius-md);
+  box-shadow: var(--content-shadow);
 
   > .p-4,
   > .space-y-4.p-4,

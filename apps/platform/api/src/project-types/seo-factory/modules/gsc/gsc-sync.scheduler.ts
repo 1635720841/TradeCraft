@@ -12,6 +12,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { GSC_SYNC_QUEUE } from '../../../../core/queue/queue.constants';
+import { assertFeatureEnv } from '../../../../core/config/env.validation';
 import { LoggerService } from '../../../../core/logger/logger.service';
 import { GscService } from './gsc.service';
 
@@ -29,6 +30,8 @@ export class GscSyncScheduler implements OnModuleInit {
     if (process.env.GSC_AUTO_SYNC_ENABLED !== 'true') {
       return;
     }
+
+    assertFeatureEnv('gsc');
 
     if (!this.gscService.isConfigured()) {
       this.logger.info('GSC auto sync skipped: OAuth not configured', {

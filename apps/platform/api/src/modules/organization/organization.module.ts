@@ -9,6 +9,8 @@ import { BillingModule } from '../billing/billing.module';
 import { ProjectModule } from '../project/project.module';
 import { MemberInviteModule } from './member-invite.module';
 import { OrgController } from './org.controller';
+import { OrganizationMemberService } from './organization-member.service';
+import { OrganizationProfileService } from './organization-profile.service';
 import { OrganizationService } from './organization.service';
 import { OrgProductionService } from './org-production.service';
 
@@ -21,7 +23,12 @@ import { OrgProductionService } from './org-production.service';
     forwardRef(() => ProjectModule),
   ],
   controllers: [OrgController],
-  providers: [OrganizationService, OrgProductionService],
+  providers: [
+    OrganizationProfileService,
+    OrganizationMemberService,
+    OrganizationService,
+    OrgProductionService,
+  ],
   exports: [OrganizationService, MemberInviteModule],
 })
 export class OrganizationModule {}

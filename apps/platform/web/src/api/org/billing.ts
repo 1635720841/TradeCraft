@@ -99,12 +99,24 @@ export interface BillingRequestItem {
   reviewedAt?: string | null;
 }
 
-export async function listBillingRequests(): Promise<BillingRequestItem[]> {
-  const res = await http.request<WmApiResponse<BillingRequestItem[]>>(
-    "get",
-    "/api/v1/org/billing/requests"
-  );
-  return res.data ?? [];
+export async function listBillingRequests(
+  page = 1,
+  limit = 50
+): Promise<{
+  items: BillingRequestItem[];
+  pagination: { page: number; limit: number; total: number };
+}> {
+  const res = await http.request<
+    WmApiResponse<BillingRequestItem[]> & {
+      meta?: { pagination?: { page: number; limit: number; total: number } };
+    }
+  >("get", "/api/v1/org/billing/requests", { params: { page, limit } });
+  const pagination = res.meta?.pagination ?? {
+    page,
+    limit,
+    total: res.data?.length ?? 0
+  };
+  return { items: res.data ?? [], pagination };
 }
 
 export interface OrgEntitlements {

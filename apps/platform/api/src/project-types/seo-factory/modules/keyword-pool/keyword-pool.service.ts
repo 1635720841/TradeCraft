@@ -36,6 +36,9 @@ import type { GenerateKeywordSeedsDto } from './dto/generate-keyword-seeds.dto';
 import type { UpdateKeywordDto } from './dto/update-keyword.dto';
 import { computeKeywordPriorityScore, KEYWORD_HIGH_PRIORITY_THRESHOLD } from './keyword-priority.util';
 import { BillingService } from '../../../../modules/billing/billing.service';
+import { EntitlementsService } from '../../../../modules/billing/entitlements.service';
+import { GscService } from '../gsc/gsc.service';
+import type { GscKeywordInsight } from '../gsc/gsc-keyword-match.util';
 import { KeywordClusterService } from './keyword-cluster.service';
 
 const keywordSelect = {
@@ -67,6 +70,8 @@ export class KeywordPoolService {
     private readonly prisma: PrismaService,
     private readonly articleJobService: ArticleJobService,
     private readonly billingService: BillingService,
+    private readonly entitlementsService: EntitlementsService,
+    private readonly gscService: GscService,
     private readonly logger: LoggerService,
     @Inject(LLM_PROVIDER) private readonly llmProvider: ILLMProvider,
     @Inject(KEYWORD_METRICS_PROVIDER)
@@ -145,6 +150,7 @@ export class KeywordPoolService {
       unclustered?: boolean;
       queueable?: boolean;
       excludeArchived?: boolean;
+      gscVerified?: boolean;
     } = {},
   ) {
     await this.sanitizeLegacyMetricsIfNeeded(organizationId, projectId);
@@ -152,7 +158,6 @@ export class KeywordPoolService {
     const page = Math.max(options.page ?? 1, 1);
     const maxLimit = options.clusterId ? 200 : 100;
     const limit = Math.min(Math.max(options.limit ?? 20, 1), maxLimit);
-    const skip = (page - 1) * limit;
 
     const where: Prisma.KeywordEntryWhereInput = {
       organizationId,
@@ -169,6 +174,25 @@ export class KeywordPoolService {
         : {}),
     };
 
+    if (options.gscVerified) {
+      const allItems = await this.prisma.keywordEntry.findMany({
+        where,
+        select: keywordSelect,
+        orderBy: [{ priorityScore: 'desc' }, { updatedAt: 'desc' }],
+        take: 500,
+      });
+      const enriched = await this.attachGscInsights(organizationId, projectId, allItems);
+      const verified = enriched.filter((row) => row.gscInsight && row.gscInsight.status !== 'none');
+      const skip = (page - 1) * limit;
+      return {
+        items: verified.slice(skip, skip + limit),
+        total: verified.length,
+        page,
+        limit,
+      };
+    }
+
+    const skip = (page - 1) * limit;
     const [items, total] = await Promise.all([
       this.prisma.keywordEntry.findMany({
         where,
@@ -180,7 +204,79 @@ export class KeywordPoolService {
       this.prisma.keywordEntry.count({ where }),
     ]);
 
-    return { items, total, page, limit };
+    const enrichedItems = await this.attachGscInsights(organizationId, projectId, items);
+    return { items: enrichedItems, total, page, limit };
+  }
+
+  async listGscDiscoveredQueries(organizationId: string, projectId: string) {
+    const ent = await this.entitlementsService.getForOrganization(organizationId);
+    if (!ent.gscEnabled) {
+      return [];
+    }
+    return this.gscService.getDiscoveredQueries(organizationId, projectId);
+  }
+
+  async importFromGsc(
+    organizationId: string,
+    projectId: string,
+    items: Array<{ query: string; siteId?: string }>,
+  ) {
+    let skipped = 0;
+    const resultItems: Awaited<ReturnType<typeof this.createEntry>>[] = [];
+
+    for (const item of items.slice(0, MAX_BATCH_ACTION_LIMIT)) {
+      try {
+        const entry = await this.createEntry(
+          organizationId,
+          projectId,
+          {
+            keyword: item.query,
+            siteId: item.siteId,
+            businessValueScore: 0.65,
+            contentFitScore: 0.6,
+            notes: '来自 Google 搜索表现',
+          },
+          'GSC' as KeywordSource,
+        );
+        resultItems.push(entry);
+      } catch (error) {
+        if (
+          error instanceof BusinessException &&
+          error.code === ErrorCodes.KEYWORD_EXISTS
+        ) {
+          skipped += 1;
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    const enriched = await this.attachGscInsights(organizationId, projectId, resultItems);
+    return { created: enriched.length, skipped, items: enriched };
+  }
+
+  private async attachGscInsights<T extends { id: string; keyword: string; siteId: string | null; status: string }>(
+    organizationId: string,
+    projectId: string,
+    items: T[],
+  ): Promise<Array<T & { gscInsight?: GscKeywordInsight | null }>> {
+    if (items.length === 0) return items;
+
+    const ent = await this.entitlementsService.getForOrganization(organizationId);
+    if (!ent.gscEnabled) {
+      return items.map((row) => ({ ...row, gscInsight: null }));
+    }
+
+    const queries = await this.gscService.collectProjectGscQueries(organizationId, projectId);
+    if (queries.length === 0) {
+      return items.map((row) => ({ ...row, gscInsight: null }));
+    }
+
+    const insightMap = this.gscService.buildKeywordGscInsights(items, queries);
+    return items.map((row) => ({
+      ...row,
+      gscInsight: insightMap.get(row.id) ?? null,
+    }));
   }
 
   async getSummary(organizationId: string, projectId: string) {

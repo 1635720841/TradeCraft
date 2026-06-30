@@ -1,4 +1,9 @@
+/**
+ * Console 路由：运营概览 + 租户 + 系统管理（健康/GSC/Prompt/审计）+ 平台权限。
+ */
 const Layout = () => import("@/layout/index.vue");
+
+const consoleOpsRoles = ["super_admin", "platform_operator"] as const;
 
 export default {
   path: "/console",
@@ -9,7 +14,7 @@ export default {
     icon: "ep:setting",
     title: "平台管理",
     rank: 3,
-    roles: ["super_admin", "platform_operator"]
+    roles: [...consoleOpsRoles]
   },
   children: [
     {
@@ -20,7 +25,7 @@ export default {
         title: "运营概览",
         menuKey: "console:overview",
         permission: "console:tenant:list",
-        roles: ["super_admin", "platform_operator"]
+        roles: [...consoleOpsRoles]
       }
     },
     {
@@ -31,7 +36,18 @@ export default {
         title: "租户管理",
         menuKey: "console:tenants",
         permission: "console:tenant:list",
-        roles: ["super_admin", "platform_operator"]
+        roles: [...consoleOpsRoles]
+      }
+    },
+    {
+      path: "/console/sites",
+      name: "ConsoleSites",
+      component: () => import("@/views/console/ConsoleSiteOverviewView.vue"),
+      meta: {
+        title: "站点总览",
+        menuKey: "console:sites",
+        permission: "console:tenant:read",
+        roles: [...consoleOpsRoles]
       }
     },
     {
@@ -42,41 +58,99 @@ export default {
         title: "租户详情",
         showLink: false,
         permission: "console:tenant:read",
-        roles: ["super_admin", "platform_operator"]
+        roles: [...consoleOpsRoles]
       }
     },
     {
-      path: "/console/audit",
-      name: "ConsoleAudit",
-      component: () => import("@/views/console/ConsoleAuditView.vue"),
+      path: "/console/system",
+      name: "ConsoleSystem",
+      redirect: "/console/health",
       meta: {
-        title: "操作审计",
-        menuKey: "console:audit",
-        permission: "console:audit:read",
-        roles: ["super_admin", "platform_operator"]
-      }
-    },
-    {
-      path: "/console/health",
-      name: "ConsoleHealth",
-      component: () => import("@/views/console/ConsoleHealthView.vue"),
-      meta: {
-        title: "系统健康",
-        menuKey: "console:health",
-        permission: "console:health:read",
-        roles: ["super_admin", "platform_operator"]
-      }
-    },
-    {
-      path: "/console/prompts",
-      name: "ConsolePrompts",
-      component: () => import("@/views/console/PromptManageView.vue"),
-      meta: {
-        title: "Prompt 运营",
-        menuKey: "console:prompts",
-        permission: "console:prompt:read",
-        roles: ["super_admin", "platform_operator"]
-      }
+        title: "系统管理",
+        icon: "ep:tools",
+        roles: [...consoleOpsRoles]
+      },
+      children: [
+        {
+          path: "/console/audit",
+          name: "ConsoleAudit",
+          component: () => import("@/views/console/ConsoleAuditView.vue"),
+          meta: {
+            title: "操作审计",
+            menuKey: "console:audit",
+            permission: "console:audit:read",
+            roles: [...consoleOpsRoles]
+          }
+        },
+        {
+          path: "/console/health",
+          name: "ConsoleHealth",
+          component: () => import("@/views/console/ConsoleHealthView.vue"),
+          meta: {
+            title: "系统健康",
+            menuKey: "console:health",
+            permission: "console:health:read",
+            roles: [...consoleOpsRoles]
+          }
+        },
+        {
+          path: "/console/gsc",
+          name: "ConsoleGsc",
+          component: () => import("@/views/console/ConsoleGscView.vue"),
+          meta: {
+            title: "搜索表现",
+            menuKey: "console:gsc",
+            permission: "console:gsc:manage",
+            roles: [...consoleOpsRoles]
+          }
+        },
+        {
+          path: "/console/prompts",
+          name: "ConsolePrompts",
+          component: () => import("@/views/console/PromptManageView.vue"),
+          meta: {
+            title: "Prompt 运营",
+            menuKey: "console:prompts",
+            permission: "console:prompt:read",
+            roles: [...consoleOpsRoles]
+          }
+        },
+        {
+          path: "/console/labs/diagnostics",
+          name: "ConsoleProjectDiagnostics",
+          component: () => import("@/views/console/ConsoleProjectDiagnosticsView.vue"),
+          meta: {
+            title: "项目诊断",
+            menuKey: "console:labs",
+            permission: "console:tenant:read",
+            roles: [...consoleOpsRoles]
+          }
+        },
+        {
+          path: "/console/labs/score-calibration",
+          name: "ConsoleScoreLab",
+          component: () => import("@/views/console/ConsoleScoreLabView.vue"),
+          meta: {
+            title: "评分校准实验室",
+            menuKey: "console:labs",
+            permission: "console:tenant:read",
+            roles: [...consoleOpsRoles],
+            showLink: false
+          }
+        },
+        {
+          path: "/console/labs/content-score",
+          name: "ConsoleContentScore",
+          component: () => import("@/views/console/ConsoleContentScoreView.vue"),
+          meta: {
+            title: "内容评分",
+            menuKey: "console:labs",
+            permission: "console:tenant:read",
+            roles: [...consoleOpsRoles],
+            showLink: false
+          }
+        }
+      ]
     },
     {
       path: "/console/access",
@@ -94,14 +168,6 @@ export default {
       redirect: "/console/access",
       meta: {
         title: "菜单管理",
-        showLink: false
-      }
-    },
-    {
-      path: "/console/system",
-      redirect: "/console/health",
-      meta: {
-        title: "系统管理",
         showLink: false
       }
     }

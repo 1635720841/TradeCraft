@@ -2,7 +2,7 @@
  * 站点目标市场：DB 存逗号分隔字符串，API 层使用数组。
  *
  * 边界：
- * - 不负责：SERP 抓取国家（见 serpResearch.country）
+ * - 不负责：SERP 抓取国家（由站点目标市场 + 任务创建时选择）
  */
 
 const MARKET_SEP = /[,，]/;

@@ -81,6 +81,13 @@ export class PromptController {
   @Permissions('console:prompt:manage')
   async create(@ReqCtx() ctx: RequestContext, @Body() dto: CreatePromptTemplateDto) {
     const row = await this.promptService.create(dto);
+    await this.auditService.log({
+      actorUserId: ctx.userId,
+      action: 'console.prompt.create',
+      targetType: 'PromptTemplate',
+      targetId: row.version,
+      traceId: ctx.traceId,
+    });
     return { data: row, meta: { traceId: ctx.traceId } };
   }
 
@@ -107,6 +114,13 @@ export class PromptController {
   @Permissions('console:prompt:manage')
   async remove(@ReqCtx() ctx: RequestContext, @Param('version') version: string) {
     const data = await this.promptService.remove(version);
+    await this.auditService.log({
+      actorUserId: ctx.userId,
+      action: 'console.prompt.delete',
+      targetType: 'PromptTemplate',
+      targetId: version,
+      traceId: ctx.traceId,
+    });
     return { data, meta: { traceId: ctx.traceId } };
   }
 
@@ -115,6 +129,13 @@ export class PromptController {
   async clearCache(@ReqCtx() ctx: RequestContext, @Param('version') version: string) {
     await this.promptService.findOne(version);
     await this.promptService.invalidateCache(version);
+    await this.auditService.log({
+      actorUserId: ctx.userId,
+      action: 'console.prompt.cache_clear',
+      targetType: 'PromptTemplate',
+      targetId: version,
+      traceId: ctx.traceId,
+    });
     return { data: { version, cleared: true }, meta: { traceId: ctx.traceId } };
   }
 }

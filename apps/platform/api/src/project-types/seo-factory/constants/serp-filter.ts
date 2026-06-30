@@ -27,6 +27,15 @@ export const DEFAULT_SITE_CRAWL_LIMIT = 20;
 /** 站点采集 SEO 文章硬上限 */
 export const MAX_SITE_CRAWL_LIMIT = 50;
 
+/** 页面库 Sitemap 同步默认条数（内链候选页，需覆盖全站） */
+export const DEFAULT_SITE_PAGE_LIBRARY_SYNC_LIMIT = 3000;
+
+/** 页面库 Sitemap 同步硬上限 */
+export const MAX_SITE_PAGE_LIBRARY_SYNC_LIMIT = 3000;
+
+/** 页面库 Sitemap 同步下限（站点级配置） */
+export const MIN_SITE_PAGE_LIBRARY_SYNC_LIMIT = 100;
+
 /** 批量创建任务默认条数 */
 export const DEFAULT_BATCH_JOB_LIMIT = 5;
 

@@ -69,9 +69,22 @@ export class OrgController {
 
   @Get('members')
   @Permissions('org:member:list')
-  async listMembers(@ReqCtx() ctx: RequestContext) {
-    const data = await this.organizationService.listMembers(ctx.organizationId, ctx.role);
-    return { data, meta: { traceId: ctx.traceId, total: data.length } };
+  async listMembers(
+    @ReqCtx() ctx: RequestContext,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const result = await this.organizationService.listMembers(ctx.organizationId, ctx.role, {
+      page: page ? Number(page) : 1,
+      limit: limit ? Number(limit) : 50,
+    });
+    return {
+      data: result.items,
+      meta: {
+        traceId: ctx.traceId,
+        pagination: { page: result.page, limit: result.limit, total: result.total },
+      },
+    };
   }
 
   @Post('members/invite')

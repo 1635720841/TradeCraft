@@ -43,7 +43,7 @@ export class ProjectAccessService {
       accessEnd: Date | null;
     },
   ): Promise<void> {
-    if (ctx.role === Role.SUPER_ADMIN) {
+    if (ctx.role === Role.SUPER_ADMIN || ctx.role === Role.PLATFORM_OPERATOR) {
       return;
     }
 
@@ -73,7 +73,11 @@ export class ProjectAccessService {
     project: { id: string; projectType: string },
     required: readonly string[],
   ): Promise<void> {
-    if (ctx.role === Role.SUPER_ADMIN || required.length === 0) {
+    if (
+      ctx.role === Role.SUPER_ADMIN ||
+      ctx.role === Role.PLATFORM_OPERATOR ||
+      required.length === 0
+    ) {
       return;
     }
 

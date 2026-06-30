@@ -110,7 +110,9 @@ export class WorkflowService {
     const steps: Record<WorkflowResumeStep, () => Promise<void>> = {
       serp: async () => {
         await this.updateStatus(jobId, 'RESEARCHING');
-        const serp = resolveSerpResearchOptions(job.site.settings, scraperOptions);
+        const serp = resolveSerpResearchOptions(job.site.settings, scraperOptions, {
+          targetMarket: job.site.targetMarket,
+        });
         await this.scraperService.researchSerp({
           jobId: ctx.jobId,
           traceId: ctx.traceId,

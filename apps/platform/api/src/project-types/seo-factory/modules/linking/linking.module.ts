@@ -10,12 +10,11 @@ import { ProjectModule } from '../../../../modules/project/project.module';
 import { SiteModule } from '../site/site.module';
 import { LinkingService } from './linking.service';
 import { SitePageController } from './site-page.controller';
-import { SitePageService } from './site-page.service';
 
 @Module({
   imports: [ProjectModule, SiteModule],
   controllers: [SitePageController],
-  providers: [LinkingService, SitePageService],
-  exports: [LinkingService, SitePageService],
+  providers: [LinkingService],
+  exports: [LinkingService],
 })
 export class LinkingModule {}

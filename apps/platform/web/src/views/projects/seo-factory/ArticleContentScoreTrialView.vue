@@ -9,7 +9,8 @@
   <div class="space-y-4 p-4">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <el-button link type="primary" @click="goSettings">← 返回设置</el-button>
+        <el-button v-if="!consoleMode" link type="primary" @click="goSettings">← 返回项目配置</el-button>
+        <el-button v-else link type="primary" @click="goConsoleDiagnostics">← 返回项目诊断</el-button>
         <h1 class="mt-1 text-lg font-medium">内容评分</h1>
         <p class="text-sm text-gray-500">
           在左侧从 Semrush 正文区复制后直接 Ctrl+V 粘贴，秒级得到 0–10 分（与改稿页同一套算法，不跑 RPA）。
@@ -138,7 +139,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { normalizeArticleScoreContent, parseTargetKeywordsInput } from "@wm/shared-core";
 import { scoreArticleContentTrial, type ArticleContentScoreResult } from "@/api/seo-factory/article-score";
@@ -146,12 +147,23 @@ import { scoreCalibrationConfidenceDict } from "@/constants/dicts/score-calibrat
 import { dictLabel, dictTagType } from "@/utils/dict";
 import ScoreCalibrationFeatureAttributionPanel from "./components/score-calibration/ScoreCalibrationFeatureAttributionPanel.vue";
 import ArticleContentPasteEditor from "./components/seo/ArticleContentPasteEditor.vue";
+import { isPlatformOperatorUser } from "@/utils/platform-operator-access";
 
 defineOptions({ name: "ArticleContentScoreTrialView" });
 
+const props = withDefaults(
+  defineProps<{
+    projectId?: string;
+    consoleMode?: boolean;
+  }>(),
+  { projectId: "", consoleMode: false }
+);
+
 const route = useRoute();
 const router = useRouter();
-const projectId = computed(() => route.params.projectId as string);
+const effectiveProjectId = computed(
+  () => props.projectId || (route.params.projectId as string) || ""
+);
 
 const form = reactive({
   targetKeywordsText: "",
@@ -173,7 +185,7 @@ async function handleScore() {
   const keywordList = parsedKeywords.value;
   loading.value = true;
   try {
-    result.value = await scoreArticleContentTrial(projectId.value, {
+    result.value = await scoreArticleContentTrial(effectiveProjectId.value, {
       targetKeyword: keywordList[0],
       submittedKeywords: keywordList,
       content: normalizeArticleScoreContent(form.content),
@@ -186,10 +198,30 @@ async function handleScore() {
 }
 
 function goSettings() {
-  router.push({ name: "SeoFactorySettings", params: { projectId: projectId.value } });
+  router.push({ name: "SeoFactorySettings", params: { projectId: effectiveProjectId.value } });
+}
+
+function goConsoleDiagnostics() {
+  router.push({
+    name: "ConsoleProjectDiagnostics",
+    query: { projectId: effectiveProjectId.value }
+  });
 }
 
 function goScoreLab() {
-  router.push({ name: "SeoFactoryScoreLab", params: { projectId: projectId.value } });
+  if (props.consoleMode) {
+    router.push({
+      name: "ConsoleScoreLab",
+      query: { projectId: effectiveProjectId.value }
+    });
+    return;
+  }
+  router.push({ name: "SeoFactoryScoreLab", params: { projectId: effectiveProjectId.value } });
 }
+
+onMounted(() => {
+  if (!props.consoleMode && !isPlatformOperatorUser()) {
+    void router.replace({ path: "/error/403" });
+  }
+});
 </script>

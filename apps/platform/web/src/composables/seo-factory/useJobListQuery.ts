@@ -109,25 +109,9 @@ export function useJobListQuery(projectId: string) {
   );
   const siteOwnerMeFilter = computed(() => route.query.siteOwner === "me");
 
-  const assignedToMeAlert = computed(() =>
-    assignedToMeFilter.value
-      ? {
-          type: "info" as const,
-          title: "仅显示指派给您的任务",
-          description: "可在详情中查看进度、改稿或发布。"
-        }
-      : null
-  );
+  const assignedToMeAlert = computed(() => null);
 
-  const siteOwnerMeAlert = computed(() =>
-    siteOwnerMeFilter.value
-      ? {
-          type: "info" as const,
-          title: "仅显示您负责站点的任务",
-          description: "站点负责人在「站点管理」中配置。"
-        }
-      : null
-  );
+  const siteOwnerMeAlert = computed(() => null);
 
   const hasActiveJobs = computed(() =>
     jobs.value.some(

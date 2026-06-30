@@ -7,36 +7,53 @@ import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../core/database/prisma.service';
 import { BusinessException } from '../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../core/exceptions/error-codes';
+import { AuditService } from '../access/audit.service';
 import { WEBHOOK_EVENT_ALLOWLIST } from './webhook-events.constants';
 import { assertSafeWebhookUrl } from './webhook-url-guard.util';
 
 @Injectable()
 export class WebhookService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
+  ) {}
 
-  list(organizationId: string) {
-    return this.prisma.orgWebhook.findMany({
-      where: { organizationId },
-      select: {
-        id: true,
-        url: true,
-        events: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+  async list(organizationId: string, options?: { page?: number; limit?: number }) {
+    const page = Math.max(1, options?.page ?? 1);
+    const limit = Math.min(100, Math.max(1, options?.limit ?? 20));
+
+    const where = { organizationId };
+    const [total, items] = await Promise.all([
+      this.prisma.orgWebhook.count({ where }),
+      this.prisma.orgWebhook.findMany({
+        where,
+        select: {
+          id: true,
+          url: true,
+          events: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ]);
+
+    return { items, page, limit, total };
   }
 
-  create(
+  async create(
     organizationId: string,
+    actorUserId: string,
+    traceId: string,
     input: { url: string; events: string[] },
   ) {
     this.assertEvents(input.events);
     const url = assertSafeWebhookUrl(input.url);
 
-    return this.prisma.orgWebhook.create({
+    const row = await this.prisma.orgWebhook.create({
       data: {
         organizationId,
         url,
@@ -52,10 +69,23 @@ export class WebhookService {
         createdAt: true,
       },
     });
+
+    await this.auditService.log({
+      organizationId,
+      actorUserId,
+      action: 'org.webhook.create',
+      targetType: 'OrgWebhook',
+      targetId: row.id,
+      traceId,
+    });
+
+    return row;
   }
 
   async update(
     organizationId: string,
+    actorUserId: string,
+    traceId: string,
     webhookId: string,
     input: { url?: string; events?: string[]; isActive?: boolean },
   ) {
@@ -68,7 +98,7 @@ export class WebhookService {
 
     if (input.events) this.assertEvents(input.events);
 
-    return this.prisma.orgWebhook.update({
+    const row = await this.prisma.orgWebhook.update({
       where: { id: webhookId },
       data: {
         url: input.url ? assertSafeWebhookUrl(input.url) : undefined,
@@ -77,17 +107,40 @@ export class WebhookService {
       },
       select: { id: true, url: true, events: true, isActive: true, updatedAt: true },
     });
+
+    await this.auditService.log({
+      organizationId,
+      actorUserId,
+      action: 'org.webhook.update',
+      targetType: 'OrgWebhook',
+      targetId: webhookId,
+      metadata: { fields: Object.keys(input) },
+      traceId,
+    });
+
+    return row;
   }
 
-  async remove(organizationId: string, webhookId: string) {
+  async remove(organizationId: string, actorUserId: string, traceId: string, webhookId: string) {
     const hook = await this.prisma.orgWebhook.findFirst({
       where: { id: webhookId, organizationId },
     });
     if (!hook) {
       throw new BusinessException(ErrorCodes.NOT_FOUND, 'Webhook 不存在');
     }
+
     await this.prisma.orgWebhook.delete({ where: { id: webhookId } });
-    return { ok: true };
+
+    await this.auditService.log({
+      organizationId,
+      actorUserId,
+      action: 'org.webhook.delete',
+      targetType: 'OrgWebhook',
+      targetId: webhookId,
+      traceId,
+    });
+
+    return { deleted: true };
   }
 
   async listDeliveries(

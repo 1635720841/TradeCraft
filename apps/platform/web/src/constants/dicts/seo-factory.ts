@@ -150,7 +150,8 @@ export const keywordStatusDict: DictItem[] = [
 export const keywordSourceDict: DictItem[] = [
   { value: "MANUAL", label: "手动", type: "info" },
   { value: "IMPORT", label: "批量导入", type: "primary" },
-  { value: "AI_SEED", label: "AI 种子", type: "warning" }
+  { value: "AI_SEED", label: "AI 种子", type: "warning" },
+  { value: "GSC", label: "本站 Google", type: "success" }
 ];
 
 /** 站点页面类型（与 Prisma SitePageType 一致） */

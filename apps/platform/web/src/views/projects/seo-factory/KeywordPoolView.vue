@@ -21,7 +21,14 @@
               创建任务{{ selectedKeywords.length > 0 ? `（${selectedKeywords.length}）` : "" }}
             </el-button>
             <el-button v-if="canManageKeywords" @click="openImportDialog">批量导入</el-button>
-            <el-button v-if="canManageKeywords" @click="openSeedDialog">AI 生成种子词</el-button>
+            <el-tooltip
+              v-if="canManageKeywords"
+              content="来自您站点在 Google 搜索控制台的真实搜索词，尚未加入词库"
+              placement="top"
+            >
+              <el-button @click="openGscImportDialog">本站 Google 搜索词</el-button>
+            </el-tooltip>
+            <el-button v-if="canManageKeywords" @click="openSeedDialog()">AI 生成种子词</el-button>
             <el-button @click="fetchKeywords">刷新</el-button>
           </div>
         </div>
@@ -90,6 +97,7 @@
       <div class="mb-4 flex flex-wrap items-center gap-3">
         <el-radio-group v-model="quickFilter" @change="onQuickFilterChange">
           <el-radio-button value="queueable">待写</el-radio-button>
+          <el-radio-button value="gscVerified">本站有曝光</el-radio-button>
           <el-radio-button value="unclustered">未分组</el-radio-button>
           <el-radio-button value="all">全部</el-radio-button>
         </el-radio-group>
@@ -134,6 +142,20 @@
       >
         <el-table-column type="selection" width="48" :selectable="isRowSelectable" />
         <el-table-column prop="keyword" label="关键词" min-width="180" show-overflow-tooltip />
+        <el-table-column label="站点搜索" width="108">
+          <template #default="{ row }">
+            <el-tooltip
+              v-if="row.gscInsight && row.gscInsight.status !== 'none'"
+              :content="gscInsightHint(row.gscInsight)"
+              placement="top"
+            >
+              <el-tag :type="gscInsightTagType(row.gscInsight.status)" size="small">
+                {{ gscInsightLabel(row.gscInsight.status) }}
+              </el-tag>
+            </el-tooltip>
+            <span v-else class="text-xs text-gray-400">-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="priorityScore" label="建议优先级" width="108" sortable>
           <template #default="{ row }">
             <el-tooltip :content="priorityHint(row.priorityScore)" placement="top">
@@ -170,6 +192,14 @@
         </el-table-column>
         <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
+            <el-button
+              v-if="canManageKeywords && row.gscInsight && row.gscInsight.status !== 'none'"
+              type="primary"
+              link
+              @click="expandKeywordFromGsc(row as KeywordEntryItem)"
+            >
+              AI 扩展
+            </el-button>
             <el-button
               v-if="row.status !== 'ARCHIVED' && row.status !== 'USED'"
               type="primary"
@@ -279,6 +309,15 @@
       @closed="resetSeedDialog"
     >
       <template v-if="seedStep === 'config'">
+        <el-alert
+          v-if="seedFromGsc"
+          class="mb-4"
+          type="success"
+          :closable="false"
+          show-icon
+          title="已带入本站 Google 搜索词"
+          description="AI 将围绕该站点真实搜索词扩展相关长尾选题；预览后勾选加入词库。"
+        />
         <el-collapse class="mb-4">
           <el-collapse-item title="这个功能是做什么的？" name="principle">
             <div class="space-y-2 text-sm leading-relaxed text-gray-600">
@@ -306,14 +345,18 @@
           <el-form-item label="生成数量">
             <el-input-number v-model="seedForm.count" :min="5" :max="30" class="w-full" />
           </el-form-item>
-          <el-form-item label="主题聚焦">
+          <el-form-item :label="seedFromGsc ? '搜索锚点' : '主题聚焦'">
             <el-input
               v-model="seedForm.topicHint"
               type="textarea"
               :rows="3"
               maxlength="500"
               show-word-limit
-              placeholder="可选，如：工业阀门、B2B 采购决策"
+              :placeholder="
+                seedFromGsc
+                  ? '来自本站 Google 搜索数据，可微调后生成'
+                  : '可选，如：工业阀门、B2B 采购决策'
+              "
             />
           </el-form-item>
         </el-form>
@@ -444,6 +487,60 @@
       </template>
     </el-dialog>
 
+    <el-dialog
+      v-model="gscImportDialogVisible"
+      title="加入本站 Google 搜索词"
+      width="640px"
+      destroy-on-close
+    >
+      <el-alert
+        class="mb-4"
+        type="info"
+        :closable="false"
+        show-icon
+        title="站点在 Google 已有搜索曝光，词库尚未收录"
+        description="以下为您站点在 Google 搜索控制台中的真实搜索词（已获得展示），尚未加入词库。可勾选加入选题，或用 AI 扩展相关长尾词。"
+      />
+      <el-table
+        v-loading="gscDiscoveredLoading"
+        :data="gscDiscoveredQueries"
+        size="small"
+        stripe
+        max-height="320"
+        @selection-change="handleGscDiscoveredSelection"
+      >
+        <el-table-column type="selection" width="48" />
+        <el-table-column prop="query" label="搜索词" min-width="160" show-overflow-tooltip />
+        <el-table-column prop="siteDomain" label="站点" width="120" show-overflow-tooltip />
+        <el-table-column prop="impressions" label="展示" width="72" />
+        <el-table-column prop="clicks" label="点击" width="72" />
+        <el-table-column label="排名" width="72">
+          <template #default="{ row }">{{ row.position.toFixed(1) }}</template>
+        </el-table-column>
+      </el-table>
+      <el-empty
+        v-if="!gscDiscoveredLoading && gscDiscoveredQueries.length === 0"
+        description="暂无新搜索词；请先在「设置 → Google 搜索表现」同步数据"
+      />
+      <template #footer>
+        <el-button @click="gscImportDialogVisible = false">取消</el-button>
+        <el-button
+          :disabled="selectedGscDiscovered.length === 0"
+          @click="expandGscSelectionToSeeds"
+        >
+          AI 扩展相关词
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="importingGsc"
+          :disabled="selectedGscDiscovered.length === 0"
+          @click="submitGscImport"
+        >
+          加入词库{{ selectedGscDiscovered.length > 0 ? `（${selectedGscDiscovered.length}）` : "" }}
+        </el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="assignClusterDialogVisible" title="加入专题" width="460px">
       <el-radio-group v-model="assignMode" class="mb-4">
         <el-radio value="existing">选择已有专题</el-radio>
@@ -494,10 +591,14 @@ import {
   confirmKeywordSeeds,
   previewKeywordSeeds,
   type KeywordSeedCandidate,
+  importGscKeywords,
   importKeywords,
+  listGscDiscoveredQueries,
   listKeywords,
   updateKeyword,
   type CreateKeywordPayload,
+  type GscDiscoveredQuery,
+  type GscKeywordInsight,
   type KeywordEntryItem
 } from "@/api/seo-factory/keyword";
 import { listSites } from "@/api/seo-factory/site";
@@ -518,6 +619,13 @@ import {
   getKeywordPriorityTierTagType,
   isKeywordQueueable
 } from "@/utils/seo-factory/keyword-display";
+import {
+  buildGscSeedTopicHint,
+  getGscKeywordInsightHint,
+  getGscKeywordInsightLabel,
+  getGscKeywordInsightTagType,
+  type GscKeywordInsightStatus
+} from "@/utils/seo-factory/gsc-keyword-display";
 import { message } from "@/utils/message";
 import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
 import { useArticleQuotaPreview } from "@/composables/useArticleQuotaPreview";
@@ -547,6 +655,7 @@ const emptyKeywordHint = computed(() =>
 const activeFilterTitle = computed(() => {
   const parts: string[] = [];
   if (quickFilter.value === "queueable") parts.push("待写");
+  if (quickFilter.value === "gscVerified") parts.push("本站有曝光");
   if (quickFilter.value === "unclustered") parts.push("未分组");
   if (filterClusterId.value) {
     const name = clusters.value.find((c) => c.id === filterClusterId.value)?.name;
@@ -572,7 +681,7 @@ const total = ref(0);
 const filterStatus = ref("");
 const filterIntent = ref("");
 const filterClusterId = ref("");
-const quickFilter = ref<"all" | "queueable" | "unclustered">("queueable");
+const quickFilter = ref<"all" | "queueable" | "unclustered" | "gscVerified">("queueable");
 const clusters = ref<KeywordClusterItem[]>([]);
 const creatingJobId = ref<string | null>(null);
 const deleting = ref(false);
@@ -580,8 +689,14 @@ const deletingId = ref<string | null>(null);
 
 const formDialogVisible = ref(false);
 const importDialogVisible = ref(false);
+const gscImportDialogVisible = ref(false);
+const gscDiscoveredLoading = ref(false);
+const importingGsc = ref(false);
+const gscDiscoveredQueries = ref<GscDiscoveredQuery[]>([]);
+const selectedGscDiscovered = ref<GscDiscoveredQuery[]>([]);
 const batchJobDialogVisible = ref(false);
 const seedDialogVisible = ref(false);
+const seedFromGsc = ref(false);
 const seedStep = ref<"config" | "preview">("config");
 const seedCandidates = ref<KeywordSeedCandidate[]>([]);
 const selectedSeedCandidates = ref<KeywordSeedCandidate[]>([]);
@@ -652,6 +767,18 @@ function handleSelectionChange(rows: KeywordEntryItem[]) {
   selectedKeywords.value = rows;
 }
 
+function gscInsightLabel(status: GscKeywordInsightStatus) {
+  return getGscKeywordInsightLabel(status);
+}
+
+function gscInsightTagType(status: GscKeywordInsightStatus) {
+  return getGscKeywordInsightTagType(status);
+}
+
+function gscInsightHint(insight: GscKeywordInsight) {
+  return getGscKeywordInsightHint(insight);
+}
+
 async function fetchKeywords() {
   loading.value = true;
   try {
@@ -661,6 +788,7 @@ async function fetchKeywords() {
       clusterId: filterClusterId.value || undefined,
       unclustered: quickFilter.value === "unclustered",
       queueable: quickFilter.value === "queueable",
+      gscVerified: quickFilter.value === "gscVerified",
       excludeArchived:
         quickFilter.value === "all" && !filterStatus.value ? undefined : false
     });
@@ -690,6 +818,46 @@ function onQuickFilterChange() {
   void fetchKeywords();
 }
 
+async function openGscImportDialog() {
+  gscImportDialogVisible.value = true;
+  gscDiscoveredLoading.value = true;
+  selectedGscDiscovered.value = [];
+  try {
+    gscDiscoveredQueries.value = await listGscDiscoveredQueries(projectId);
+  } catch {
+    gscDiscoveredQueries.value = [];
+  } finally {
+    gscDiscoveredLoading.value = false;
+  }
+}
+
+function handleGscDiscoveredSelection(rows: GscDiscoveredQuery[]) {
+  selectedGscDiscovered.value = rows;
+}
+
+async function submitGscImport() {
+  if (selectedGscDiscovered.value.length === 0) return;
+  importingGsc.value = true;
+  try {
+    const result = await importGscKeywords(projectId, {
+      items: selectedGscDiscovered.value.map((row) => ({
+        query: row.query,
+        siteId: row.siteId || undefined
+      }))
+    });
+    message(`已加入 ${result.created} 个关键词${result.skipped ? `，跳过 ${result.skipped} 个重复` : ""}`, {
+      type: "success"
+    });
+    gscImportDialogVisible.value = false;
+    notifySummaryRefresh();
+    await fetchKeywords();
+  } catch (error) {
+    message(error instanceof Error ? error.message : "导入失败", { type: "error" });
+  } finally {
+    importingGsc.value = false;
+  }
+}
+
 function onFilterChange() {
   page.value = 1;
   void fetchKeywords();
@@ -700,6 +868,7 @@ function syncFiltersToRoute() {
   if (filterClusterId.value) query.clusterId = filterClusterId.value;
   if (quickFilter.value === "queueable") query.queueable = "1";
   if (quickFilter.value === "unclustered") query.unclustered = "1";
+  if (quickFilter.value === "gscVerified") query.gscVerified = "1";
   router.replace({ name: "SeoFactoryKeywords", params: { projectId }, query });
 }
 
@@ -800,6 +969,8 @@ function syncClusterFilterFromRoute() {
     quickFilter.value = "queueable";
   } else if (route.query.unclustered === "1" || route.query.unclustered === "true") {
     quickFilter.value = "unclustered";
+  } else if (route.query.gscVerified === "1" || route.query.gscVerified === "true") {
+    quickFilter.value = "gscVerified";
   } else if (route.query.all === "1" || route.query.all === "true") {
     quickFilter.value = "all";
   } else {
@@ -873,17 +1044,54 @@ function resetSeedDialog() {
   seedCandidates.value = [];
   selectedSeedCandidates.value = [];
   seedPreviewSiteId.value = "";
+  seedFromGsc.value = false;
 }
 
-function openSeedDialog() {
+function openSeedDialog(options?: {
+  topicHint?: string;
+  siteId?: string;
+  fromGsc?: boolean;
+}) {
   resetSeedDialog();
-  seedForm.siteId = sites.value[0]?.id ?? "";
+  seedForm.siteId = options?.siteId ?? sites.value[0]?.id ?? "";
   seedForm.count = 15;
-  seedForm.topicHint = "";
+  seedForm.topicHint = options?.topicHint ?? "";
+  seedFromGsc.value = options?.fromGsc ?? false;
   seedDialogVisible.value = true;
   if (sites.value.length === 0) {
     void loadSites();
   }
+}
+
+function expandKeywordFromGsc(row: KeywordEntryItem) {
+  openSeedDialog({
+    topicHint: buildGscSeedTopicHint([row.keyword]),
+    siteId: row.siteId ?? undefined,
+    fromGsc: true
+  });
+}
+
+function expandGscSelectionToSeeds() {
+  if (selectedGscDiscovered.value.length === 0) return;
+  const queries = selectedGscDiscovered.value.map((row) => row.query).slice(0, 3);
+  const siteId = selectedGscDiscovered.value[0]?.siteId;
+  gscImportDialogVisible.value = false;
+  openSeedDialog({
+    topicHint: buildGscSeedTopicHint(queries),
+    siteId: siteId || undefined,
+    fromGsc: true
+  });
+}
+
+function openSeedDialogFromRoute() {
+  const seedTopic = route.query.seedTopic;
+  if (typeof seedTopic !== "string" || !seedTopic.trim()) return;
+  const seedSiteId = route.query.seedSiteId;
+  openSeedDialog({
+    topicHint: buildGscSeedTopicHint([seedTopic.trim()]),
+    siteId: typeof seedSiteId === "string" ? seedSiteId : undefined,
+    fromGsc: true
+  });
 }
 
 async function submitPreviewSeeds() {
@@ -1179,14 +1387,27 @@ onMounted(() => {
   syncClusterFilterFromRoute();
   void loadClusters();
   void fetchKeywords();
+  if (route.query.gscImport === "1" || route.query.gscImport === "true") {
+    void openGscImportDialog();
+  } else {
+    openSeedDialogFromRoute();
+  }
 });
 
 watch(
-  () => [route.query.clusterId, route.query.queueable, route.query.unclustered],
+  () => [route.query.clusterId, route.query.queueable, route.query.unclustered, route.query.gscVerified],
   () => {
     syncClusterFilterFromRoute();
     page.value = 1;
     void fetchKeywords();
+  }
+);
+
+watch(
+  () => [route.query.seedTopic, route.query.seedSiteId],
+  () => {
+    if (route.query.gscImport === "1" || route.query.gscImport === "true") return;
+    openSeedDialogFromRoute();
   }
 );
 </script>

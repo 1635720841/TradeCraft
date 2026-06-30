@@ -153,8 +153,8 @@
         </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="billingRequestStatusType(row.status)">
-              {{ billingRequestStatusLabel(row.status) }}
+            <el-tag :type="dictTagType(billingChangeRequestStatusDict, row.status)">
+              {{ dictLabel(billingChangeRequestStatusDict, row.status) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -224,6 +224,7 @@ import { message } from "@/utils/message";
 import { billingServiceTypeDict } from "@/constants/dicts/billing";
 import {
   billingChangeRequestTypeDict,
+  billingChangeRequestStatusDict,
   planNameDict,
   subscriptionStatusDict
 } from "@/constants/dicts/platform";
@@ -330,7 +331,7 @@ function billingRequestStatusType(status: string) {
 async function loadRequests() {
   loadingRequests.value = true;
   try {
-    billingRequests.value = await listBillingRequests();
+    billingRequests.value = (await listBillingRequests()).items;
   } finally {
     loadingRequests.value = false;
   }

@@ -97,7 +97,9 @@ export class ArticleJobStatsService {
           where: siteWhere,
           select: {
             settings: true,
-            gscConnection: { select: { refreshToken: true, lastSyncAt: true } },
+            gscConnection: {
+              select: { propertyUrl: true, managedByPlatform: true, lastSyncAt: true },
+            },
           },
         }),
         this.prisma.keywordEntry.count({ where: keywordWhere }),
@@ -134,13 +136,16 @@ export class ArticleJobStatsService {
     const sitesMissingProfileCount = siteRows.filter(
       (row) => !siteHasWritingProfile(row.settings),
     ).length;
+    const isGscConnected = (row: (typeof siteRows)[number]) =>
+      Boolean(row.gscConnection?.propertyUrl && row.gscConnection.managedByPlatform);
+
     const gscPendingSyncCount = siteRows.filter(
-      (row) => row.gscConnection?.refreshToken && !row.gscConnection.lastSyncAt,
+      (row) => isGscConnected(row) && !row.gscConnection?.lastSyncAt,
     ).length;
     const gscStaleSyncMs = 7 * 24 * 60 * 60 * 1000;
     const gscStaleSyncCount = siteRows.filter((row) => {
       const lastSyncAt = row.gscConnection?.lastSyncAt;
-      if (!row.gscConnection?.refreshToken || !lastSyncAt) return false;
+      if (!isGscConnected(row) || !lastSyncAt) return false;
       return Date.now() - lastSyncAt.getTime() > gscStaleSyncMs;
     }).length;
 
@@ -148,6 +153,11 @@ export class ArticleJobStatsService {
       gscPendingSyncCount > 0
         ? []
         : await this.gscService.getUnderperformingJobs(organizationId, projectId, siteId);
+
+    const gscDiscoveredQueries =
+      gscPendingSyncCount > 0 || gscStaleSyncCount > 0
+        ? []
+        : await this.gscService.getDiscoveredQueries(organizationId, projectId, siteId);
 
     let myAssignedCount = 0;
     let canReviewInProject = false;
@@ -206,6 +216,8 @@ export class ArticleJobStatsService {
       gscStaleSyncCount,
       gscUnderperformingCount: gscUnderperformingJobs.length,
       gscUnderperformingJobs,
+      gscDiscoveredQueryCount: gscDiscoveredQueries.length,
+      gscDiscoveredQueries: gscDiscoveredQueries.slice(0, 3),
       keywordTotalCount,
       keywordQueueableCount,
       keywordUnclusteredCount,

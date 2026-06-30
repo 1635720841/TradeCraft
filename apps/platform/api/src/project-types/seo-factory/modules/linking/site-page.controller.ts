@@ -18,7 +18,7 @@
 
 
 
-import { Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Body } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
 
 import type { RequestContext } from '@wm/shared-core';
 
@@ -47,21 +47,32 @@ export class SitePageController {
   @Get()
 
   async list(
-
     @ReqCtx() ctx: RequestContext,
-
     @Param('projectId') projectId: string,
-
     @Param('siteId') siteId: string,
-
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('includeInactive') includeInactive?: string,
   ) {
-
     await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
 
-    const pages = await this.sitePageService.listForSite(ctx.organizationId, projectId, siteId);
+    const result = await this.sitePageService.listForSite(ctx.organizationId, projectId, siteId, {
+      page: page ? Number(page) : 1,
+      limit: limit ? Number(limit) : 20,
+      includeInactive: includeInactive === '1' || includeInactive === 'true',
+    });
 
-    return { data: pages, meta: { traceId: ctx.traceId, total: pages.length } };
-
+    return {
+      data: result.items,
+      meta: {
+        traceId: ctx.traceId,
+        pagination: {
+          page: result.page,
+          limit: result.limit,
+          total: result.total,
+        },
+      },
+    };
   }
 
 

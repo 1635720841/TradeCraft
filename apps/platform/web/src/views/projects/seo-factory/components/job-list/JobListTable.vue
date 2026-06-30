@@ -44,7 +44,7 @@
         </div>
       </template>
     </el-table-column>
-    <el-table-column label="SEO 分数" width="150">
+    <el-table-column v-if="showSeoScore" label="SEO 分数" width="150">
       <template #default="{ row }">
         <span
           :class="{
@@ -188,25 +188,29 @@ import { resolveJobListPrimaryTag } from "@/utils/seo-factory/job-list-status";
 
 defineOptions({ name: "JobListTable" });
 
-defineProps<{
-  jobs: ArticleJobItem[];
-  loading: boolean;
-  page: number;
-  limit: number;
-  total: number;
-  canReviewJob: boolean;
-  cmsUiEnabled: boolean;
-  approvingBriefId: string | null;
-  actingReviewId: string | null;
-  actingReviewType: "approve" | "reject" | null;
-  retryingId: string | null;
-  publishingId: string | null;
-  deletingId: string | null;
-  reviewDialogVisible: boolean;
-  reviewDialogTitle: string;
-  reviewDialogAction: "approve" | "reject";
-  reviewNote: string;
-}>();
+withDefaults(
+  defineProps<{
+    jobs: ArticleJobItem[];
+    loading: boolean;
+    page: number;
+    limit: number;
+    total: number;
+    canReviewJob: boolean;
+    cmsUiEnabled: boolean;
+    approvingBriefId: string | null;
+    actingReviewId: string | null;
+    actingReviewType: "approve" | "reject" | null;
+    retryingId: string | null;
+    publishingId: string | null;
+    deletingId: string | null;
+    reviewDialogVisible: boolean;
+    reviewDialogTitle: string;
+    reviewDialogAction: "approve" | "reject";
+    reviewNote: string;
+    showSeoScore?: boolean;
+  }>(),
+  { showSeoScore: false }
+);
 
 const emit = defineEmits<{
   "selection-change": [rows: ArticleJobItem[]];

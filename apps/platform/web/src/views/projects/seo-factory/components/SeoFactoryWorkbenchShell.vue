@@ -15,7 +15,7 @@
           title="返回项目首页"
           @click="goProjects"
         >
-          <IconifyIconOnline icon="ri:arrow-left-line" />
+          <WorkbenchIcon name="back" :size="16" />
         </el-button>
         <div class="workbench-header__title-wrap">
           <div class="workbench-header__title-row">
@@ -41,10 +41,17 @@
             :disabled="siteCount === 0"
             @click="goCreateJob"
           >
-            <IconifyIconOnline icon="ri:add-line" class="mr-1" />
+            <WorkbenchIcon name="add" :size="14" class="mr-1" />
             新建任务
           </el-button>
         </el-tooltip>
+        <el-button
+          v-if="canManageSite"
+          size="small"
+          @click="goProjectSettings"
+        >
+          项目配置
+        </el-button>
       </div>
     </section>
 
@@ -64,6 +71,7 @@ import { getOrgProject } from "@/api/org/projects";
 import { getSeoFactoryProjectStats } from "@/api/seo-factory/article-job";
 import { provideProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
 import SeoFactoryWorkbenchNav from "./SeoFactoryWorkbenchNav.vue";
+import WorkbenchIcon from "./WorkbenchIcon.vue";
 
 defineOptions({ name: "SeoFactoryWorkbenchShell" });
 
@@ -72,6 +80,7 @@ const router = useRouter();
 const projectId = computed(() => route.params.projectId as string);
 const { can } = provideProjectSeoAccess(projectId);
 const canCreateJob = computed(() => can("seo:job:create"));
+const canManageSite = computed(() => can("seo:site:manage"));
 const projectName = ref("");
 const siteCount = ref(0);
 
@@ -96,6 +105,10 @@ function goProjects() {
 
 function goCreateJob() {
   router.push({ name: "SeoFactoryJobCreate", params: { projectId: projectId.value } });
+}
+
+function goProjectSettings() {
+  router.push({ name: "SeoFactorySettings", params: { projectId: projectId.value } });
 }
 
 watch(projectId, () => {

@@ -477,6 +477,7 @@ model SitePage {
   pageType       SitePageType @default(PAGE)
   businessValue  Float        @default(0.5)
   lastUpdated    DateTime?
+  active         Boolean      @default(true) /// sitemap 中已消失则为 false，不参与内链
   source         String       @default("sitemap")
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -604,6 +605,7 @@ enum KeywordSource {
   MANUAL
   IMPORT
   AI_SEED
+  GSC
 }
 
 /// 主题集群：将相关关键词分组，便于按主题排产与内链规划
@@ -657,19 +659,31 @@ model KeywordEntry {
   @@index([organizationId, projectId, clusterId])
 }
 
+/// 平台级 Google Search Console OAuth 凭证（代运营统一授权）
+model PlatformGscCredential {
+  id                    String    @id @default("default")
+  refreshTokenEnc       String    @db.Text /// AES-256-GCM 加密存储
+  googleEmail           String?
+  connectedByUserId     String?
+  cachedPropertyCount   Int?
+  propertyCountCachedAt DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
 /// Google Search Console 站点授权与同步快照
 model SiteGscConnection {
-  id             String    @id @default(uuid())
-  organizationId String
-  siteId         String    @unique
-  site           Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  propertyUrl    String?   /// sc-domain:example.com 或 https://example.com/
-  refreshToken   String?   @db.Text
-  lastSyncAt     DateTime?
-  lastSyncError  String?   @db.Text
-  summaryData    Json?     /// 最近一次同步的聚合指标（页面/查询 Top N）
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id                String    @id @default(uuid())
+  organizationId    String
+  siteId            String    @unique
+  site              Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  propertyUrl       String?   /// sc-domain:example.com 或 https://example.com/
+  managedByPlatform Boolean   @default(false)
+  lastSyncAt        DateTime?
+  lastSyncError     String?   @db.Text
+  summaryData       Json?     /// 最近一次同步的聚合指标（页面/查询 Top N）
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@index([organizationId])
 }

@@ -93,11 +93,7 @@ export function resolveJobSerpCountryPicker(site?: SiteItem | null) {
         }))
       : SERP_COUNTRY_OPTIONS.map((item) => ({ value: item.value, label: item.label }));
 
-  const siteDefault = site?.serpResearch?.country?.trim().toUpperCase();
-  const defaultCountry =
-    (siteDefault && options.some((item) => item.value === siteDefault)
-      ? (siteDefault as SerpCountryCode)
-      : null) ?? options[0]?.value ?? "US";
+  const defaultCountry = options[0]?.value ?? "US";
 
   return {
     options,

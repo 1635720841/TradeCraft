@@ -470,6 +470,7 @@ import { usePermissionGrantExpand } from "@/composables/usePermissionGrantExpand
 import { dictLabel, dictTagType } from "@/utils/dict";
 import { hasPerms } from "@/utils/auth";
 import { message } from "@/utils/message";
+import { confirmDestructiveDelete } from "@/utils/confirm-destructive-delete";
 import { invalidateProjectAccessCache } from "@/router/guards/project-access";
 
 defineOptions({ name: "OrgProjectsView" });
@@ -714,11 +715,10 @@ async function handleDeleteProject(row?: OrgProjectItem | OrgProjectDetail) {
   const target = row ?? detail.value;
   if (!target) return;
 
-  await ElMessageBox.confirm(
-    `确定删除项目「${target.name}」？此操作不可恢复，项目下的站点、词库与任务将全部删除。`,
-    "删除确认",
-    { type: "warning", confirmButtonText: "删除", cancelButtonText: "取消" }
-  );
+  await confirmDestructiveDelete({
+    description: `确定删除项目「${target.name}」？此操作不可恢复，项目下的站点、词库与任务将全部删除。`,
+    expectedText: target.name
+  });
 
   saving.value = true;
   try {
@@ -734,7 +734,7 @@ async function handleDeleteProject(row?: OrgProjectItem | OrgProjectDetail) {
 }
 
 async function openAddMember() {
-  orgMembers.value = await listOrganizationMembers();
+  orgMembers.value = (await listOrganizationMembers()).items;
   addMemberForm.userId = "";
   addMemberForm.role = "VIEWER";
   addMemberForm.accessStart = null;

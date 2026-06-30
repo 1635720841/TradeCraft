@@ -244,10 +244,22 @@ export default [
             }
           },
           {
+            path: "sites/:siteId",
+            name: "SeoFactorySiteDetail",
+            component: () => import("@/views/projects/seo-factory/SiteDetailView.vue"),
+            meta: {
+              title: "站点详情",
+              seoPermission: "seo:job:read",
+              showLink: false
+            }
+          },
+          {
             path: "settings/score-lab",
             name: "SeoFactoryScoreLab",
-            component: () =>
-              import("@/views/projects/seo-factory/ScoreCalibrationLabView.vue"),
+            redirect: (to) => ({
+              path: "/console/labs/score-calibration",
+              query: { projectId: to.params.projectId as string }
+            }),
             meta: {
               title: "评分校准实验室",
               seoPermission: "seo:site:manage",
@@ -257,11 +269,13 @@ export default [
           {
             path: "content-score",
             name: "SeoFactoryContentScore",
-            component: () =>
-              import("@/views/projects/seo-factory/ArticleContentScoreTrialView.vue"),
+            redirect: (to) => ({
+              path: "/console/labs/content-score",
+              query: { projectId: to.params.projectId as string }
+            }),
             meta: {
               title: "内容评分",
-              seoPermission: "seo:job:read",
+              seoPermission: "seo:site:manage",
               showLink: false
             }
           },
@@ -277,7 +291,7 @@ export default [
             name: "SeoFactorySettings",
             component: () => import("@/views/projects/seo-factory/ProjectSettingsView.vue"),
             meta: {
-              title: "设置",
+              title: "项目配置",
               seoPermission: "seo:site:manage",
               showLink: false
             }
@@ -288,14 +302,14 @@ export default [
             component: () => import("@/views/projects/seo-factory/GscRedirectView.vue"),
             meta: {
               title: "搜索表现",
-              seoPermission: "seo:site:manage",
+              seoPermission: "seo:job:read",
               showLink: false
             }
           },
           {
             path: "sites/admin",
             name: "SeoFactorySiteAdmin",
-            redirect: "settings"
+            redirect: "sites"
           },
           {
             path: "content/jobs",

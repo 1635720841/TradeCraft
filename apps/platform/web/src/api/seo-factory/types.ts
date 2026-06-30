@@ -756,7 +756,14 @@ export interface SiteItem {
   workflow?: SiteWorkflowSettings;
   contentProfile?: SiteContentProfile;
   serpResearch?: SiteSerpResearchSettings;
+  gsc?: SiteGscListSummary;
   createdAt: string;
+}
+
+export interface SiteGscListSummary {
+  status: "not_enabled" | "unbound" | "pending_sync" | "stale" | "error" | "synced";
+  lastSyncAt: string | null;
+  lastSyncError: string | null;
 }
 
 export interface SitePageItem {
@@ -769,6 +776,7 @@ export interface SitePageItem {
   pageType: string;
   businessValue: number;
   lastUpdated?: string | null;
+  active: boolean;
   source: string;
   updatedAt: string;
 }
@@ -776,6 +784,9 @@ export interface SitePageItem {
 export interface SitePageSyncResult {
   discovered: number;
   upserted: number;
+  skipped: number;
+  deactivated: number;
+  reactivated: number;
 }
 
 export interface CreateSitePayload {
@@ -871,6 +882,15 @@ export interface SeoFactoryProjectStats {
     impressions: number;
     clicks: number;
     position: number;
+  }>;
+  gscDiscoveredQueryCount: number;
+  gscDiscoveredQueries: Array<{
+    query: string;
+    impressions: number;
+    clicks: number;
+    position: number;
+    siteId: string;
+    siteDomain: string;
   }>;
   keywordTotalCount: number;
   keywordQueueableCount: number;

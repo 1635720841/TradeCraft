@@ -1,5 +1,5 @@
 /**
- * 文章任务服务：创建、入队与查询 ArticleJob。
+ * 文章任务服务：创建、入队与生命周期操作（列表/批量/队列委托子服务）。
  *
  * 边界：
  * - 不负责：工作流编排（WorkflowService）、外部 API（Provider）
@@ -8,38 +8,20 @@
  * - ArticleJobService
  */
 
-import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable } from '@nestjs/common';
-import { JobStatus, Prisma } from '@prisma/client';
-import { Queue } from 'bullmq';
+import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
-import { isSeoArticleUrl, keywordFromArticleUrl, normalizeContentLanguage, evaluateReleaseReadiness } from '@wm/shared-core';
+import { normalizeContentLanguage } from '@wm/shared-core';
 import { BusinessException } from '../../../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { PrismaService } from '../../../../core/database/prisma.service';
 import { LoggerService } from '../../../../core/logger/logger.service';
 import { StorageService } from '../../../../core/storage/storage.service';
-import { ARTICLE_JOB_QUEUE, PLAYWRIGHT_QUEUE } from '../../../../core/queue/queue.constants';
-import { OrgQueueLimiterService } from '../../../../core/queue/org-queue-limiter.service';
-import type {
-  ArticleJobQueuePayload,
-  ArticleJobScraperOptions,
-} from '../../processors/article-job.processor';
-import {
-  DEFAULT_BATCH_JOB_LIMIT,
-  MAX_BATCH_JOB_LIMIT,
-} from '../../constants/serp-filter';
-import { MAX_BATCH_ACTION_LIMIT } from '../../constants/batch-actions';
+import type { ArticleJobScraperOptions } from '../../processors/article-job.processor';
 import { CALIBRATION_LAB_JOB_ID_PREFIX } from '../../utils/score-calibration-manual-samples.util';
-import { isBriefApprovalPending } from '../../constants/brief-approval';
-import { parseSiteSettings } from '../../constants/site-settings';
-import { resolveSiteSeoScoreConfig } from '../../constants/site-seo-score-settings';
 import { normalizeKeywordIntent, type KeywordIntentValue } from '../../constants/search-intent';
 import { normalizeArticleContentForm } from '../../constants/content-form';
-import { canPublishArticle, isPendingHumanReview } from '../content-review/ymyl-detect.util';
-import { parseShopifyCmsConfig } from '../site/site-cms.util';
-import type { CreateBatchArticleJobsDto } from './dto/create-batch-article-jobs.dto';
 import type { CreateArticleJobDto } from './dto/create-article-job.dto';
+import type { CreateBatchArticleJobsDto } from './dto/create-batch-article-jobs.dto';
 import type { RefreshArticleJobSerpDto } from './dto/refresh-article-job-serp.dto';
 import { resolveSerpResearchOptions, normalizeSerpCountry } from '../../constants/serp-research-settings';
 import {
@@ -48,11 +30,6 @@ import {
   withArticleJobConfig,
 } from '../../constants/article-job-config';
 import {
-  resolveSerpCountriesFromTargetMarkets,
-} from '../site/target-market.util';
-import { SiteArticleCrawlerService } from '../site/site-article-crawler.service';
-import { SiteService } from '../site/site.service';
-import {
   isSemrushCheckStale,
   shouldRecoverOrphanOptimizing,
   type SemrushCheckPending,
@@ -60,15 +37,12 @@ import {
 import { resolveResumeStep, withWorkflowMeta } from '../../constants/workflow-resume';
 import { SeoCheckerService } from '../seo-checker/seo-checker.service';
 import { BillingService } from '../../../../modules/billing/billing.service';
-import { GscService } from '../gsc/gsc.service';
 import { ScraperService } from '../scraper/scraper.service';
-import { isArticleDraftStale, isCmsPublishFailed } from './article-job-stage.util';
 import { findKeywordConflicts } from '../keyword-pool/keyword-cannibalization.util';
-import { removeBullJobsByArticleJobId } from '../../utils/article-job-queue-cleanup.util';
-import type { PlaywrightJobPayload } from '../../services/semrush-queue.service';
 import { buildExportStoragePrefix } from '../export/export-html.util';
-
-const JOB_LIST_SITE_SELECT = { domain: true, cmsType: true, cmsConfig: true } as const;
+import { ArticleJobListService } from './article-job-list.service';
+import { ArticleJobBatchService } from './article-job-batch.service';
+import { ArticleJobQueueService } from './article-job-queue.service';
 
 @Injectable()
 export class ArticleJobService {
@@ -76,24 +50,14 @@ export class ArticleJobService {
     private readonly prisma: PrismaService,
     private readonly logger: LoggerService,
     private readonly seoCheckerService: SeoCheckerService,
-    private readonly siteArticleCrawler: SiteArticleCrawlerService,
-    private readonly siteService: SiteService,
     private readonly billingService: BillingService,
-    private readonly gscService: GscService,
     private readonly scraperService: ScraperService,
     private readonly storage: StorageService,
-    @InjectQueue(ARTICLE_JOB_QUEUE) private readonly articleJobQueue: Queue<ArticleJobQueuePayload>,
-    @InjectQueue(PLAYWRIGHT_QUEUE) private readonly playwrightQueue: Queue<PlaywrightJobPayload>,
-    private readonly orgQueueLimiter: OrgQueueLimiterService,
+    private readonly listService: ArticleJobListService,
+    private readonly queueService: ArticleJobQueueService,
+    @Inject(forwardRef(() => ArticleJobBatchService))
+    private readonly batchService: ArticleJobBatchService,
   ) {}
-
-  private async enqueueArticleJob(
-    payload: ArticleJobQueuePayload,
-    bullJobId: string,
-  ): Promise<void> {
-    await this.orgQueueLimiter.assertCanEnqueue(payload.organizationId);
-    await this.articleJobQueue.add('generate', payload, { jobId: bullJobId });
-  }
 
   async create(organizationId: string, projectId: string, dto: CreateArticleJobDto) {
     await this.billingService.assertArticleQuota(organizationId, 1);
@@ -146,7 +110,7 @@ export class ArticleJobService {
 
     const scraperOptions = this.buildScraperOptions(dto, serpCountry);
 
-    await this.enqueueArticleJob(
+    await this.queueService.enqueueArticleJob(
       {
         jobId: job.id,
         traceId,
@@ -177,123 +141,8 @@ export class ArticleJobService {
     return { ...job, warnings };
   }
 
-  private async buildKeywordCannibalizationWarnings(
-    organizationId: string,
-    projectId: string,
-    siteId: string,
-    keyword: string,
-    excludeJobId?: string,
-  ) {
-    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
-    const rows = await this.prisma.articleJob.findMany({
-      where: {
-        organizationId,
-        projectId,
-        siteId,
-        status: { not: 'FAILED' },
-        ...(excludeJobId ? { id: { not: excludeJobId } } : {}),
-      },
-      select: {
-        id: true,
-        targetKeyword: true,
-        status: true,
-        updatedAt: true,
-        seoCheckData: true,
-      },
-      orderBy: { updatedAt: 'desc' },
-      take: 200,
-    });
-
-    const candidates = rows
-      .filter((row) => {
-        if (row.status !== 'COMPLETED') return true;
-        if (row.updatedAt < ninetyDaysAgo) return false;
-        const postUrl = (
-          (row.seoCheckData as { cmsPublish?: { postUrl?: string | null } } | null)?.cmsPublish
-            ?.postUrl ?? ''
-        ).trim();
-        return Boolean(postUrl);
-      })
-      .map((row) => ({
-        jobId: row.id,
-        keyword: row.targetKeyword,
-        status: row.status,
-      }));
-
-    const conflicts = findKeywordConflicts(keyword, candidates);
-    if (conflicts.length === 0) return [];
-
-    return conflicts.map((conflict) => ({
-      code: 'KEYWORD_CANNIBALIZATION' as const,
-      message: `与已有任务「${conflict.keyword}」过于相似（${conflict.reason}）`,
-      jobId: conflict.jobId,
-      keyword: conflict.keyword,
-      status: conflict.status,
-      reason: conflict.reason,
-    }));
-  }
-
   async createBatch(organizationId: string, projectId: string, dto: CreateBatchArticleJobsDto) {
-    const site = await this.prisma.site.findFirst({
-      where: { id: dto.siteId, organizationId, projectId },
-      select: { id: true },
-    });
-
-    if (!site) {
-      throw new BusinessException(ErrorCodes.SITE_NOT_FOUND, '站点不存在');
-    }
-
-    const limit = Math.min(Math.max(dto.limit ?? DEFAULT_BATCH_JOB_LIMIT, 1), MAX_BATCH_JOB_LIMIT);
-    const seoArticlesOnly = dto.seoArticlesOnly !== false;
-    const scraperOptions = this.buildScraperOptions(dto) ?? {};
-    const keywords = await this.resolveBatchKeywords(
-      organizationId,
-      projectId,
-      dto,
-      limit,
-      seoArticlesOnly,
-    );
-
-    if (keywords.length === 0) {
-      throw new BusinessException(
-        ErrorCodes.VALIDATION_ERROR,
-        seoArticlesOnly
-          ? '未找到可运行的 SEO 文章，请检查站点 sitemap 或关键词列表'
-          : '未找到可运行的关键词',
-      );
-    }
-
-    await this.billingService.assertArticleQuota(organizationId, keywords.length);
-
-    const jobs = [];
-    for (const targetKeyword of keywords) {
-      jobs.push(
-        await this.create(organizationId, projectId, {
-          siteId: dto.siteId,
-          targetKeyword,
-          contentLanguage: dto.contentLanguage,
-          serpArticleLimit: scraperOptions.serpArticleLimit,
-          serpArticlesOnly: scraperOptions.serpArticlesOnly,
-          serpCountry: dto.serpCountry ?? scraperOptions.serpCountry,
-        }),
-      );
-    }
-
-    this.logger.info('Batch article jobs created', {
-      organizationId,
-      projectId,
-      action: 'article_job.create_batch',
-      source: dto.source,
-      requestedLimit: limit,
-      created: jobs.length,
-      seoArticlesOnly,
-    });
-
-    return {
-      created: jobs.length,
-      skipped: Math.max(0, limit - jobs.length),
-      jobs,
-    };
+    return this.batchService.createBatch(organizationId, projectId, dto);
   }
 
   async findMany(
@@ -301,692 +150,17 @@ export class ArticleJobService {
     projectId: string,
     page = 1,
     limit = 20,
-    options: {
-      briefPending?: boolean;
-      generating?: boolean;
-      cmsPublishFailed?: boolean;
-      cmsPublishPending?: boolean;
-      staleDraft?: boolean;
-      reviewPending?: boolean;
-      seoNotReady?: boolean;
-      assignedToMe?: boolean;
-      siteOwnerMe?: boolean;
-      status?: 'FAILED';
-      siteId?: string;
-      actorUserId?: string;
-      keyword?: string;
-    } = {},
+    options: Parameters<ArticleJobListService['findMany']>[4] = {},
   ) {
-    const siteScope = await this.resolveSiteScopeFilter(
-      organizationId,
-      projectId,
-      options.siteId,
-      options.siteOwnerMe,
-      options.actorUserId,
-    );
-    if (siteScope.empty) {
-      const safeLimit = Math.min(Math.max(limit, 1), 100);
-      return { items: [], total: 0, page: Math.max(page, 1), limit: safeLimit };
-    }
-
-    if (options.cmsPublishFailed) {
-      return this.findManyCmsPublishFailed(
-        organizationId,
-        projectId,
-        page,
-        limit,
-        siteScope,
-        options.keyword,
-      );
-    }
-
-    if (options.cmsPublishPending) {
-      return this.findManyCmsPublishPending(
-        organizationId,
-        projectId,
-        page,
-        limit,
-        siteScope,
-        options.keyword,
-      );
-    }
-
-    if (options.staleDraft) {
-      return this.findManyStaleDraft(
-        organizationId,
-        projectId,
-        page,
-        limit,
-        siteScope,
-        options.keyword,
-      );
-    }
-
-    if (options.seoNotReady) {
-      return this.findManySeoNotReady(
-        organizationId,
-        projectId,
-        page,
-        limit,
-        siteScope,
-        options.keyword,
-      );
-    }
-
-    if (options.reviewPending) {
-      return this.findManyReviewPending(
-        organizationId,
-        projectId,
-        page,
-        limit,
-        siteScope,
-        options.keyword,
-      );
-    }
-
-    const safeLimit = Math.min(Math.max(limit, 1), 100);
-    const skip = (Math.max(page, 1) - 1) * safeLimit;
-
-    const andFilters: Prisma.ArticleJobWhereInput[] = [
-      { NOT: { id: { startsWith: CALIBRATION_LAB_JOB_ID_PREFIX } } },
-    ];
-
-    if (options.assignedToMe && options.actorUserId) {
-      andFilters.push({
-        assignees: { some: { userId: options.actorUserId } },
-      });
-    }
-
-    this.applyKeywordToAndFilters(andFilters, options.keyword);
-
-    const where: Prisma.ArticleJobWhereInput = {
-      organizationId,
-      projectId,
-      ...this.buildSiteWhere(siteScope),
-    };
-
-    if (options.status === 'FAILED') {
-      where.status = JobStatus.FAILED;
-    } else if (options.briefPending) {
-      where.status = JobStatus.DRAFTING;
-      where.briefData = {
-        path: ['approvalStatus'],
-        equals: 'pending',
-      };
-    } else if (options.generating) {
-      where.status = { notIn: [JobStatus.COMPLETED, JobStatus.FAILED] };
-      andFilters.push({
-        NOT: {
-          AND: [
-            { status: JobStatus.DRAFTING },
-            {
-              briefData: {
-                path: ['approvalStatus'],
-                equals: 'pending',
-              },
-            },
-          ],
-        },
-      });
-    }
-
-    where.AND = andFilters;
-
-    const [rows, total] = await Promise.all([
-      this.prisma.articleJob.findMany({
-        where,
-        select: {
-          id: true,
-          traceId: true,
-          status: true,
-          targetKeyword: true,
-          searchIntent: true,
-          semrushScore: true,
-          localSeoScore: true,
-          errorMessage: true,
-          seoCheckData: true,
-          briefData: true,
-          draftData: true,
-          outputUrl: true,
-          siteId: true,
-          site: { select: JOB_LIST_SITE_SELECT },
-          createdAt: true,
-          updatedAt: true,
-        },
-        orderBy: { updatedAt: 'desc' },
-        skip,
-        take: safeLimit,
-      }),
-      this.prisma.articleJob.count({ where }),
-    ]);
-
-    const items = rows.map((row) => this.toListItem(row));
-
-    return { items, total, page: Math.max(page, 1), limit: safeLimit };
-  }
-
-  private applyKeywordToAndFilters(
-    andFilters: Prisma.ArticleJobWhereInput[],
-    keyword?: string,
-  ): void {
-    const q = keyword?.trim();
-    if (!q) return;
-    andFilters.push({
-      targetKeyword: { contains: q, mode: 'insensitive' },
-    });
-  }
-
-  private matchesKeyword(targetKeyword: string, keyword?: string): boolean {
-    const q = keyword?.trim();
-    if (!q) return true;
-    return targetKeyword.toLowerCase().includes(q.toLowerCase());
-  }
-
-  private buildSiteWhere(siteScope: {
-    siteId?: string;
-    siteIds?: string[];
-  }): Prisma.ArticleJobWhereInput {
-    if (siteScope.siteId) {
-      return { siteId: siteScope.siteId };
-    }
-    if (siteScope.siteIds?.length) {
-      return { siteId: { in: siteScope.siteIds } };
-    }
-    return {};
-  }
-
-  private async resolveSiteScopeFilter(
-    organizationId: string,
-    projectId: string,
-    siteId: string | undefined,
-    siteOwnerMe: boolean | undefined,
-    actorUserId: string | undefined,
-  ): Promise<{ siteId?: string; siteIds?: string[]; empty?: boolean }> {
-    if (!siteOwnerMe || !actorUserId) {
-      return siteId ? { siteId } : {};
-    }
-
-    const ownedSiteIds = await this.siteService.listOwnedSiteIds(
-      organizationId,
-      projectId,
-      actorUserId,
-    );
-    if (ownedSiteIds.length === 0) {
-      return { empty: true };
-    }
-    if (siteId) {
-      return ownedSiteIds.includes(siteId) ? { siteId } : { empty: true };
-    }
-    return { siteIds: ownedSiteIds };
-  }
-
-  private async findManyStaleDraft(
-    organizationId: string,
-    projectId: string,
-    page = 1,
-    limit = 20,
-    siteScope: { siteId?: string; siteIds?: string[] } = {},
-    keyword?: string,
-  ) {
-    const safePage = Math.max(page, 1);
-    const safeLimit = Math.min(Math.max(limit, 1), 100);
-
-    const rows = await this.prisma.articleJob.findMany({
-      where: {
-        organizationId,
-        projectId,
-        status: { notIn: ['FAILED', 'QUEUED'] },
-        ...this.buildSiteWhere(siteScope),
-      },
-      select: {
-        id: true,
-        traceId: true,
-        status: true,
-        targetKeyword: true,
-        searchIntent: true,
-        semrushScore: true,
-        localSeoScore: true,
-        errorMessage: true,
-        seoCheckData: true,
-        briefData: true,
-        draftData: true,
-        outputUrl: true,
-        siteId: true,
-        site: { select: JOB_LIST_SITE_SELECT },
-        createdAt: true,
-        updatedAt: true,
-      },
-      orderBy: { updatedAt: 'desc' },
-      take: 500,
-    });
-
-    const stale = rows.filter(
-      (row) =>
-        isArticleDraftStale(row.draftData) &&
-        this.matchesKeyword(row.targetKeyword, keyword),
-    );
-    const total = stale.length;
-    const skip = (safePage - 1) * safeLimit;
-    const items = stale.slice(skip, skip + safeLimit).map((row) => this.toListItem(row));
-
-    return { items, total, page: safePage, limit: safeLimit };
-  }
-
-  private async findManySeoNotReady(
-    organizationId: string,
-    projectId: string,
-    page = 1,
-    limit = 20,
-    siteScope: { siteId?: string; siteIds?: string[] } = {},
-    keyword?: string,
-  ) {
-    const safePage = Math.max(page, 1);
-    const safeLimit = Math.min(Math.max(limit, 1), 100);
-
-    const rows = await this.prisma.articleJob.findMany({
-      where: {
-        organizationId,
-        projectId,
-        status: 'COMPLETED',
-        outputUrl: { not: null },
-        ...this.buildSiteWhere(siteScope),
-      },
-      select: {
-        id: true,
-        traceId: true,
-        status: true,
-        targetKeyword: true,
-        searchIntent: true,
-        semrushScore: true,
-        localSeoScore: true,
-        errorMessage: true,
-        seoCheckData: true,
-        briefData: true,
-        draftData: true,
-        outputUrl: true,
-        siteId: true,
-        site: { select: JOB_LIST_SITE_SELECT },
-        createdAt: true,
-        updatedAt: true,
-      },
-      orderBy: { updatedAt: 'desc' },
-      take: 500,
-    });
-
-    const notReady = rows.filter(
-      (row) =>
-        !this.isJobReleaseReady(row) &&
-        this.matchesKeyword(row.targetKeyword, keyword),
-    );
-    const total = notReady.length;
-    const skip = (safePage - 1) * safeLimit;
-    const items = notReady.slice(skip, skip + safeLimit).map((row) => this.toListItem(row));
-
-    return { items, total, page: safePage, limit: safeLimit };
-  }
-
-  private async findManyReviewPending(
-    organizationId: string,
-    projectId: string,
-    page = 1,
-    limit = 20,
-    siteScope: { siteId?: string; siteIds?: string[] } = {},
-    keyword?: string,
-  ) {
-    const safePage = Math.max(page, 1);
-    const safeLimit = Math.min(Math.max(limit, 1), 100);
-
-    const rows = await this.prisma.articleJob.findMany({
-      where: {
-        organizationId,
-        projectId,
-        status: 'COMPLETED',
-        seoCheckData: {
-          path: ['ymylReview', 'requires_human_review'],
-          equals: true,
-        },
-        ...this.buildSiteWhere(siteScope),
-      },
-      select: {
-        id: true,
-        traceId: true,
-        status: true,
-        targetKeyword: true,
-        searchIntent: true,
-        semrushScore: true,
-        localSeoScore: true,
-        errorMessage: true,
-        seoCheckData: true,
-        briefData: true,
-        draftData: true,
-        outputUrl: true,
-        siteId: true,
-        site: { select: JOB_LIST_SITE_SELECT },
-        createdAt: true,
-        updatedAt: true,
-      },
-      orderBy: { updatedAt: 'desc' },
-      take: 500,
-    });
-
-    const pending = rows.filter(
-      (row) =>
-        isPendingHumanReview(row.seoCheckData) &&
-        this.matchesKeyword(row.targetKeyword, keyword),
-    );
-    const total = pending.length;
-    const skip = (safePage - 1) * safeLimit;
-    const items = pending.slice(skip, skip + safeLimit).map((row) => this.toListItem(row));
-
-    return { items, total, page: safePage, limit: safeLimit };
-  }
-
-  private async findManyCmsPublishPending(
-    organizationId: string,
-    projectId: string,
-    page = 1,
-    limit = 20,
-    siteScope: { siteId?: string; siteIds?: string[] } = {},
-    keyword?: string,
-  ) {
-    const safePage = Math.max(page, 1);
-    const safeLimit = Math.min(Math.max(limit, 1), 100);
-
-    const rows = await this.prisma.articleJob.findMany({
-      where: {
-        organizationId,
-        projectId,
-        status: 'COMPLETED',
-        outputUrl: { not: null },
-        ...this.buildSiteWhere(siteScope),
-      },
-      select: {
-        id: true,
-        traceId: true,
-        status: true,
-        targetKeyword: true,
-        searchIntent: true,
-        semrushScore: true,
-        localSeoScore: true,
-        errorMessage: true,
-        seoCheckData: true,
-        briefData: true,
-        draftData: true,
-        outputUrl: true,
-        siteId: true,
-        site: { select: JOB_LIST_SITE_SELECT },
-        createdAt: true,
-        updatedAt: true,
-      },
-      orderBy: { updatedAt: 'desc' },
-    });
-
-    const pending = rows.filter(
-      (row) =>
-        this.isCmsPublishPending(row.seoCheckData, row.site.cmsType) &&
-        this.isJobReleaseReady(row) &&
-        this.matchesKeyword(row.targetKeyword, keyword),
-    );
-    const total = pending.length;
-    const skip = (safePage - 1) * safeLimit;
-    const items = pending.slice(skip, skip + safeLimit).map((row) => this.toListItem(row));
-
-    return { items, total, page: safePage, limit: safeLimit };
-  }
-
-  private async findManyCmsPublishFailed(
-    organizationId: string,
-    projectId: string,
-    page = 1,
-    limit = 20,
-    siteScope: { siteId?: string; siteIds?: string[] } = {},
-    keyword?: string,
-  ) {
-    const safePage = Math.max(page, 1);
-    const safeLimit = Math.min(Math.max(limit, 1), 100);
-
-    const rows = await this.prisma.articleJob.findMany({
-      where: {
-        organizationId,
-        projectId,
-        status: 'COMPLETED',
-        outputUrl: { not: null },
-        ...this.buildSiteWhere(siteScope),
-      },
-      select: {
-        id: true,
-        traceId: true,
-        status: true,
-        targetKeyword: true,
-        searchIntent: true,
-        semrushScore: true,
-        localSeoScore: true,
-        errorMessage: true,
-        seoCheckData: true,
-        briefData: true,
-        draftData: true,
-        outputUrl: true,
-        siteId: true,
-        site: { select: JOB_LIST_SITE_SELECT },
-        createdAt: true,
-        updatedAt: true,
-      },
-      orderBy: { updatedAt: 'desc' },
-    });
-
-    const failed = rows.filter(
-      (row) =>
-        isCmsPublishFailed(row.seoCheckData) &&
-        this.matchesKeyword(row.targetKeyword, keyword),
-    );
-    const total = failed.length;
-    const skip = (safePage - 1) * safeLimit;
-    const items = failed.slice(skip, skip + safeLimit).map((row) => this.toListItem(row));
-
-    return { items, total, page: safePage, limit: safeLimit };
-  }
-
-  private isJobReleaseReady(row: {
-    localSeoScore: number | null;
-    semrushScore: number | null;
-    seoCheckData: unknown;
-  }): boolean {
-    const thresholds = (row.seoCheckData as {
-      scoreThresholds?: {
-        localPassThreshold?: number;
-        semrushPassThreshold?: number;
-      };
-    } | null)?.scoreThresholds;
-
-    return evaluateReleaseReadiness({
-      localScore: row.localSeoScore,
-      semrushScore: row.semrushScore,
-      localPassThreshold: thresholds?.localPassThreshold,
-      semrushPassThreshold: thresholds?.semrushPassThreshold,
-    }).releaseReady;
-  }
-
-  private isCmsPublishPending(
-    seoCheckData: unknown,
-    siteCmsType: string | null,
-  ): boolean {
-    if (!siteCmsType || (siteCmsType !== 'wordpress' && siteCmsType !== 'shopify')) {
-      return false;
-    }
-    if (!canPublishArticle(seoCheckData)) {
-      return false;
-    }
-    if (isCmsPublishFailed(seoCheckData)) {
-      return false;
-    }
-    const cms = (seoCheckData as { cmsPublish?: { postUrl?: string | null } } | null)?.cmsPublish;
-    return !cms?.postUrl;
-  }
-
-  private toListItem(row: {
-    id: string;
-    traceId: string;
-    status: string;
-    targetKeyword: string;
-    searchIntent: string | null;
-    semrushScore: number | null;
-    localSeoScore: number | null;
-    errorMessage: string | null;
-    seoCheckData: unknown;
-    briefData: unknown;
-    draftData: unknown;
-    outputUrl: string | null;
-    siteId: string;
-    site: { domain: string; cmsType: string | null; cmsConfig: unknown };
-    createdAt: Date;
-    updatedAt: Date;
-  }) {
-    const shopifyConfig =
-      row.site.cmsType === 'shopify'
-        ? parseShopifyCmsConfig('shopify', row.site.cmsConfig)
-        : null;
-    const seoCheckData = row.seoCheckData as {
-      ymylReview?: { requires_human_review?: boolean; reviewedAt?: string };
-      workflowProgress?: {
-        phase?: string;
-        round?: number;
-        maxRounds?: number;
-        message?: string;
-        localScore?: number;
-        semrushScore?: number;
-        updatedAt?: string;
-      } | null;
-      workflow?: { failedStep?: string };
-      cmsPublish?: {
-        postUrl?: string | null;
-        status?: string;
-        lastError?: string;
-        publishTarget?: 'blog' | 'product';
-      };
-    } | null;
-    const draftData = row.draftData as {
-      internalLinks?: unknown[];
-      internalLinksApplied?: boolean;
-    } | null;
-
-    return {
-      id: row.id,
-      traceId: row.traceId,
-      status: row.status,
-      targetKeyword: row.targetKeyword,
-      searchIntent: row.searchIntent,
-      semrushScore: row.semrushScore,
-      localSeoScore: row.localSeoScore,
-      errorMessage: row.errorMessage,
-      outputUrl: row.outputUrl,
-      siteId: row.siteId,
-      siteDomain: row.site.domain,
-      siteCmsType: row.site.cmsType,
-      siteShopifyPublishTarget: shopifyConfig?.publishTarget ?? null,
-      briefData: isBriefApprovalPending(row.briefData)
-        ? { approvalStatus: 'pending' as const }
-        : null,
-      seoCheckData: seoCheckData
-        ? {
-            workflowProgress: seoCheckData.workflowProgress ?? null,
-            workflow: seoCheckData.workflow,
-            cmsPublish: seoCheckData.cmsPublish ?? null,
-          }
-        : null,
-      requiresHumanReview: seoCheckData?.ymylReview?.requires_human_review === true,
-      ymylReviewCompleted: Boolean(seoCheckData?.ymylReview?.reviewedAt),
-      reviewPending:
-        row.status === 'COMPLETED' && isPendingHumanReview(seoCheckData),
-      exportReady:
-        row.status === 'COMPLETED' &&
-        Boolean(row.outputUrl) &&
-        canPublishArticle(seoCheckData),
-      internalLinkCount: draftData?.internalLinksApplied
-        ? (draftData.internalLinks?.length ?? 0)
-        : null,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    };
+    return this.listService.findMany(organizationId, projectId, page, limit, options);
   }
 
   async findOne(organizationId: string, projectId: string, id: string) {
-    const job = await this.prisma.articleJob.findFirst({
-      where: { id, organizationId, projectId },
-      select: {
-        id: true,
-        traceId: true,
-        status: true,
-        targetKeyword: true,
-        searchIntent: true,
-        semrushScore: true,
-        localSeoScore: true,
-        seoCheckData: true,
-        outputUrl: true,
-        errorMessage: true,
-        serpData: true,
-        briefData: true,
-        draftData: true,
-        siteId: true,
-        createdAt: true,
-        updatedAt: true,
-        site: {
-          select: {
-            domain: true,
-            cmsType: true,
-            cmsConfig: true,
-            settings: true,
-          },
-        },
-      },
-    });
-
-    if (!job) {
-      throw new BusinessException(ErrorCodes.JOB_NOT_FOUND, '任务不存在');
-    }
-
-    const shopifyConfig =
-      job.site.cmsType === 'shopify'
-        ? parseShopifyCmsConfig('shopify', job.site.cmsConfig)
-        : null;
-    const draftData = job.draftData as {
-      internalLinks?: unknown[];
-      internalLinksApplied?: boolean;
-    } | null;
-
-    const { site, ...jobRest } = job;
-
-    const gscPerformance = await this.gscService.getJobPagePerformance(
-      organizationId,
-      projectId,
-      id,
-    );
-
-    return {
-      ...jobRest,
-      siteDomain: site.domain,
-      siteCmsType: site.cmsType,
-      siteShopifyPublishTarget: shopifyConfig?.publishTarget ?? null,
-      siteContentProfile: parseSiteSettings(site.settings).contentProfile ?? null,
-      siteWorkflow: resolveSiteSeoScoreConfig(site.settings),
-      internalLinkCount: draftData?.internalLinksApplied
-        ? (draftData.internalLinks?.length ?? 0)
-        : null,
-      gscPerformance,
-    };
+    return this.listService.findOne(organizationId, projectId, id);
   }
 
-  /** 签名 URL 读取稿件插图时解析租户（无需登录态） */
   async findOneForImageAccess(projectId: string, id: string) {
-    const job = await this.prisma.articleJob.findFirst({
-      where: { id, projectId },
-      select: { organizationId: true },
-    });
-
-    if (!job) {
-      throw new BusinessException(ErrorCodes.JOB_NOT_FOUND, '任务不存在');
-    }
-
-    return job;
+    return this.listService.findOneForImageAccess(projectId, id);
   }
 
   /** 手动触发 Semrush RPA 检测当前初稿（异步，立即返回 OPTIMIZING） */
@@ -1124,12 +298,16 @@ export class ArticleJobService {
     } | null;
 
     const jobConfig = getArticleJobConfig(job.seoCheckData);
-    const serp = resolveSerpResearchOptions(job.site.settings, {
-      serpCountry: jobConfig.serpCountry,
-      serpArticleLimit: dto.serpArticleLimit ?? serpData?.filterMeta?.limit,
-      serpArticlesOnly: dto.serpArticlesOnly ?? serpData?.filterMeta?.articlesOnly,
-      bypassCache: dto.bypassCache ?? true,
-    });
+    const serp = resolveSerpResearchOptions(
+      job.site.settings,
+      {
+        serpCountry: jobConfig.serpCountry,
+        serpArticleLimit: dto.serpArticleLimit ?? serpData?.filterMeta?.limit,
+        serpArticlesOnly: dto.serpArticlesOnly ?? serpData?.filterMeta?.articlesOnly,
+        bypassCache: dto.bypassCache ?? true,
+      },
+      { targetMarket: job.site.targetMarket },
+    );
 
     await this.scraperService.researchSerp({
       jobId: job.id,
@@ -1233,7 +411,7 @@ export class ArticleJobService {
       },
     });
 
-    await this.enqueueArticleJob(
+    await this.queueService.enqueueArticleJob(
       {
         jobId: job.id,
         traceId: retryTraceId,
@@ -1320,7 +498,7 @@ export class ArticleJobService {
       },
     });
 
-    await this.enqueueArticleJob(
+    await this.queueService.enqueueArticleJob(
       {
         jobId: job.id,
         traceId: retryTraceId,
@@ -1376,8 +554,6 @@ export class ArticleJobService {
     const retryTraceId = `tr_${uuidv4()}`;
     const retryScraperOptions = buildArticleJobScraperOptions(getArticleJobConfig(job.seoCheckData));
 
-    // 清除上次「Semrush 检测已取消」标记，否则续跑到 optimizing 时
-    // assertSemrushWorkNotCancelled 会立即再次中止。
     const baseCheck = withWorkflowMeta(job.seoCheckData, null);
     const prevSemrush = baseCheck.semrush as Record<string, unknown> | undefined;
     const retrySeoCheckData = prevSemrush
@@ -1397,7 +573,7 @@ export class ArticleJobService {
       },
     });
 
-    await this.enqueueArticleJob(
+    await this.queueService.enqueueArticleJob(
       {
         jobId: job.id,
         traceId: retryTraceId,
@@ -1427,40 +603,7 @@ export class ArticleJobService {
   }
 
   async batchRetry(organizationId: string, projectId: string, jobIds: string[]) {
-    if (jobIds.length > MAX_BATCH_ACTION_LIMIT) {
-      throw new BusinessException(
-        ErrorCodes.VALIDATION_ERROR,
-        `单次最多续跑 ${MAX_BATCH_ACTION_LIMIT} 个任务`,
-      );
-    }
-
-    const results: Array<{
-      jobId: string;
-      ok: boolean;
-      data?: { id: string; traceId: string; status: string; targetKeyword: string };
-      error?: string;
-    }> = [];
-
-    for (const jobId of jobIds) {
-      try {
-        const data = await this.retry(organizationId, projectId, jobId);
-        results.push({ jobId, ok: true, data });
-      } catch (error) {
-        const message =
-          error instanceof BusinessException
-            ? error.message
-            : error instanceof Error
-              ? error.message
-              : '续跑失败';
-        results.push({ jobId, ok: false, error: message });
-      }
-    }
-
-    return {
-      retried: results.filter((item) => item.ok).length,
-      failed: results.filter((item) => !item.ok).length,
-      results,
-    };
+    return this.batchService.batchRetry(organizationId, projectId, jobIds);
   }
 
   /** 删除任务及队列、稿件插图等关联数据 */
@@ -1507,92 +650,7 @@ export class ArticleJobService {
   }
 
   async batchRemove(organizationId: string, projectId: string, jobIds: string[], traceId: string) {
-    if (jobIds.length > MAX_BATCH_ACTION_LIMIT) {
-      throw new BusinessException(
-        ErrorCodes.VALIDATION_ERROR,
-        `单次最多删除 ${MAX_BATCH_ACTION_LIMIT} 个任务`,
-      );
-    }
-
-    const results: Array<{
-      jobId: string;
-      ok: boolean;
-      data?: { id: string; targetKeyword: string; deleted: true };
-      error?: string;
-    }> = [];
-
-    for (const jobId of jobIds) {
-      try {
-        const data = await this.remove(organizationId, projectId, jobId, traceId);
-        results.push({ jobId, ok: true, data });
-      } catch (error) {
-        results.push({
-          jobId,
-          ok: false,
-          error: this.resolveErrorMessage(error, '删除失败'),
-        });
-      }
-    }
-
-    return {
-      deleted: results.filter((item) => item.ok).length,
-      failed: results.filter((item) => !item.ok).length,
-      results,
-    };
-  }
-
-  private async cleanupBeforeDelete(
-    organizationId: string,
-    projectId: string,
-    job: {
-      id: string;
-      traceId: string;
-      targetKeyword: string;
-      seoCheckData: unknown;
-    },
-  ): Promise<void> {
-    const ctx = {
-      jobId: job.id,
-      traceId: job.traceId,
-      organizationId,
-      projectId,
-      targetKeyword: job.targetKeyword,
-    };
-
-    const pending = this.getSemrushPending(job.seoCheckData);
-    if (pending) {
-      try {
-        await this.seoCheckerService.cancelManualSemrushCheck(ctx, '任务已删除，Semrush 检测已取消');
-      } catch (error) {
-        this.logger.warn('Cancel Semrush check before delete failed', {
-          traceId: job.traceId,
-          organizationId,
-          projectId,
-          jobId: job.id,
-          action: 'article_job.delete_cancel_semrush_failed',
-          error: error instanceof Error ? error.message : 'unknown',
-        });
-      }
-    }
-
-    const [articleQueueRemoved, playwrightQueueRemoved] = await Promise.all([
-      removeBullJobsByArticleJobId(this.articleJobQueue, job.id),
-      removeBullJobsByArticleJobId(this.playwrightQueue, job.id),
-    ]);
-
-    if (articleQueueRemoved > 0 || playwrightQueueRemoved > 0) {
-      this.logger.info('Removed pending queue jobs before article job delete', {
-        traceId: job.traceId,
-        organizationId,
-        projectId,
-        jobId: job.id,
-        action: 'article_job.delete_queue_cleanup',
-        articleQueueRemoved,
-        playwrightQueueRemoved,
-      });
-    }
-
-    await this.storage.deleteByPrefix(`${buildExportStoragePrefix(organizationId, projectId, job.id)}/`);
+    return this.batchService.batchRemove(organizationId, projectId, jobIds, traceId);
   }
 
   async cancelSemrushCheck(organizationId: string, projectId: string, id: string) {
@@ -1653,25 +711,7 @@ export class ArticleJobService {
     };
   }
 
-  private resolveJobSerpCountry(
-    site: { targetMarket: string | null; settings: unknown },
-    override?: string,
-  ): string {
-    const normalized = normalizeSerpCountry(override);
-    if (normalized) return normalized;
-
-    const fromTargets = resolveSerpCountriesFromTargetMarkets(
-      site.targetMarket,
-      (value) => normalizeSerpCountry(value) !== undefined,
-    );
-    if (fromTargets.length > 0) {
-      return fromTargets[0];
-    }
-
-    return resolveSerpResearchOptions(site.settings).serpCountry;
-  }
-
-  private buildScraperOptions(
+  buildScraperOptions(
     dto: Pick<CreateArticleJobDto, 'serpArticleLimit' | 'serpArticlesOnly' | 'serpCountry'>,
     resolvedSerpCountry?: string,
   ): ArticleJobScraperOptions | undefined {
@@ -1691,39 +731,122 @@ export class ArticleJobService {
     };
   }
 
-  private async resolveBatchKeywords(
+  resolveErrorMessage(error: unknown, fallback: string): string {
+    if (error instanceof BusinessException) {
+      const body = error.getResponse();
+      if (typeof body === 'object' && body !== null && 'message' in body) {
+        return String((body as { message: string }).message);
+      }
+    }
+    if (error instanceof Error) {
+      return error.message;
+    }
+    return fallback;
+  }
+
+  private async buildKeywordCannibalizationWarnings(
     organizationId: string,
     projectId: string,
-    dto: CreateBatchArticleJobsDto,
-    limit: number,
-    seoArticlesOnly: boolean,
-  ): Promise<string[]> {
-    if (dto.source === 'site-crawl') {
-      const discovered = await this.siteArticleCrawler.discoverForSite(
+    siteId: string,
+    keyword: string,
+    excludeJobId?: string,
+  ) {
+    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const rows = await this.prisma.articleJob.findMany({
+      where: {
         organizationId,
         projectId,
-        dto.siteId,
-        {
-        limit: limit * 3,
-        seoArticlesOnly,
-      });
-      return [...new Set(discovered.map((item) => item.keyword))].slice(0, limit);
+        siteId,
+        status: { not: 'FAILED' },
+        ...(excludeJobId ? { id: { not: excludeJobId } } : {}),
+      },
+      select: {
+        id: true,
+        targetKeyword: true,
+        status: true,
+        updatedAt: true,
+        seoCheckData: true,
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 200,
+    });
+
+    const candidates = rows
+      .filter((row) => {
+        if (row.status !== 'COMPLETED') return true;
+        if (row.updatedAt < ninetyDaysAgo) return false;
+        const postUrl = (
+          (row.seoCheckData as { cmsPublish?: { postUrl?: string | null } } | null)?.cmsPublish
+            ?.postUrl ?? ''
+        ).trim();
+        return Boolean(postUrl);
+      })
+      .map((row) => ({
+        jobId: row.id,
+        keyword: row.targetKeyword,
+        status: row.status,
+      }));
+
+    const conflicts = findKeywordConflicts(keyword, candidates);
+    if (conflicts.length === 0) return [];
+
+    return conflicts.map((conflict) => ({
+      code: 'KEYWORD_CANNIBALIZATION' as const,
+      message: `与已有任务「${conflict.keyword}」过于相似（${conflict.reason}）`,
+      jobId: conflict.jobId,
+      keyword: conflict.keyword,
+      status: conflict.status,
+      reason: conflict.reason,
+    }));
+  }
+
+  private async cleanupBeforeDelete(
+    organizationId: string,
+    projectId: string,
+    job: {
+      id: string;
+      traceId: string;
+      targetKeyword: string;
+      seoCheckData: unknown;
+    },
+  ): Promise<void> {
+    const ctx = {
+      jobId: job.id,
+      traceId: job.traceId,
+      organizationId,
+      projectId,
+      targetKeyword: job.targetKeyword,
+    };
+
+    const pending = this.getSemrushPending(job.seoCheckData);
+    if (pending) {
+      try {
+        await this.seoCheckerService.cancelManualSemrushCheck(ctx, '任务已删除，Semrush 检测已取消');
+      } catch (error) {
+        this.logger.warn('Cancel Semrush check before delete failed', {
+          traceId: job.traceId,
+          organizationId,
+          projectId,
+          jobId: job.id,
+          action: 'article_job.delete_cancel_semrush_failed',
+          error: error instanceof Error ? error.message : 'unknown',
+        });
+      }
     }
 
-    const rawItems = (dto.keywords ?? []).map((item) => item.trim()).filter(Boolean);
-    const normalized = rawItems
-      .map((item) => {
-        if (/^https?:\/\//i.test(item)) {
-          if (seoArticlesOnly && !isSeoArticleUrl(item)) {
-            return null;
-          }
-          return keywordFromArticleUrl(item);
-        }
-        return item;
-      })
-      .filter((item): item is string => Boolean(item && item.length >= 2));
+    await this.queueService.removeQueueJobsForArticleJob(job, organizationId, projectId);
+    await this.storage.deleteByPrefix(`${buildExportStoragePrefix(organizationId, projectId, job.id)}/`);
+  }
 
-    return [...new Set(normalized)].slice(0, limit);
+  private resolveJobSerpCountry(
+    site: { targetMarket: string | null; settings: unknown },
+    override?: string,
+  ): string {
+    return resolveSerpResearchOptions(
+      site.settings,
+      { serpCountry: override },
+      { targetMarket: site.targetMarket },
+    ).serpCountry;
   }
 
   private async resolveSearchIntent(
@@ -1748,18 +871,5 @@ export class ArticleJobService {
   private getSemrushPending(seoCheckData: unknown): SemrushCheckPending | null {
     const data = (seoCheckData ?? {}) as { semrush?: { pending?: SemrushCheckPending } };
     return data.semrush?.pending ?? null;
-  }
-
-  private resolveErrorMessage(error: unknown, fallback: string): string {
-    if (error instanceof BusinessException) {
-      const body = error.getResponse();
-      if (typeof body === 'object' && body !== null && 'message' in body) {
-        return String((body as { message: string }).message);
-      }
-    }
-    if (error instanceof Error) {
-      return error.message;
-    }
-    return fallback;
   }
 }

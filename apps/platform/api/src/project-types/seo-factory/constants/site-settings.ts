@@ -6,8 +6,12 @@ import {
   parseSiteSerpResearchSettings,
   type SiteSerpResearchSettings,
 } from './serp-research-settings';
+import {
+  parseSitePageLibrarySettings,
+  type SitePageLibrarySettings,
+} from './page-library-settings';
 
-export type { SiteSerpResearchSettings };
+export type { SiteSerpResearchSettings, SitePageLibrarySettings };
 
 export interface SiteContentProfile {
   industry?: string;
@@ -30,6 +34,7 @@ export interface SiteSettings extends SiteWorkflowSettings {
   ownerUserId?: string;
   contentProfile?: SiteContentProfile;
   serpResearch?: SiteSerpResearchSettings;
+  pageLibrary?: SitePageLibrarySettings;
 }
 
 const STRING_PROFILE_KEYS = [
@@ -104,6 +109,7 @@ export function parseSiteSettings(settings: unknown): SiteSettings {
     ownerUserId,
     contentProfile: parseSiteContentProfile(raw.contentProfile),
     serpResearch: parseSiteSerpResearchSettings(raw.serpResearch),
+    pageLibrary: parseSitePageLibrarySettings(raw.pageLibrary),
   };
 }
 

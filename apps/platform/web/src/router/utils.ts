@@ -73,14 +73,18 @@ const ORG_MENU_PATH_ORDER: Array<{ menuKey: string; path: string }> = [
   { menuKey: "org:profile", path: "/org/profile" },
   { menuKey: "org:projects", path: "/org/projects" },
   { menuKey: "org:billing", path: "/org/billing" },
-  { menuKey: "org:members", path: "/org/members" }
+  { menuKey: "org:members", path: "/org/members" },
+  { menuKey: "org:audit", path: "/org/audit" }
 ];
 
 const CONSOLE_MENU_PATH_ORDER: Array<{ menuKey: string; path: string }> = [
   { menuKey: "console:overview", path: "/console/overview" },
   { menuKey: "console:tenants", path: "/console/tenants" },
+  { menuKey: "console:sites", path: "/console/sites" },
   { menuKey: "console:audit", path: "/console/audit" },
   { menuKey: "console:health", path: "/console/health" },
+  { menuKey: "console:gsc", path: "/console/gsc" },
+  { menuKey: "console:labs", path: "/console/labs/diagnostics" },
   { menuKey: "console:prompts", path: "/console/prompts" },
   { menuKey: "console:access", path: "/console/access" }
 ];

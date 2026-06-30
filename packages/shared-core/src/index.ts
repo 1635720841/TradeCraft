@@ -37,4 +37,5 @@ export * from './seo/competitor-analysis.util';
 export * from './seo/score-calibration-model';
 export * from './seo/score-calibration-readiness';
 export * from './seo/score-calibration-training-hygiene.util';
+export * from './seo/gsc.constants';
 export * from './content-review/ymyl-review.util';

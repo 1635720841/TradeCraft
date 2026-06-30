@@ -2,6 +2,7 @@
  * seo-factory Google Search Console API。
  */
 
+import { GSC_STALE_SYNC_DAYS, isGscSyncStale as sharedIsGscSyncStale } from "@wm/shared-core";
 import { http } from "@/utils/http";
 import { seoFactoryApiPath } from "./paths";
 import type { WmApiResponse } from "./types";
@@ -64,17 +65,6 @@ export async function getSiteGscStatus(
   return res.data;
 }
 
-export async function getGscConnectUrl(
-  projectId: string,
-  siteId: string
-): Promise<{ authUrl: string }> {
-  const res = await http.request<WmApiResponse<{ authUrl: string }>>(
-    "get",
-    seoFactoryApiPath(projectId, `sites/${siteId}/gsc/connect-url`)
-  );
-  return res.data;
-}
-
 export async function syncSiteGsc(
   projectId: string,
   siteId: string
@@ -84,16 +74,6 @@ export async function syncSiteGsc(
     seoFactoryApiPath(projectId, `sites/${siteId}/gsc/sync`)
   );
   return res.data;
-}
-
-export async function disconnectSiteGsc(
-  projectId: string,
-  siteId: string
-): Promise<void> {
-  await http.request(
-    "post",
-    seoFactoryApiPath(projectId, `sites/${siteId}/gsc/disconnect`)
-  );
 }
 
 export async function getProjectGscOverview(
@@ -114,12 +94,8 @@ export function formatGscPosition(value: number): string {
   return value > 0 ? value.toFixed(1) : "-";
 }
 
-const GSC_STALE_SYNC_DAYS = 7;
-
 export function isGscSyncStale(lastSyncAt?: string | null): boolean {
-  if (!lastSyncAt) return false;
-  const synced = Date.parse(lastSyncAt);
-  if (Number.isNaN(synced)) return false;
-  const ageMs = Date.now() - synced;
-  return ageMs > GSC_STALE_SYNC_DAYS * 24 * 60 * 60 * 1000;
+  return sharedIsGscSyncStale(lastSyncAt);
 }
+
+export { GSC_STALE_SYNC_DAYS };

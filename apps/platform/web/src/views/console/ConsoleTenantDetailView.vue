@@ -66,6 +66,8 @@
         </div>
       </el-card>
 
+      <ConsoleTenantSitesPanel :organization-id="orgId" />
+
       <el-card v-loading="loading" shadow="never">
         <template #header>
           <span class="font-medium">账号概览（只读）</span>
@@ -207,6 +209,7 @@ import { formatPeriodWindow } from "@/utils/period";
 import { message } from "@/utils/message";
 import TenantEditDialog from "./components/TenantEditDialog.vue";
 import TenantTopUpDialog from "./components/TenantTopUpDialog.vue";
+import ConsoleTenantSitesPanel from "./components/ConsoleTenantSitesPanel.vue";
 
 defineOptions({ name: "ConsoleTenantDetailView" });
 

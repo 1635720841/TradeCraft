@@ -13,9 +13,10 @@ import {
   MAX_SERP_CACHE_TTL_HOURS,
   MIN_SERP_CACHE_TTL_HOURS,
 } from './serp-filter';
+import { resolveSerpCountriesFromTargetMarkets } from '../modules/site/target-market.util';
 
 export interface SiteSerpResearchSettings {
-  /** Google 搜索国家（Serper gl），默认 US */
+  /** @deprecated 搜索国家由站点目标市场 / 任务创建时选择，不再在站点配置中维护 */
   country?: string;
   /** 最终用于大纲的竞品参考篇数 */
   articleLimit?: number;
@@ -175,11 +176,19 @@ export function mergeSiteSerpResearchSettings(
 export function resolveSerpResearchOptions(
   siteSettings: unknown,
   overrides?: SerpResearchOverrides,
+  context?: { targetMarket?: string | null },
 ): ResolvedSerpResearchOptions {
   const siteRoot = (siteSettings ?? {}) as { serpResearch?: unknown };
   const site = parseSiteSerpResearchSettings(siteRoot.serpResearch) ?? {};
+
+  const fromTargetMarket = resolveSerpCountriesFromTargetMarkets(
+    context?.targetMarket,
+    (value) => normalizeSerpCountry(value) !== undefined,
+  );
+
   const serpCountry =
     normalizeSerpCountry(overrides?.serpCountry) ??
+    (fromTargetMarket[0] ? normalizeSerpCountry(fromTargetMarket[0]) : undefined) ??
     normalizeSerpCountry(site.country) ??
     'US';
 

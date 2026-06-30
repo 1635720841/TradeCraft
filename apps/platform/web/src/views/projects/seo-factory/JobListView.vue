@@ -18,11 +18,13 @@
           :site-owner-me-filter="siteOwnerMeFilter"
           :cms-ui-enabled="cmsUiEnabled"
           :can-create-job="canCreateJob"
+          :show-seo-score="showSeoScore"
           @refresh="() => fetchJobs()"
           @create="goCreate"
           @list-filter-change="onListFilterChange"
           @site-filter-change="onSiteFilterModelChange"
           @toggle-site-owner-filter="toggleSiteOwnerFilter"
+          @update:show-seo-score="onShowSeoScoreChange"
         />
       </template>
 
@@ -64,6 +66,7 @@
         ref="tableComponentRef"
         :jobs="jobs"
         :loading="loading"
+        :show-seo-score="showSeoScore"
         v-model:page="page"
         v-model:limit="limit"
         :total="total"
@@ -108,6 +111,8 @@ defineOptions({ name: "JobListView" });
 
 const cmsUiEnabled = WORDPRESS_CMS_UI_ENABLED;
 
+const SHOW_SEO_SCORE_KEY = "seo-factory.job-list.show-seo-score";
+
 const route = useRoute();
 const router = useRouter();
 const projectId = route.params.projectId as string;
@@ -115,6 +120,18 @@ const projectId = route.params.projectId as string;
 const { can, canReview } = useProjectSeoAccess();
 const canCreateJob = computed(() => can("seo:job:create"));
 const canReviewJob = computed(() => canReview());
+
+const showSeoScore = ref(
+  typeof localStorage !== "undefined" &&
+    localStorage.getItem(SHOW_SEO_SCORE_KEY) === "1"
+);
+
+function onShowSeoScoreChange(value: boolean) {
+  showSeoScore.value = value;
+  if (typeof localStorage !== "undefined") {
+    localStorage.setItem(SHOW_SEO_SCORE_KEY, value ? "1" : "0");
+  }
+}
 
 const tableComponentRef = ref<{ clearSelection: () => void }>();
 

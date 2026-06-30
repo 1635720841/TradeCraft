@@ -14,6 +14,7 @@ import type { Response } from 'express';
 import type { RequestContext } from '@wm/shared-core';
 import { Public } from '../../../../core/decorators/public.decorator';
 import { ReqCtx } from '../../../../core/decorators/request-context.decorator';
+import { LoggerService } from '../../../../core/logger/logger.service';
 import { ProjectService } from '../../../../modules/project/project.service';
 import { EntitlementsService } from '../../../../modules/billing/entitlements.service';
 import { GscService } from './gsc.service';
@@ -33,24 +34,8 @@ export class GscController {
     @Param('projectId') projectId: string,
     @Param('siteId') siteId: string,
   ) {
-    await this.projectService.assertSeoSiteRead(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoSiteManage(ctx.organizationId, projectId, ctx);
     const data = await this.gscService.getStatus(ctx.organizationId, projectId, siteId);
-    return { data, meta: { traceId: ctx.traceId } };
-  }
-
-  @Get('connect-url')
-  async connectUrl(
-    @ReqCtx() ctx: RequestContext,
-    @Param('projectId') projectId: string,
-    @Param('siteId') siteId: string,
-  ) {
-    await this.projectService.assertSeoSiteRead(ctx.organizationId, projectId, ctx);
-    await this.entitlementsService.assertEntitlement(ctx.organizationId, 'gscEnabled');
-    const data = await this.gscService.createConnectUrl(
-      ctx.organizationId,
-      projectId,
-      siteId,
-    );
     return { data, meta: { traceId: ctx.traceId } };
   }
 
@@ -65,17 +50,6 @@ export class GscController {
     const data = await this.gscService.sync(ctx.organizationId, projectId, siteId);
     return { data, meta: { traceId: ctx.traceId } };
   }
-
-  @Post('disconnect')
-  async disconnect(
-    @ReqCtx() ctx: RequestContext,
-    @Param('projectId') projectId: string,
-    @Param('siteId') siteId: string,
-  ) {
-    await this.projectService.assertSeoSiteManage(ctx.organizationId, projectId, ctx);
-    const data = await this.gscService.disconnect(ctx.organizationId, projectId, siteId);
-    return { data, meta: { traceId: ctx.traceId } };
-  }
 }
 
 @Controller(seoFactoryRoutes('gsc'))
@@ -87,7 +61,7 @@ export class GscProjectController {
 
   @Get('overview')
   async overview(@ReqCtx() ctx: RequestContext, @Param('projectId') projectId: string) {
-    await this.projectService.assertSeoSiteRead(ctx.organizationId, projectId, ctx);
+    await this.projectService.assertSeoSiteManage(ctx.organizationId, projectId, ctx);
     const data = await this.gscService.getProjectOverview(ctx.organizationId, projectId);
     return { data, meta: { traceId: ctx.traceId } };
   }
@@ -95,7 +69,10 @@ export class GscProjectController {
 
 @Controller('api/v1/oauth/gsc')
 export class GscOAuthController {
-  constructor(private readonly gscService: GscService) {}
+  constructor(
+    private readonly gscService: GscService,
+    private readonly logger: LoggerService,
+  ) {}
 
   @Public()
   @Get('callback')
@@ -108,15 +85,20 @@ export class GscOAuthController {
     const webOrigin = process.env.WEB_APP_ORIGIN?.trim() || 'http://localhost:5173';
 
     if (error || !code || !state) {
-      res.redirect(`${webOrigin}/welcome?gsc=error`);
+      res.redirect(`${webOrigin}/console/gsc?gsc=error`);
       return;
     }
 
     try {
       const redirectUrl = await this.gscService.handleOAuthCallback(code, state);
       res.redirect(redirectUrl);
-    } catch {
-      res.redirect(`${webOrigin}/welcome?gsc=error`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'GSC OAuth 回调失败';
+      this.logger.warn('GSC OAuth callback failed', {
+        action: 'gsc.oauth.callback',
+        message,
+      });
+      res.redirect(`${webOrigin}/console/gsc?gsc=error`);
     }
   }
 }

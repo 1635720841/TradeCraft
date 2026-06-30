@@ -10,19 +10,23 @@
       <div class="flex flex-wrap items-center gap-2">
         <el-select
           :model-value="listFilter"
-          placeholder="阶段"
-          style="width: 160px"
+          placeholder="筛选"
+          style="width: 180px"
           @update:model-value="onListFilterChange"
         >
           <el-option label="全部任务" value="all" />
-          <el-option label="待确认大纲" value="outlinePending" />
-          <el-option label="敏感内容待审核" value="reviewPending" />
-          <el-option label="生成中" value="generating" />
-          <el-option label="生成失败" value="failed" />
-          <el-option label="SEO 未达标" value="seoNotReady" />
-          <el-option v-if="cmsUiEnabled" label="待发布" value="publishPending" />
-          <el-option label="稿件待处理" value="staleDraft" />
-          <el-option v-if="cmsUiEnabled" label="发布失败" value="publishFailed" />
+          <el-option-group label="阶段">
+            <el-option label="待确认大纲" value="outlinePending" />
+            <el-option label="生成中" value="generating" />
+            <el-option label="敏感内容待审核" value="reviewPending" />
+            <el-option v-if="cmsUiEnabled" label="待发布" value="publishPending" />
+          </el-option-group>
+          <el-option-group label="需处理">
+            <el-option label="生成失败" value="failed" />
+            <el-option label="SEO 未达标" value="seoNotReady" />
+            <el-option label="稿件待处理" value="staleDraft" />
+            <el-option v-if="cmsUiEnabled" label="发布失败" value="publishFailed" />
+          </el-option-group>
         </el-select>
         <el-select
           :model-value="filterSiteId"
@@ -46,6 +50,12 @@
           我负责的站点
         </el-checkbox>
         <el-tag v-if="polling" type="info" size="small">自动刷新中</el-tag>
+        <el-checkbox
+          :model-value="showSeoScore"
+          @change="onShowSeoScoreChange"
+        >
+          SEO 分数列
+        </el-checkbox>
         <el-button @click="emit('refresh')">刷新</el-button>
         <el-button v-if="canCreateJob" type="primary" @click="emit('create')">
           新建任务
@@ -80,7 +90,7 @@
   </div>
 
   <div v-if="selectedCount" class="mb-4 flex flex-wrap items-center gap-2">
-    <span class="text-sm text-gray-600">已选 {{ selectedCount }} 项</span>
+    <span class="text-sm mw-text-muted">已选 {{ selectedCount }} 项</span>
     <el-button
       v-if="briefApprovableCount > 0"
       size="small"
@@ -154,6 +164,7 @@ const props = withDefaults(
   siteOwnerMeFilter: boolean;
   cmsUiEnabled: boolean;
   canCreateJob: boolean;
+  showSeoScore?: boolean;
   stageAlert?: StageAlert | null;
   assignedToMeAlert?: StageAlert | null;
   siteOwnerMeAlert?: StageAlert | null;
@@ -183,7 +194,8 @@ const props = withDefaults(
     batchRetrying: false,
     batchPublishing: false,
     batchExporting: false,
-    batchDeleting: false
+    batchDeleting: false,
+    showSeoScore: false
   }
 );
 
@@ -202,6 +214,7 @@ const emit = defineEmits<{
   "batch-publish": [];
   "batch-export": [];
   "batch-delete": [];
+  "update:show-seo-score": [value: boolean];
 }>();
 
 const activeAlert = computed(
@@ -223,5 +236,9 @@ function toggleSiteOwnerFilter(checked: boolean | string | number) {
 function onKeywordUpdate(value: string) {
   emit("update:keyword-search", value);
   emit("keyword-search-input");
+}
+
+function onShowSeoScoreChange(checked: boolean | string | number) {
+  emit("update:show-seo-score", checked === true);
 }
 </script>

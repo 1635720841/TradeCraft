@@ -4,7 +4,7 @@
 
 import { Injectable } from '@nestjs/common';
 import { ProjectStatus } from '@prisma/client';
-import type { RequestContext } from '@wm/shared-core';
+import { type RequestContext } from '@wm/shared-core';
 import { PrismaService } from '../../core/database/prisma.service';
 import { BusinessException } from '../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../core/exceptions/error-codes';
@@ -12,6 +12,9 @@ import { tenantVisibleProjectMemberUserFilter } from '../access/tenant-member-vi
 import { AuditService } from '../access/audit.service';
 import { EntitlementsService } from '../billing/entitlements.service';
 import { ProjectAccessService } from './project-access.service';
+import {
+  resolveProjectOrganizationId,
+} from './project-tenant-scope.util';
 import { listProjectTypeDescriptors } from './project-type.descriptors';
 import type { CreateProjectDto } from './dto/create-project.dto';
 
@@ -234,14 +237,35 @@ export class ProjectService {
     return { id: projectId, name: project.name };
   }
 
+  async resolveOrganizationIdForProject(
+    organizationId: string,
+    projectId: string,
+    actor?: Pick<RequestContext, 'role'>,
+  ): Promise<string> {
+    return resolveProjectOrganizationId(this.prisma, organizationId, projectId, actor);
+  }
+
+  private async resolveEffectiveOrganizationId(
+    organizationId: string,
+    projectId: string,
+    actor?: Pick<RequestContext, 'role'>,
+  ): Promise<string> {
+    return this.resolveOrganizationIdForProject(organizationId, projectId, actor);
+  }
+
   async assertAccessible(
     organizationId: string,
     projectId: string,
     actor?: Pick<RequestContext, 'userId' | 'role'>,
     options?: { anyOf?: readonly string[]; expectedProjectType?: string },
   ) {
+    const effectiveOrganizationId = await this.resolveEffectiveOrganizationId(
+      organizationId,
+      projectId,
+      actor,
+    );
     const project = await this.prisma.project.findFirst({
-      where: { id: projectId, organizationId },
+      where: { id: projectId, organizationId: effectiveOrganizationId },
       select: {
         id: true,
         status: true,

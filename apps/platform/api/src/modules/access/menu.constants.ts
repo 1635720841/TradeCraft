@@ -49,6 +49,14 @@ export const MENU_CATALOG: MenuDefinition[] = [
     sortOrder: 13,
   },
   {
+    id: 'org:audit',
+    title: '操作审计',
+    routePath: '/org/audit',
+    permissionId: 'org:audit:read',
+    targetRoles: [Role.ADMIN, Role.SUPER_ADMIN],
+    sortOrder: 14,
+  },
+  {
     id: 'console:overview',
     title: '运营概览',
     routePath: '/console/overview',
@@ -65,12 +73,20 @@ export const MENU_CATALOG: MenuDefinition[] = [
     sortOrder: 21,
   },
   {
+    id: 'console:sites',
+    title: '站点总览',
+    routePath: '/console/sites',
+    permissionId: 'console:tenant:read',
+    targetRoles: CONSOLE_OPS_ROLES,
+    sortOrder: 22,
+  },
+  {
     id: 'console:audit',
     title: '操作审计',
     routePath: '/console/audit',
     permissionId: 'console:audit:read',
     targetRoles: CONSOLE_OPS_ROLES,
-    sortOrder: 22,
+    sortOrder: 23,
   },
   {
     id: 'console:health',
@@ -78,7 +94,23 @@ export const MENU_CATALOG: MenuDefinition[] = [
     routePath: '/console/health',
     permissionId: 'console:health:read',
     targetRoles: CONSOLE_OPS_ROLES,
-    sortOrder: 23,
+    sortOrder: 24,
+  },
+  {
+    id: 'console:gsc',
+    title: '搜索表现',
+    routePath: '/console/gsc',
+    permissionId: 'console:gsc:manage',
+    targetRoles: CONSOLE_OPS_ROLES,
+    sortOrder: 25,
+  },
+  {
+    id: 'console:labs',
+    title: '项目诊断',
+    routePath: '/console/labs/diagnostics',
+    permissionId: 'console:tenant:read',
+    targetRoles: CONSOLE_OPS_ROLES,
+    sortOrder: 26,
   },
   {
     id: 'console:prompts',
@@ -86,7 +118,7 @@ export const MENU_CATALOG: MenuDefinition[] = [
     routePath: '/console/prompts',
     permissionId: 'console:prompt:read',
     targetRoles: CONSOLE_OPS_ROLES,
-    sortOrder: 24,
+    sortOrder: 27,
   },
   {
     id: 'console:access',
@@ -94,7 +126,7 @@ export const MENU_CATALOG: MenuDefinition[] = [
     routePath: '/console/access',
     permissionId: 'console:menu:manage',
     targetRoles: [Role.SUPER_ADMIN],
-    sortOrder: 25,
+    sortOrder: 26,
   },
 ];
 
@@ -103,6 +135,7 @@ export const DEFAULT_ADMIN_MENU_IDS = [
   'org:members',
   'org:projects',
   'org:billing',
+  'org:audit',
 ];
 
 export const DEFAULT_MEMBER_MENU_IDS = ['org:profile', 'org:projects'];
@@ -110,7 +143,10 @@ export const DEFAULT_MEMBER_MENU_IDS = ['org:profile', 'org:projects'];
 export const DEFAULT_PLATFORM_OPERATOR_MENU_IDS = [
   'console:overview',
   'console:tenants',
+  'console:sites',
   'console:health',
+  'console:gsc',
+  'console:labs',
   'console:audit',
 ];
 

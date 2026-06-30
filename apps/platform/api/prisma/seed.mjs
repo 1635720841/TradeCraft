@@ -101,6 +101,7 @@ async function ensureCatalogs() {
     ['console:tenant:update', '编辑租户', 'console', '修改套餐与账期', 43],
     ['console:menu:manage', '平台权限', 'console', '配置平台运营账号 Console 权限', 44],
     ['console:health:read', '系统健康', 'console', '查看队列与 Provider 状态', 45],
+    ['console:gsc:manage', 'GSC 集成管理', 'console', '平台统一授权与站点搜索表现绑定', 46],
     ['console:prompt:read', '查看 Prompt', 'console', '查看 Prompt 模板', 50],
     ['console:prompt:manage', '管理 Prompt', 'console', '编辑 Prompt 与绑定', 51],
     ['console:audit:read', '操作审计', 'console', '查看平台操作日志', 52],
@@ -140,12 +141,14 @@ async function ensureCatalogs() {
     ['org:members', '成员与权限', '/org/members', 'org:member:list', ['ADMIN', 'SUPER_ADMIN'], 11],
     ['org:projects', '项目管理', '/org/projects', 'project:read', ['ADMIN', 'SUPER_ADMIN', 'MEMBER'], 12],
     ['org:billing', '订阅与配额', '/org/billing', 'org:billing:read', ['ADMIN', 'SUPER_ADMIN', 'MEMBER'], 13],
+    ['org:audit', '操作审计', '/org/audit', 'org:audit:read', ['ADMIN', 'SUPER_ADMIN'], 14],
     ['console:overview', '运营概览', '/console/overview', 'console:tenant:list', ['SUPER_ADMIN', 'PLATFORM_OPERATOR'], 20],
     ['console:tenants', '租户管理', '/console/tenants', 'console:tenant:list', ['SUPER_ADMIN', 'PLATFORM_OPERATOR'], 21],
     ['console:prompts', 'Prompt 运营', '/console/prompts', 'console:prompt:read', ['SUPER_ADMIN'], 22],
     ['console:access', '平台权限', '/console/access', 'console:menu:manage', ['SUPER_ADMIN'], 23],
     ['console:health', '系统健康', '/console/health', 'console:health:read', ['SUPER_ADMIN', 'PLATFORM_OPERATOR'], 24],
-    ['console:audit', '操作审计', '/console/audit', 'console:audit:read', ['SUPER_ADMIN', 'PLATFORM_OPERATOR'], 25],
+    ['console:gsc', '搜索表现', '/console/gsc', 'console:gsc:manage', ['SUPER_ADMIN', 'PLATFORM_OPERATOR'], 25],
+    ['console:audit', '操作审计', '/console/audit', 'console:audit:read', ['SUPER_ADMIN', 'PLATFORM_OPERATOR'], 26],
   ];
 
   for (const [id, title, routePath, permissionId, targetRoles, sortOrder] of menus) {
@@ -156,9 +159,9 @@ async function ensureCatalogs() {
     });
   }
 
-  const adminMenus = ['org:profile', 'org:members', 'org:projects', 'org:billing'];
+  const adminMenus = ['org:profile', 'org:members', 'org:projects', 'org:billing', 'org:audit'];
   const memberMenus = ['org:profile', 'org:projects'];
-  const operatorMenus = ['console:overview', 'console:tenants', 'console:health', 'console:audit'];
+  const operatorMenus = ['console:overview', 'console:tenants', 'console:health', 'console:gsc', 'console:audit'];
   for (const menuId of adminMenus) {
     await prisma.roleMenuGrant.upsert({
       where: { role_menuId: { role: 'ADMIN', menuId } },

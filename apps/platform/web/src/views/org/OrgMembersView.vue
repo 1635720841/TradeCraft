@@ -43,8 +43,13 @@
         </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
-            <el-tag v-if="row.status === 'INVITED'" type="warning" size="small">待接受</el-tag>
-            <el-tag v-else-if="row.status === 'DISABLED'" type="info" size="small">已禁用</el-tag>
+            <el-tag
+              v-if="row.status"
+              :type="dictTagType(memberStatusDict, row.status)"
+              size="small"
+            >
+              {{ dictLabel(memberStatusDict, row.status) }}
+            </el-tag>
             <el-tag v-else type="success" size="small">正常</el-tag>
           </template>
         </el-table-column>
@@ -314,7 +319,7 @@ import {
   updateOrganizationMemberStatus,
   type OrganizationMember
 } from "@/api/org/organization";
-import { memberRoleDict } from "@/constants/dicts/platform";
+import { memberRoleDict, memberStatusDict } from "@/constants/dicts/platform";
 import {
   ORG_PERMISSION_SECTIONS,
   PERMISSION_MODULE_LABELS
@@ -445,7 +450,8 @@ function onGrantChange(ids: string[]) {
 async function loadMembers() {
   loading.value = true;
   try {
-    members.value = await listOrganizationMembers();
+    const result = await listOrganizationMembers();
+    members.value = result.items;
   } finally {
     loading.value = false;
   }

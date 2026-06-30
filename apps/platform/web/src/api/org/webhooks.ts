@@ -24,12 +24,21 @@ export const WEBHOOK_EVENT_OPTIONS = [
   { value: "org.quota_low", label: "配额告警" }
 ] as const;
 
-export async function listOrgWebhooks(): Promise<OrgWebhookItem[]> {
-  const res = await http.request<WmApiResponse<OrgWebhookItem[]>>(
-    "get",
-    "/api/v1/org/webhooks"
-  );
-  return res.data ?? [];
+export async function listOrgWebhooks(
+  page = 1,
+  limit = 100
+): Promise<{ items: OrgWebhookItem[]; pagination: { page: number; limit: number; total: number } }> {
+  const res = await http.request<
+    WmApiResponse<OrgWebhookItem[]> & {
+      meta?: { pagination?: { page: number; limit: number; total: number } };
+    }
+  >("get", "/api/v1/org/webhooks", { params: { page, limit } });
+  const pagination = res.meta?.pagination ?? {
+    page,
+    limit,
+    total: res.data?.length ?? 0
+  };
+  return { items: res.data ?? [], pagination };
 }
 
 export async function createOrgWebhook(payload: {

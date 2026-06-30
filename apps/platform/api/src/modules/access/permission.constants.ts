@@ -37,6 +37,7 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   { id: 'console:tenant:update', name: '编辑租户', module: 'console', description: '修改套餐与账期', sortOrder: 43 },
   { id: 'console:menu:manage', name: '访问控制', module: 'console', description: '配置平台运营账号菜单与 Console 权限', sortOrder: 44 },
   { id: 'console:health:read', name: '系统健康', module: 'console', description: '查看队列与 Provider 状态', sortOrder: 45 },
+  { id: 'console:gsc:manage', name: 'GSC 集成管理', module: 'console', description: '平台统一授权与站点搜索表现绑定', sortOrder: 46 },
   { id: 'console:prompt:read', name: '查看 Prompt', module: 'console', description: '查看 Prompt 模板', sortOrder: 50 },
   { id: 'console:prompt:manage', name: '管理 Prompt', module: 'console', description: '编辑 Prompt 与绑定', sortOrder: 51 },
   { id: 'console:audit:read', name: '操作审计', module: 'console', description: '查看平台操作日志', sortOrder: 52 },
@@ -76,6 +77,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Partial<Record<Role, string[]>> = {
     'console:tenant:create',
     'console:tenant:update',
     'console:health:read',
+    'console:gsc:manage',
     'console:audit:read',
   ],
 };

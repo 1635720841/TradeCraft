@@ -47,7 +47,7 @@ describe('buildExportHtmlUrl', () => {
   it('returns API relative path', () => {
     assert.equal(
       buildExportHtmlUrl('proj-1', 'job-1'),
-      '/api/v1/projects/proj-1/article-jobs/job-1/export/html',
+      '/api/v1/projects/proj-1/seo-factory/article-jobs/job-1/export/html',
     );
   });
 });

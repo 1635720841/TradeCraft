@@ -15,6 +15,9 @@ const { ErrorCodes } = require(resolve(apiRoot, 'dist/core/exceptions/error-code
 const { ArticleJobService } = require(
   resolve(apiRoot, 'dist/project-types/seo-factory/modules/article-job/article-job.service.js'),
 );
+const { ArticleJobListService } = require(
+  resolve(apiRoot, 'dist/project-types/seo-factory/modules/article-job/article-job-list.service.js'),
+);
 const { ProjectService } = require(resolve(apiRoot, 'dist/modules/project/project.service.js'));
 
 const ORG_A = '00000000-0000-4000-8000-000000000101';
@@ -106,20 +109,23 @@ function noopLogger() {
 function createArticleJobService(prisma) {
   const noop = {};
   const gscService = { getJobPagePerformance: async () => null };
-  const projectAccessService = { resolveMemberPermissions: async () => [] };
+  const siteService = { listOwnedSiteIds: async () => [] };
+  const listService = new ArticleJobListService(prisma, siteService, gscService);
+  const queueService = {
+    enqueueArticleJob: async () => {},
+    removeQueueJobsForArticleJob: async () => {},
+  };
+  const batchService = {};
   return new ArticleJobService(
     prisma,
     noopLogger(),
     noop,
     noop,
     noop,
-    gscService,
     noop,
-    noop,
-    projectAccessService,
-    { add: async () => {} },
-    { add: async () => {} },
-    noop,
+    listService,
+    queueService,
+    batchService,
   );
 }
 

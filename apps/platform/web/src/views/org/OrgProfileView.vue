@@ -561,7 +561,8 @@ async function loadWebhooks() {
   if (!canManageIntegration.value) return;
   webhooksLoading.value = true;
   try {
-    webhooks.value = await listOrgWebhooks();
+    const result = await listOrgWebhooks();
+    webhooks.value = result.items;
   } finally {
     webhooksLoading.value = false;
   }

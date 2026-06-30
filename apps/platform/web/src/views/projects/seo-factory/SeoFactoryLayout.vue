@@ -25,6 +25,7 @@ const keepAliveViews = computed(() => [
   "JobListView",
   "KeywordSchedulingLayout",
   "SiteManageView",
+  "SiteDetailView",
   "ProjectSettingsView"
 ]);
 </script>

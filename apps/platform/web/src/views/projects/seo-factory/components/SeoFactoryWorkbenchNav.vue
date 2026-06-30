@@ -1,8 +1,8 @@
 <!--
-  SEO 工作台模块导航：概览 / 任务 / 词库 / 站点 / 设置。
+  SEO 工作台模块导航：概览 / 任务 / 选题 / 站点。
 
   边界：
-  - 不负责：各页面业务逻辑
+  - 不负责：各页面业务逻辑；项目配置在壳层头部入口
 -->
 <template>
   <nav class="workbench-nav" aria-label="SEO 内容工厂导航">
@@ -17,7 +17,7 @@
         @click="onNavSelect(item.key)"
       >
         <span class="workbench-nav__icon" aria-hidden="true">
-          <IconifyIconOnline :icon="item.icon" />
+          <WorkbenchIcon :name="item.key" />
         </span>
         <span class="workbench-nav__text">
           <strong>{{ item.label }}</strong>
@@ -32,16 +32,16 @@
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
+import WorkbenchIcon from "./WorkbenchIcon.vue";
 
 defineOptions({ name: "SeoFactoryWorkbenchNav" });
 
-type NavKey = "overview" | "jobs" | "keywords" | "sites" | "settings";
+type NavKey = "overview" | "jobs" | "keywords" | "sites";
 
 const NAV_ITEMS: Array<{
   key: NavKey;
   label: string;
   description: string;
-  icon: string;
   route: string;
   seoPermission: string | string[];
 }> = [
@@ -49,7 +49,6 @@ const NAV_ITEMS: Array<{
     key: "overview",
     label: "概览",
     description: "产线状态",
-    icon: "ri:dashboard-3-line",
     route: "SeoFactoryOverview",
     seoPermission: "seo:job:read"
   },
@@ -57,7 +56,6 @@ const NAV_ITEMS: Array<{
     key: "jobs",
     label: "文章任务",
     description: "生成与发布",
-    icon: "ri:article-line",
     route: "SeoFactoryJobs",
     seoPermission: "seo:job:read"
   },
@@ -65,7 +63,6 @@ const NAV_ITEMS: Array<{
     key: "keywords",
     label: "选题",
     description: "关键词与专题",
-    icon: "ri:search-2-line",
     route: "SeoFactoryKeywords",
     seoPermission: "seo:job:read"
   },
@@ -73,17 +70,8 @@ const NAV_ITEMS: Array<{
     key: "sites",
     label: "站点",
     description: "品牌素材",
-    icon: "ri:global-line",
     route: "SeoFactorySites",
     seoPermission: "seo:job:read"
-  },
-  {
-    key: "settings",
-    label: "设置",
-    description: "集成与实验",
-    icon: "ri:settings-3-line",
-    route: "SeoFactorySettings",
-    seoPermission: "seo:site:manage"
   }
 ];
 
@@ -95,12 +83,7 @@ const JOBS_ROUTE_NAMES = new Set([
 
 const KEYWORDS_ROUTE_NAMES = new Set(["SeoFactoryKeywords", "SeoFactoryTopicClusters"]);
 
-const SETTINGS_ROUTE_NAMES = new Set([
-  "SeoFactorySettings",
-  "SeoFactoryGsc",
-  "SeoFactoryScoreLab",
-  "SeoFactoryContentScore"
-]);
+const SITES_ROUTE_NAMES = new Set(["SeoFactorySites", "SeoFactorySiteDetail"]);
 
 const route = useRoute();
 const router = useRouter();
@@ -116,8 +99,7 @@ const activeNav = computed((): NavKey => {
   if (name === "SeoFactoryOverview") return "overview";
   if (name && JOBS_ROUTE_NAMES.has(name)) return "jobs";
   if (name && KEYWORDS_ROUTE_NAMES.has(name)) return "keywords";
-  if (name === "SeoFactorySites") return "sites";
-  if (name && SETTINGS_ROUTE_NAMES.has(name)) return "settings";
+  if (name && SITES_ROUTE_NAMES.has(name)) return "sites";
   return "overview";
 });
 

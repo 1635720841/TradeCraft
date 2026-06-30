@@ -77,6 +77,11 @@ export const auditActionDict: DictItem[] = [
   { value: "console.tenant.quota-topup", label: "租户加购配额", type: "success" },
   { value: "console.menu.update", label: "菜单配置", type: "warning" },
   { value: "console.prompt.update", label: "Prompt 更新", type: "warning" },
+  { value: "console.gsc.disconnect", label: "GSC 断开授权", type: "warning" },
+  { value: "console.gsc.auto_connect_all", label: "GSC 批量绑定", type: "primary" },
+  { value: "console.gsc.site.connect", label: "GSC 站点绑定", type: "primary" },
+  { value: "console.gsc.site.disconnect", label: "GSC 站点断开", type: "warning" },
+  { value: "console.gsc.site.sync", label: "GSC 站点同步", type: "info" },
   { value: "console.permission.grant", label: "平台权限授予", type: "warning" },
   { value: "org.member.create", label: "添加成员", type: "primary" },
   { value: "org.member.update", label: "编辑成员", type: "primary" },
@@ -100,7 +105,35 @@ export const auditActionDict: DictItem[] = [
   { value: "article_job.cms_publish", label: "CMS 发布", type: "primary" },
   { value: "article_job.brief_approve", label: "大纲确认", type: "success" },
   { value: "content_review.approve", label: "内容审核通过", type: "success" },
-  { value: "content_review.reject", label: "内容审核驳回", type: "danger" }
+  { value: "content_review.reject", label: "内容审核驳回", type: "danger" },
+  { value: "console.gsc.disconnect", label: "断开 GSC 平台授权", type: "warning" },
+  { value: "console.gsc.auto_connect_all", label: "GSC 批量绑定", type: "primary" },
+  { value: "console.gsc.site.connect", label: "GSC 站点绑定", type: "primary" },
+  { value: "console.gsc.site.disconnect", label: "GSC 站点断开", type: "warning" },
+  { value: "console.gsc.site.sync", label: "GSC 站点同步", type: "info" },
+  { value: "org.webhook.create", label: "创建 Webhook", type: "primary" },
+  { value: "org.webhook.update", label: "更新 Webhook", type: "primary" },
+  { value: "org.webhook.delete", label: "删除 Webhook", type: "danger" },
+  { value: "org.billing.request.create", label: "提交计费申请", type: "primary" },
+  { value: "console.billing.request.approve", label: "批准计费申请", type: "success" },
+  { value: "console.billing.request.reject", label: "驳回计费申请", type: "danger" },
+  { value: "console.prompt.create", label: "创建 Prompt", type: "primary" },
+  { value: "console.prompt.delete", label: "删除 Prompt", type: "danger" },
+  { value: "console.prompt.cache_clear", label: "清除 Prompt 缓存", type: "warning" }
+];
+
+/** 计费变更申请状态 */
+export const billingChangeRequestStatusDict: DictItem[] = [
+  { value: "PENDING", label: "待审批", type: "warning" },
+  { value: "APPROVED", label: "已通过", type: "success" },
+  { value: "REJECTED", label: "已驳回", type: "danger" }
+];
+
+/** 企业成员账号状态 */
+export const memberStatusDict: DictItem[] = [
+  { value: "ACTIVE", label: "正常", type: "success" },
+  { value: "INVITED", label: "待接受", type: "warning" },
+  { value: "DISABLED", label: "已禁用", type: "info" }
 ];
 
 /** 续费/升级申请类型（与 BillingChangeRequest.type 一致） */

@@ -8,7 +8,7 @@
  * - SiteController
  */
 
-import { Body, Controller, Get, Header, Param, Patch, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import type { RequestContext } from '@wm/shared-core';
 import { ReqCtx } from '../../../../core/decorators/request-context.decorator';
@@ -142,6 +142,20 @@ export class SiteController {
     await this.projectService.assertSeoSiteManage(ctx.organizationId, projectId, ctx);
     const site = await this.siteService.update(ctx.organizationId, projectId, siteId, dto);
     return { data: site, meta: { traceId: ctx.traceId } };
+  }
+
+  @Delete(':siteId')
+  async remove(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('siteId') siteId: string,
+  ) {
+    await this.projectService.assertSeoSiteManage(ctx.organizationId, projectId, ctx);
+    const data = await this.siteService.remove(ctx.organizationId, projectId, siteId, {
+      userId: ctx.userId,
+      traceId: ctx.traceId,
+    });
+    return { data, meta: { traceId: ctx.traceId } };
   }
 
   @Post(':siteId/serp-cache/clear')

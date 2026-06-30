@@ -31,6 +31,15 @@ export async function listSites(
   return res.data ?? [];
 }
 
+/** 单个站点详情 */
+export async function getSite(projectId: string, siteId: string): Promise<SiteItem> {
+  const res = await http.request<WmApiResponse<SiteItem>>(
+    "get",
+    seoFactoryApiPath(projectId, `sites/${siteId}`)
+  );
+  return res.data;
+}
+
 /** 导出站点 UTM 归因 CSV */
 export async function exportSiteAttributionCsv(
   projectId: string,
@@ -67,6 +76,17 @@ export async function updateSite(
     seoFactoryApiPath(projectId, `sites/${siteId}`),
     { data: payload }
   );
+  return res.data;
+}
+
+/** 永久删除站点（需 seo:site:manage 权限） */
+export async function deleteSite(
+  projectId: string,
+  siteId: string
+): Promise<{ id: string; domain: string; deleted: true; jobCount: number }> {
+  const res = await http.request<
+    WmApiResponse<{ id: string; domain: string; deleted: true; jobCount: number }>
+  >("delete", seoFactoryApiPath(projectId, `sites/${siteId}`));
   return res.data;
 }
 
@@ -134,13 +154,16 @@ export async function listShopifyProducts(
 /** 站点页面库列表（内链候选） */
 export async function listSitePages(
   projectId: string,
-  siteId: string
-): Promise<SitePageItem[]> {
-  const res = await http.request<WmApiResponse<SitePageItem[]>>(
+  siteId: string,
+  page = 1,
+  limit = 20,
+  includeInactive = false
+): Promise<WmApiResponse<SitePageItem[]>> {
+  return http.request<WmApiResponse<SitePageItem[]>>(
     "get",
-    seoFactoryApiPath(projectId, `sites/${siteId}/pages`)
+    seoFactoryApiPath(projectId, `sites/${siteId}/pages`),
+    { params: { page, limit, ...(includeInactive ? { includeInactive: "1" } : {}) } }
   );
-  return res.data ?? [];
 }
 
 /** 从 sitemap 同步站点页面库 */
@@ -152,7 +175,7 @@ export async function syncSitePages(
     "post",
     seoFactoryApiPath(projectId, `sites/${siteId}/pages/sync`)
   );
-  return res.data ?? { discovered: 0, upserted: 0 };
+  return res.data ?? { discovered: 0, upserted: 0, skipped: 0, deactivated: 0, reactivated: 0 };
 }
 
 export async function patchSitePage(

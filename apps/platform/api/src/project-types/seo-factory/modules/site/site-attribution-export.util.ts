@@ -6,6 +6,7 @@ import {
   type CtaUtmParams,
 } from '../../constants/cta-utm.util';
 import { parseSiteSettings } from '../../constants/site-settings';
+import { withDefaultSiteUtmProfile } from '../../constants/site-utm-defaults.util';
 
 export interface AttributionExportRow {
   jobId: string;
@@ -49,9 +50,12 @@ export function resolveAttributionRows(
     updatedAt: Date;
   }>,
   siteSettings: unknown,
+  siteDomain?: string,
 ): AttributionExportRow[] {
   const parsed = parseSiteSettings(siteSettings);
-  const profile = parsed.contentProfile;
+  const profile = siteDomain
+    ? withDefaultSiteUtmProfile(siteDomain, parsed.contentProfile)
+    : parsed.contentProfile;
   const utmParams: CtaUtmParams = parseCtaUtmParams(profile) ?? {};
   const ctaBaseUrl = profile?.ctaPrimaryUrl?.trim() ?? '';
 

@@ -30,6 +30,7 @@ import { EnrichKeywordMetricsDto } from './dto/enrich-keyword-metrics.dto';
 import { ConfirmKeywordSeedsDto } from './dto/confirm-keyword-seeds.dto';
 import { GenerateKeywordSeedsDto } from './dto/generate-keyword-seeds.dto';
 import { ImportKeywordsDto } from './dto/import-keywords.dto';
+import { ImportGscKeywordsDto } from './dto/import-gsc-keywords.dto';
 import { UpdateKeywordDto } from './dto/update-keyword.dto';
 import { BatchDeleteKeywordsDto } from './dto/batch-delete-keywords.dto';
 import { KeywordPoolService } from './keyword-pool.service';
@@ -61,6 +62,7 @@ export class KeywordPoolController {
     @Query('unclustered') unclustered?: string,
     @Query('queueable') queueable?: string,
     @Query('excludeArchived') excludeArchived?: string,
+    @Query('gscVerified') gscVerified?: string,
   ) {
     await this.projectService.assertSeoKeywordRead(ctx.organizationId, projectId, ctx);
     const isQueueable = queueable === '1' || queueable === 'true';
@@ -77,6 +79,7 @@ export class KeywordPoolController {
       unclustered: unclustered === '1' || unclustered === 'true',
       queueable: isQueueable,
       excludeArchived: excludeArchivedFlag,
+      gscVerified: gscVerified === '1' || gscVerified === 'true',
     });
 
     return {
@@ -90,6 +93,34 @@ export class KeywordPoolController {
         },
       },
     };
+  }
+
+  @Get('gsc-discovered')
+  async listGscDiscovered(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+  ) {
+    await this.projectService.assertSeoKeywordRead(ctx.organizationId, projectId, ctx);
+    const data = await this.keywordPoolService.listGscDiscoveredQueries(
+      ctx.organizationId,
+      projectId,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Post('import-from-gsc')
+  async importFromGsc(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Body() dto: ImportGscKeywordsDto,
+  ) {
+    await this.projectService.assertSeoKeywordManage(ctx.organizationId, projectId, ctx);
+    const data = await this.keywordPoolService.importFromGsc(
+      ctx.organizationId,
+      projectId,
+      dto.items,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
   }
 
   @Post()

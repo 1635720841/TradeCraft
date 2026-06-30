@@ -50,6 +50,24 @@ describe('serp-research-settings', () => {
     assert.equal(resolved.cacheTtlSeconds, 24 * 3600);
   });
 
+  it('resolveSerpResearchOptions uses target market when no job override', () => {
+    const resolved = resolveSerpResearchOptions(
+      { serpResearch: { country: 'JP' } },
+      undefined,
+      { targetMarket: 'UK' },
+    );
+    assert.equal(resolved.serpCountry, 'GB');
+  });
+
+  it('resolveSerpResearchOptions prefers job override over target market', () => {
+    const resolved = resolveSerpResearchOptions(
+      null,
+      { serpCountry: 'CA' },
+      { targetMarket: 'US' },
+    );
+    assert.equal(resolved.serpCountry, 'CA');
+  });
+
   it('resolveSerpResearchOptions respects cache disabled', () => {
     const resolved = resolveSerpResearchOptions({
       serpResearch: { cacheTtlHours: 0 },

@@ -111,44 +111,18 @@
         </div>
 
         <div class="mw-home__production-body">
-          <div class="mw-home__production-pipeline">
-            <button
-              v-for="tile in productionTiles"
-              :key="tile.key"
-              type="button"
-              class="mw-home__production-stat"
-              :class="`mw-home__production-stat--${tile.tone}`"
-              :disabled="tile.count <= 0"
-              @click="tile.onClick()"
-            >
-              <b>{{ tile.count }}</b>
-              <span>{{ tile.label }}</span>
-            </button>
-          </div>
-
-          <div
-            v-if="production.myTodos.reviewPendingCount || production.myTodos.assignedCount"
-            class="mw-home__production-todos"
+          <p class="mw-home__production-summary">
+            本月已完成 {{ production.totals.completedJobs }} 篇；
+            待办请进入项目工作台概览处理。
+          </p>
+          <button
+            v-if="firstEnterableProject"
+            type="button"
+            class="mw-home__btn mw-home__btn--primary"
+            @click="goWorkbenchOverview"
           >
-            <button
-              v-if="production.myTodos.assignedCount"
-              type="button"
-              class="mw-home__production-stat mw-home__production-stat--warning"
-              @click="goProductionAssigned"
-            >
-              <b>{{ production.myTodos.assignedCount }}</b>
-              <span>指派给我</span>
-            </button>
-            <button
-              v-if="production.myTodos.reviewPendingCount"
-              type="button"
-              class="mw-home__production-stat mw-home__production-stat--warning"
-              @click="goProductionReview"
-            >
-              <b>{{ production.myTodos.reviewPendingCount }}</b>
-              <span>等我审核</span>
-            </button>
-          </div>
+            进入工作台概览
+          </button>
         </div>
       </article>
     </section>
@@ -507,70 +481,10 @@ const displayProjects = computed(() => {
 
 const firstEnterableProject = computed(() => enterableProjects.value[0]);
 
-const productionTiles = computed(() => {
-  if (!production.value) return [];
-  const t = production.value.totals;
-  const pid = firstEnterableProject.value?.id;
-  const base = pid ? `/projects/${pid}/seo-factory/jobs` : "";
-  return [
-    {
-      key: "completed",
-      label: "已完成",
-      icon: "check" as const,
-      tone: "success",
-      count: t.completedJobs,
-      onClick: () => pid && router.push(`${base}?status=COMPLETED`)
-    },
-    {
-      key: "brief",
-      label: "待确认大纲",
-      icon: "brief" as const,
-      tone: "blue",
-      count: t.pendingBriefCount,
-      onClick: () => pid && router.push(`${base}?stage=outlinePending`)
-    },
-    {
-      key: "review",
-      label: "待审核",
-      icon: "review" as const,
-      tone: "warning",
-      count: t.pendingReviewCount,
-      onClick: () => pid && router.push(`${base}?stage=reviewPending`)
-    },
-    {
-      key: "publish",
-      label: "待发布",
-      icon: "publish" as const,
-      tone: "blue",
-      count: t.pendingPublishCount,
-      onClick: () => pid && router.push(`${base}?cmsPublishPending=1`)
-    },
-    {
-      key: "failed",
-      label: "失败",
-      icon: "alert" as const,
-      tone: "danger",
-      count: t.failedJobs,
-      onClick: () => pid && router.push(`${base}?status=FAILED`)
-    }
-  ];
-});
-
-function goProductionJobs(query: Record<string, string>) {
+function goWorkbenchOverview() {
   const pid = firstEnterableProject.value?.id;
   if (!pid) return;
-  router.push({
-    path: `/projects/${pid}/seo-factory/jobs`,
-    query
-  });
-}
-
-function goProductionAssigned() {
-  goProductionJobs({ assignedToMe: "1" });
-}
-
-function goProductionReview() {
-  goProductionJobs({ stage: "reviewPending" });
+  router.push({ name: "SeoFactoryOverview", params: { projectId: pid } });
 }
 
 function projectTypeLabel(type: string) {

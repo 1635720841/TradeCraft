@@ -102,7 +102,7 @@
               description="填写域名与公司卖点后，才能提交文章生成任务。CMS 与搜索表现请在「设置」中配置。"
             />
             <el-button type="primary" class="quick-action" @click="goSites">
-              <IconifyIconOnline icon="ri:global-line" class="mr-1" />
+              <WorkbenchIcon name="globe" :size="14" class="mr-1" />
               去创建站点
             </el-button>
           </div>
@@ -177,7 +177,7 @@
             </div>
           </div>
           <template v-else-if="stats && stats.keywordQueueableCount > 0">
-            <p class="mb-3 text-sm text-gray-600">
+            <p class="mb-3 text-sm mw-text-body">
               {{ stats.keywordQueueableCount }} 个关键词待写，建议先加入专题再批量创建任务。
             </p>
             <el-button type="primary" size="small" @click="goKeywordsQueueable">
@@ -201,7 +201,7 @@
         <div class="overview-panel__body">
           <el-collapse v-model="guideExpanded">
             <el-collapse-item title="一篇文章从创建到上线" name="flow">
-              <ol class="list-decimal space-y-2 pl-5 text-sm leading-relaxed text-gray-700">
+              <ol class="list-decimal space-y-2 pl-5 text-sm leading-relaxed mw-text-body">
                 <li><strong>站点</strong>：填域名、品牌语气、<strong>公司卖点（AI 写作素材）</strong>。</li>
                 <li><strong>选题</strong>：把相关词归到同一专题，按组创建文章任务、看完成进度。</li>
                 <li><strong>新建任务</strong>：选站点与关键词，可选<strong>搜索意图</strong>。</li>
@@ -212,14 +212,14 @@
               </ol>
             </el-collapse-item>
             <el-collapse-item title="核心名词" name="glossary">
-              <dl class="space-y-3 text-sm leading-relaxed text-gray-700">
+              <dl class="space-y-3 text-sm leading-relaxed mw-text-body">
                 <div>
                   <dt class="font-medium">大纲</dt>
-                  <dd class="text-gray-600">生成正文前的写作方案，可人工确认后再写稿。</dd>
+                  <dd class="mw-text-muted">生成正文前的写作方案，可人工确认后再写稿。</dd>
                 </div>
                 <div>
                   <dt class="font-medium">公司卖点 / CTA</dt>
-                  <dd class="text-gray-600">在站点里填一次，每篇文章自动带上行业、资质与文末询盘引导。</dd>
+                  <dd class="mw-text-muted">在站点里填一次，每篇文章自动带上行业、资质与文末询盘引导。</dd>
                 </div>
                 <div>
                   <dt class="font-medium">专题</dt>
@@ -227,7 +227,7 @@
                 </div>
                 <div>
                   <dt class="font-medium">Google 搜索表现</dt>
-                  <dd class="text-gray-600">查看站点在 Google 上的点击、展示与排名。</dd>
+                  <dd class="mw-text-muted">查看站点在 Google 上的点击、展示与排名。</dd>
                 </div>
               </dl>
             </el-collapse-item>
@@ -242,6 +242,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { getSeoFactoryProjectStats, rerunArticleOptimization } from "@/api/seo-factory/article-job";
+import { importGscKeywords } from "@/api/seo-factory/keyword";
 import { listKeywordClusters, type KeywordClusterItem } from "@/api/seo-factory/keyword-cluster";
 import { listSites } from "@/api/seo-factory/site";
 import type { SeoFactoryProjectStats, SiteItem } from "@/api/seo-factory/types";
@@ -249,6 +250,7 @@ import { WORDPRESS_CMS_UI_ENABLED } from "@/constants/feature-flags";
 import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
 import { useProjectSetupChecklist } from "@/composables/seo-factory/useProjectSetupChecklist";
 import SetupChecklistPanel from "@/components/SetupChecklistPanel.vue";
+import WorkbenchIcon from "./components/WorkbenchIcon.vue";
 import { message } from "@/utils/message";
 
 defineOptions({ name: "WorkbenchOverviewView" });
@@ -259,6 +261,7 @@ const projectId = route.params.projectId as string;
 
 const { can } = useProjectSeoAccess();
 const canManageGsc = computed(() => can("seo:site:manage"));
+const canManageKeywords = computed(() => can("seo:keyword:manage"));
 const {
   loading: projectSetupLoading,
   items: projectSetupItems,
@@ -267,6 +270,7 @@ const {
 
 const loading = ref(false);
 const rerunningGscJobId = ref<string | null>(null);
+const importingGscQuery = ref<string | null>(null);
 const clustersLoading = ref(false);
 const stats = ref<SeoFactoryProjectStats | null>(null);
 const sites = ref<SiteItem[]>([]);
@@ -452,6 +456,27 @@ const todoItems = computed<TodoItem[]>(() => {
   }
 
   if (
+    canManageKeywords.value &&
+    s.gscPendingSyncCount === 0 &&
+    s.gscStaleSyncCount === 0 &&
+    (s.gscDiscoveredQueries?.length ?? 0) > 0
+  ) {
+    for (const row of s.gscDiscoveredQueries.slice(0, 3)) {
+      items.push({
+        id: `gsc-discover-${row.query}`,
+        tagLabel: "选题",
+        tagType: "info",
+        text: `「${row.query}」在本站 Google 搜索中已有 ${row.impressions} 次展示，可扩展相关选题`,
+        actionLabel: "AI 扩展",
+        buttonType: "primary",
+        action: () => goSeedFromGscQuery(row),
+        secondaryActionLabel: "加入词库",
+        secondaryAction: () => void handleImportDiscoveredQuery(row)
+      });
+    }
+  }
+
+  if (
     canManageGsc.value &&
     s.gscPendingSyncCount === 0 &&
     (s.gscUnderperformingJobs?.length ?? 0) > 0
@@ -621,7 +646,44 @@ function goTopicCluster(clusterId: string) {
 }
 
 function goGsc() {
-  router.push({ name: "SeoFactorySettings", params: { projectId }, hash: "#gsc" });
+  router.push({ name: "SeoFactorySites", params: { projectId } });
+}
+
+function goGscKeywordImport() {
+  router.push({
+    name: "SeoFactoryKeywords",
+    params: { projectId },
+    query: { gscImport: "1" }
+  });
+}
+
+function goSeedFromGscQuery(row: { query: string; siteId: string }) {
+  const query: Record<string, string> = { seedTopic: row.query };
+  if (row.siteId) query.seedSiteId = row.siteId;
+  router.push({
+    name: "SeoFactoryKeywords",
+    params: { projectId },
+    query
+  });
+}
+
+async function handleImportDiscoveredQuery(row: {
+  query: string;
+  siteId: string;
+}) {
+  if (importingGscQuery.value) return;
+  importingGscQuery.value = row.query;
+  try {
+    const result = await importGscKeywords(projectId, {
+      items: [{ query: row.query, siteId: row.siteId || undefined }]
+    });
+    message(`已加入词库${result.skipped ? "（该词已存在）" : ""}`, { type: "success" });
+    await loadStats();
+  } catch (error) {
+    message(error instanceof Error ? error.message : "加入词库失败", { type: "error" });
+  } finally {
+    importingGscQuery.value = null;
+  }
 }
 
 function goUnderperformingJob(jobId: string) {

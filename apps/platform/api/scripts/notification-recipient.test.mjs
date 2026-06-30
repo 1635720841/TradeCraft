@@ -41,7 +41,7 @@ describe('notification recipient rules', () => {
 describe('personal review pending count', () => {
   it('returns sum for reviewers', () => {
     assert.equal(
-      resolveMyReviewPendingCount(['seo:job:create', 'seo:job:read'], 2, 3),
+      resolveMyReviewPendingCount(['seo:job:review', 'seo:job:read'], 2, 3),
       5,
     );
   });

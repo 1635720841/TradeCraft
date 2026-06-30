@@ -54,13 +54,23 @@ function createLogger() {
   };
 }
 
+function createEventEmitter() {
+  return { emit: () => {} };
+}
+
+async function flushAfterCommit() {
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+}
+
 describe('BillingService.onArticleCompleted', () => {
   it('records usage on first article.completed event', async () => {
     const prisma = createBillingPrisma();
     const logger = createLogger();
-    const service = new BillingService(prisma, logger);
+    const service = new BillingService(prisma, logger, createEventEmitter());
 
-    await service.onArticleCompleted(PAYLOAD);
+    service.onArticleCompleted(PAYLOAD);
+    await flushAfterCommit();
 
     assert.equal(prisma.records.length, 1);
     assert.equal(prisma.records[0].traceId, PAYLOAD.traceId);
@@ -71,10 +81,12 @@ describe('BillingService.onArticleCompleted', () => {
   it('skips duplicate billing for the same traceId (idempotent)', async () => {
     const prisma = createBillingPrisma();
     const logger = createLogger();
-    const service = new BillingService(prisma, logger);
+    const service = new BillingService(prisma, logger, createEventEmitter());
 
-    await service.onArticleCompleted(PAYLOAD);
-    await service.onArticleCompleted(PAYLOAD);
+    service.onArticleCompleted(PAYLOAD);
+    await flushAfterCommit();
+    service.onArticleCompleted(PAYLOAD);
+    await flushAfterCommit();
 
     assert.equal(prisma.records.length, 1);
     assert.equal(logger.logs.at(-1)?.message, 'Billing skipped (idempotent)');

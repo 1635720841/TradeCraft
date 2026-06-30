@@ -2,7 +2,7 @@
  * 站点服务：项目下站点 CRUD 与列表查询。
  *
  * 边界：
- * - 不负责：页面库同步（SitePageService）
+ * - 不负责：页面库同步细节（SitePageService）、Shopify 列表查询（SiteCmsService）
  *
  * 入口：
  * - SiteService
@@ -14,13 +14,12 @@ import { PrismaService } from '../../../../core/database/prisma.service';
 import { RedisService } from '../../../../core/redis/redis.service';
 import { BusinessException } from '../../../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
+import { AuditService } from '../../../../modules/access/audit.service';
 import type { CreateSiteDto } from './dto/create-site.dto';
 import type { UpdateSiteDto } from './dto/update-site.dto';
 import {
   mergeWordPressCmsConfig,
   mergeShopifyCmsConfig,
-  getShopifyApiVersion,
-  normalizeShopifyDomain,
   parseShopifyCmsConfig,
   parseWordPressCmsConfig,
   sanitizeCmsForResponse,
@@ -31,19 +30,24 @@ import {
   serializeTargetMarkets,
 } from './target-market.util';
 import { parseSiteWorkflowSettings } from '../../constants/brief-approval';
+import { GscService } from '../gsc/gsc.service';
+import { buildSiteGscListSummary } from '../gsc/gsc-site-status.util';
+import { EntitlementsService } from '../../../../modules/billing/entitlements.service';
 import { resolveSiteSeoScoreConfig } from '../../constants/site-seo-score-settings';
 import {
   mergeSiteContentProfile,
   parseSiteSettings,
   type SiteContentProfile,
 } from '../../constants/site-settings';
+import { withDefaultSiteUtmProfile } from '../../constants/site-utm-defaults.util';
 import {
   mergeSiteSerpResearchSettings,
   type SiteSerpResearchSettings,
 } from '../../constants/serp-research-settings';
-import { fetchWithRetry } from '../../../../core/http/http-fetch';
 import type { ListShopifyBlogsDto } from './dto/list-shopify-blogs.dto';
 import { findKeywordConflicts } from '../keyword-pool/keyword-cannibalization.util';
+import { SiteCmsService } from './site-cms.service';
+import { SitePageService } from '../linking/site-page.service';
 import {
   buildAttributionCsv,
   resolveAttributionRows,
@@ -59,6 +63,14 @@ const siteSelect = {
   cmsConfig: true,
   settings: true,
   createdAt: true,
+  gscConnection: {
+    select: {
+      propertyUrl: true,
+      managedByPlatform: true,
+      lastSyncAt: true,
+      lastSyncError: true,
+    },
+  },
 } as const;
 
 @Injectable()
@@ -66,6 +78,11 @@ export class SiteService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
+    private readonly gscService: GscService,
+    private readonly entitlementsService: EntitlementsService,
+    private readonly siteCmsService: SiteCmsService,
+    private readonly sitePageService: SitePageService,
+    private readonly auditService: AuditService,
   ) {}
 
   async findMany(
@@ -85,7 +102,9 @@ export class SiteService {
         )
       : sites;
 
-    return filtered.map((site) => this.toPublicSite(site));
+    const ent = await this.entitlementsService.getForOrganization(organizationId);
+
+    return filtered.map((site) => this.toPublicSite(site, ent.gscEnabled));
   }
 
   async listOwnedSiteIds(
@@ -109,7 +128,7 @@ export class SiteService {
   ): Promise<string> {
     const site = await this.prisma.site.findFirst({
       where: { id: siteId, organizationId, projectId },
-      select: { settings: true },
+      select: { settings: true, domain: true },
     });
     if (!site) {
       throw new BusinessException(ErrorCodes.SITE_NOT_FOUND, '站点不存在');
@@ -127,7 +146,7 @@ export class SiteService {
       take: 5000,
     });
 
-    return buildAttributionCsv(resolveAttributionRows(jobs, site.settings));
+    return buildAttributionCsv(resolveAttributionRows(jobs, site.settings, site.domain));
   }
 
   async findOne(organizationId: string, projectId: string, siteId: string) {
@@ -140,146 +159,24 @@ export class SiteService {
       throw new BusinessException(ErrorCodes.SITE_NOT_FOUND, '站点不存在');
     }
 
-    return this.toPublicSite(site);
+    const ent = await this.entitlementsService.getForOrganization(organizationId);
+    return this.toPublicSite(site, ent.gscEnabled);
   }
 
   async listShopifyBlogs(
     organizationId: string,
     projectId: string,
     dto: ListShopifyBlogsDto,
-  ): Promise<Array<{ id: string; title: string; handle: string }>> {
-    let shopDomain = dto.shopDomain?.trim();
-    let accessToken = dto.accessToken?.trim();
-
-    if (dto.siteId) {
-      const site = await this.prisma.site.findFirst({
-        where: { id: dto.siteId, organizationId, projectId },
-        select: { cmsType: true, cmsConfig: true },
-      });
-
-      if (!site) {
-        throw new BusinessException(ErrorCodes.SITE_NOT_FOUND, '站点不存在');
-      }
-      if (site.cmsType !== 'shopify') {
-        throw new BusinessException(ErrorCodes.VALIDATION_ERROR, '该站点未配置 Shopify');
-      }
-
-      const parsed = parseShopifyCmsConfig('shopify', site.cmsConfig);
-      if (!parsed) {
-        throw new BusinessException(ErrorCodes.VALIDATION_ERROR, 'Shopify 配置不完整');
-      }
-
-      shopDomain = shopDomain || parsed.shopDomain;
-      accessToken = accessToken || parsed.accessToken;
-    }
-
-    if (!shopDomain || !accessToken) {
-      throw new BusinessException(ErrorCodes.VALIDATION_ERROR, '请填写店铺域名与 Admin API Token');
-    }
-
-    const normalizedDomain = normalizeShopifyDomain(shopDomain);
-    const apiVersion = getShopifyApiVersion();
-    const response = await fetchWithRetry(
-      `https://${normalizedDomain}/admin/api/${apiVersion}/blogs.json`,
-      {
-        method: 'GET',
-        headers: {
-          'X-Shopify-Access-Token': accessToken,
-          'Content-Type': 'application/json',
-        },
-      },
-      { label: 'Shopify Admin API' },
-    );
-
-    const bodyText = await response.text();
-    if (!response.ok) {
-      throw new BusinessException(
-        ErrorCodes.CMS_PUBLISH_FAILED,
-        `Shopify 读取 Blog 列表失败（${response.status}）`,
-      );
-    }
-
-    const payload = bodyText
-      ? (JSON.parse(bodyText) as {
-          blogs?: Array<{ id: number; title: string; handle: string }>;
-        })
-      : {};
-
-    return (payload.blogs ?? []).map((blog) => ({
-      id: String(blog.id),
-      title: blog.title,
-      handle: blog.handle,
-    }));
+  ) {
+    return this.siteCmsService.listShopifyBlogs(organizationId, projectId, dto);
   }
 
   async listShopifyProducts(
     organizationId: string,
     projectId: string,
     dto: ListShopifyBlogsDto,
-  ): Promise<Array<{ id: string; title: string; handle: string; status: string }>> {
-    let shopDomain = dto.shopDomain?.trim();
-    let accessToken = dto.accessToken?.trim();
-
-    if (dto.siteId) {
-      const site = await this.prisma.site.findFirst({
-        where: { id: dto.siteId, organizationId, projectId },
-        select: { cmsType: true, cmsConfig: true },
-      });
-
-      if (!site) {
-        throw new BusinessException(ErrorCodes.SITE_NOT_FOUND, '站点不存在');
-      }
-      if (site.cmsType !== 'shopify') {
-        throw new BusinessException(ErrorCodes.VALIDATION_ERROR, '该站点未配置 Shopify');
-      }
-
-      const parsed = parseShopifyCmsConfig('shopify', site.cmsConfig);
-      if (!parsed) {
-        throw new BusinessException(ErrorCodes.VALIDATION_ERROR, 'Shopify 配置不完整');
-      }
-
-      shopDomain = shopDomain || parsed.shopDomain;
-      accessToken = accessToken || parsed.accessToken;
-    }
-
-    if (!shopDomain || !accessToken) {
-      throw new BusinessException(ErrorCodes.VALIDATION_ERROR, '请填写店铺域名与 Admin API Token');
-    }
-
-    const normalizedDomain = normalizeShopifyDomain(shopDomain);
-    const apiVersion = getShopifyApiVersion();
-    const response = await fetchWithRetry(
-      `https://${normalizedDomain}/admin/api/${apiVersion}/products.json?limit=50&fields=id,title,handle,status`,
-      {
-        method: 'GET',
-        headers: {
-          'X-Shopify-Access-Token': accessToken,
-          'Content-Type': 'application/json',
-        },
-      },
-      { label: 'Shopify Admin API' },
-    );
-
-    const bodyText = await response.text();
-    if (!response.ok) {
-      throw new BusinessException(
-        ErrorCodes.CMS_PUBLISH_FAILED,
-        `Shopify 读取 Product 列表失败（${response.status}）`,
-      );
-    }
-
-    const payload = bodyText
-      ? (JSON.parse(bodyText) as {
-          products?: Array<{ id: number; title: string; handle: string; status: string }>;
-        })
-      : {};
-
-    return (payload.products ?? []).map((product) => ({
-      id: String(product.id),
-      title: product.title,
-      handle: product.handle,
-      status: product.status,
-    }));
+  ) {
+    return this.siteCmsService.listShopifyProducts(organizationId, projectId, dto);
   }
 
   async create(organizationId: string, projectId: string, dto: CreateSiteDto) {
@@ -306,10 +203,12 @@ export class SiteService {
     );
     const settings = this.buildSettingsForWrite(
       dto.workflow,
-      dto.contentProfile,
+      withDefaultSiteUtmProfile(domain, dto.contentProfile),
       dto.serpResearch,
       parseSiteSettings(null),
     );
+
+    const ent = await this.entitlementsService.getForOrganization(organizationId);
 
     return this.prisma.site
       .create({
@@ -326,7 +225,21 @@ export class SiteService {
         },
         select: siteSelect,
       })
-      .then((site) => this.toPublicSite(site));
+      .then((site) => {
+        void this.gscService.tryAutoConnectSite({
+          organizationId,
+          projectId,
+          siteId: site.id,
+          domain: site.domain,
+        });
+        void this.sitePageService.tryAutoSyncFromSitemap({
+          organizationId,
+          projectId,
+          siteId: site.id,
+          domain: site.domain,
+        });
+        return this.toPublicSite(site, ent.gscEnabled);
+      });
   }
 
   async update(
@@ -435,13 +348,23 @@ export class SiteService {
       data.settings = baseSettings as Prisma.InputJsonValue;
     }
 
+    const ent = await this.entitlementsService.getForOrganization(organizationId);
     const site = await this.prisma.site.update({
       where: { id: siteId },
       data,
       select: siteSelect,
     });
 
-    return this.toPublicSite(site);
+    if (dto.domain !== undefined) {
+      void this.gscService.tryAutoConnectSite({
+        organizationId,
+        projectId,
+        siteId: site.id,
+        domain: site.domain,
+      });
+    }
+
+    return this.toPublicSite(site, ent.gscEnabled);
   }
 
   async clearSerpCache(organizationId: string, projectId: string, siteId: string) {
@@ -588,17 +511,26 @@ export class SiteService {
     return null;
   }
 
-  private toPublicSite(site: {
-    id: string;
-    domain: string;
-    brandVoice: string | null;
-    targetMarket: string | null;
-    contentLanguage: string;
-    cmsType: string | null;
-    cmsConfig: unknown;
-    settings: unknown;
-    createdAt: Date;
-  }) {
+  private toPublicSite(
+    site: {
+      id: string;
+      domain: string;
+      brandVoice: string | null;
+      targetMarket: string | null;
+      contentLanguage: string;
+      cmsType: string | null;
+      cmsConfig: unknown;
+      settings: unknown;
+      createdAt: Date;
+      gscConnection?: {
+        propertyUrl: string | null;
+        managedByPlatform: boolean;
+        lastSyncAt: Date | null;
+        lastSyncError: string | null;
+      } | null;
+    },
+    gscEnabled: boolean,
+  ) {
     const cms = sanitizeCmsForResponse(site.cmsType, site.cmsConfig);
     const parsed = parseSiteSettings(site.settings);
     const targetMarkets = parseTargetMarkets(site.targetMarket);
@@ -618,6 +550,7 @@ export class SiteService {
       },
       contentProfile: parsed.contentProfile,
       serpResearch: parsed.serpResearch,
+      gsc: buildSiteGscListSummary(gscEnabled, site.gscConnection),
       createdAt: site.createdAt,
     };
   }
@@ -671,5 +604,51 @@ export class SiteService {
       }));
 
     return findKeywordConflicts(normalized, candidates);
+  }
+
+  /** 永久删除站点及其页面库、GSC 连接与关联任务（不可恢复） */
+  async remove(
+    organizationId: string,
+    projectId: string,
+    siteId: string,
+    actor?: { userId: string; traceId?: string },
+  ) {
+    const site = await this.prisma.site.findFirst({
+      where: { id: siteId, organizationId, projectId },
+      select: { id: true, domain: true },
+    });
+
+    if (!site) {
+      throw new BusinessException(ErrorCodes.SITE_NOT_FOUND, '站点不存在');
+    }
+
+    const jobCount = await this.prisma.articleJob.count({
+      where: { organizationId, projectId, siteId },
+    });
+
+    await this.prisma.$transaction(async (tx) => {
+      if (jobCount > 0) {
+        await tx.articleJob.deleteMany({ where: { organizationId, projectId, siteId } });
+      }
+      await tx.keywordEntry.updateMany({
+        where: { organizationId, projectId, siteId },
+        data: { siteId: null },
+      });
+      await tx.site.delete({ where: { id: siteId } });
+    });
+
+    if (actor) {
+      await this.auditService.log({
+        organizationId,
+        actorUserId: actor.userId,
+        action: 'site.delete',
+        targetType: 'Site',
+        targetId: siteId,
+        metadata: { domain: site.domain, projectId, jobCount },
+        traceId: actor.traceId,
+      });
+    }
+
+    return { id: siteId, domain: site.domain, deleted: true as const, jobCount };
   }
 }

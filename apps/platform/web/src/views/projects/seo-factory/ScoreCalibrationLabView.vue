@@ -9,7 +9,8 @@
   <div class="p-4 space-y-4">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <div>
-        <el-button link type="primary" @click="goSettings">← 返回设置</el-button>
+        <el-button v-if="!consoleMode" link type="primary" @click="goSettings">← 返回项目配置</el-button>
+        <el-button v-else link type="primary" @click="goConsoleDiagnostics">← 返回项目诊断</el-button>
         <h1 class="mt-1 text-lg font-medium">评分校准实验室</h1>
         <p class="text-sm text-gray-500">
           用历史任务的本地分与 Semrush 真分训练校准模型，预测 Semrush 分并导出训练集。
@@ -73,13 +74,13 @@
       </template>
     </el-alert>
 
-    <ScoreCalibrationManualImportPanel :project-id="projectId" @imported="handleManualImported" />
+    <ScoreCalibrationManualImportPanel :project-id="effectiveProjectId" @imported="handleManualImported" />
 
-    <ScoreReverseExperimentPanel :project-id="projectId" />
+    <ScoreReverseExperimentPanel :project-id="effectiveProjectId" />
 
     <ScoreCalibrationMissingJobsPanel
       ref="missingJobsRef"
-      :project-id="projectId"
+      :project-id="effectiveProjectId"
       @open-job="goJob"
     />
 
@@ -165,7 +166,7 @@
       </el-table>
     </el-card>
 
-    <ScoreCalibrationShadowLogPanel ref="shadowLogRef" :project-id="projectId" @open-job="goJob" />
+    <ScoreCalibrationShadowLogPanel ref="shadowLogRef" :project-id="effectiveProjectId" @open-job="goJob" />
 
     <el-card ref="pairsSectionRef" shadow="never">
       <template #header>
@@ -318,7 +319,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import type { ElCard } from "element-plus";
 import { useRoute, useRouter } from "vue-router";
 import {
@@ -341,6 +342,7 @@ import {
 } from "@/constants/dicts/score-calibration";
 import { dictLabel, dictTagType } from "@/utils/dict";
 import { message } from "@/utils/message";
+import { isPlatformOperatorUser } from "@/utils/platform-operator-access";
 import { ElMessageBox } from "element-plus";
 import ScoreCalibrationFeatureAttributionPanel from "./components/score-calibration/ScoreCalibrationFeatureAttributionPanel.vue";
 import ScoreCalibrationManualImportPanel from "./components/score-calibration/ScoreCalibrationManualImportPanel.vue";
@@ -350,9 +352,19 @@ import ScoreCalibrationShadowLogPanel from "./components/score-calibration/Score
 
 defineOptions({ name: "ScoreCalibrationLabView" });
 
+const props = withDefaults(
+  defineProps<{
+    projectId?: string;
+    consoleMode?: boolean;
+  }>(),
+  { projectId: "", consoleMode: false }
+);
+
 const route = useRoute();
 const router = useRouter();
-const projectId = route.params.projectId as string;
+const effectiveProjectId = computed(
+  () => props.projectId || (route.params.projectId as string) || ""
+);
 
 const loading = ref(false);
 const pairsLoading = ref(false);
@@ -534,7 +546,7 @@ function readinessGapHint(r: ScoreCalibrationSummary["readiness"]): string {
 async function loadSummary() {
   loading.value = true;
   try {
-    summary.value = await getScoreCalibrationSummary(projectId);
+    summary.value = await getScoreCalibrationSummary(effectiveProjectId.value);
   } finally {
     loading.value = false;
   }
@@ -543,7 +555,7 @@ async function loadSummary() {
 async function loadPairs() {
   pairsLoading.value = true;
   try {
-    const res = await listScoreCalibrationPairs(projectId, {
+    const res = await listScoreCalibrationPairs(effectiveProjectId.value, {
       page: page.value,
       limit: limit.value,
       dataset: filters.dataset,
@@ -566,12 +578,12 @@ function reloadPairs() {
 async function handleExport() {
   exporting.value = true;
   try {
-    const data = await exportScoreCalibrationTrainingSet(projectId);
+    const data = await exportScoreCalibrationTrainingSet(effectiveProjectId.value);
     const blob = new Blob([JSON.stringify(data.rows, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `score-calibration-${projectId.slice(0, 8)}-${Date.now()}.json`;
+    anchor.download = `score-calibration-${effectiveProjectId.value.slice(0, 8)}-${Date.now()}.json`;
     anchor.click();
     URL.revokeObjectURL(url);
     message(`已导出 ${data.rowCount} 条`, { type: "success" });
@@ -587,7 +599,7 @@ async function handlePredict() {
   }
   predicting.value = true;
   try {
-    predictResult.value = await predictCalibratedSemrushScore(projectId, {
+    predictResult.value = await predictCalibratedSemrushScore(effectiveProjectId.value, {
       targetKeyword: predictForm.targetKeyword.trim(),
       content: predictForm.content
     });
@@ -615,16 +627,27 @@ async function handleManualImported() {
 }
 
 function goSettings() {
-  router.push({ name: "SeoFactorySettings", params: { projectId } });
+  router.push({ name: "SeoFactorySettings", params: { projectId: effectiveProjectId.value } });
+}
+
+function goConsoleDiagnostics() {
+  router.push({
+    name: "ConsoleProjectDiagnostics",
+    query: { projectId: effectiveProjectId.value }
+  });
 }
 
 function goJobs() {
-  router.push({ name: "SeoFactoryJobs", params: { projectId } });
+  router.push({ name: "SeoFactoryJobs", params: { projectId: effectiveProjectId.value } });
 }
 
 function handleReadinessAction(key: ReadinessActionKey) {
   if (key === "open_settings") {
-    goSettings();
+    if (props.consoleMode) {
+      goConsoleDiagnostics();
+    } else {
+      goSettings();
+    }
     return;
   }
   if (key === "view_jobs" || key === "view_missing_jobs") {
@@ -651,7 +674,7 @@ function handleReadinessAction(key: ReadinessActionKey) {
 }
 
 function goJob(jobId: string) {
-  router.push({ name: "SeoFactoryJobDetail", params: { projectId, jobId } });
+  router.push({ name: "SeoFactoryJobDetail", params: { projectId: effectiveProjectId.value, jobId } });
 }
 
 async function handleSetPairExcluded(jobId: string, snapshotId: string, excluded: boolean) {
@@ -672,13 +695,24 @@ async function handleSetPairExcluded(jobId: string, snapshotId: string, excluded
     return;
   }
 
-  await setWorkflowPairCalibrationExcluded(projectId, jobId, snapshotId, excluded);
+  await setWorkflowPairCalibrationExcluded(effectiveProjectId.value, jobId, snapshotId, excluded);
   message(`样本已${actionLabel}`, { type: "success" });
   await loadSummary();
   await loadPairs();
 }
 
+watch(effectiveProjectId, (id) => {
+  if (!id) return;
+  void loadSummary();
+  reloadPairs();
+});
+
 onMounted(() => {
+  if (!props.consoleMode && !isPlatformOperatorUser()) {
+    void router.replace({ path: "/error/403" });
+    return;
+  }
+  if (!effectiveProjectId.value) return;
   void loadSummary();
   void loadPairs();
 });

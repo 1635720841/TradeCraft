@@ -23,8 +23,27 @@ export interface KeywordEntryItem {
   priorityScore: number;
   notes?: string | null;
   lastJobId?: string | null;
+  gscInsight?: GscKeywordInsight | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface GscKeywordInsight {
+  status: "traffic" | "impressions" | "underperform" | "none";
+  impressions: number;
+  clicks: number;
+  position: number;
+  periodDays: number;
+  syncedAt: string;
+}
+
+export interface GscDiscoveredQuery {
+  query: string;
+  impressions: number;
+  clicks: number;
+  position: number;
+  siteId: string;
+  siteDomain: string;
 }
 
 export interface CreateKeywordPayload {
@@ -92,6 +111,7 @@ export async function listKeywords(
     unclustered?: boolean;
     queueable?: boolean;
     excludeArchived?: boolean;
+    gscVerified?: boolean;
   } = {}
 ): Promise<WmApiResponse<KeywordEntryItem[]>> {
   const params: Record<string, string | number | boolean> = { page, limit };
@@ -101,6 +121,7 @@ export async function listKeywords(
   if (filters.unclustered) params.unclustered = "1";
   if (filters.queueable) params.queueable = "1";
   if (filters.excludeArchived === false) params.excludeArchived = "0";
+  if (filters.gscVerified) params.gscVerified = "1";
   return http.request<WmApiResponse<KeywordEntryItem[]>>("get", projectBase(projectId), {
     params
   });
@@ -317,6 +338,38 @@ export async function enrichKeywordMetrics(
   const res = await http.request<WmApiResponse<EnrichKeywordMetricsResult>>(
     "post",
     `${projectBase(projectId)}/enrich-metrics`,
+    { data: payload }
+  );
+  return res.data;
+}
+
+export async function listGscDiscoveredQueries(
+  projectId: string
+): Promise<GscDiscoveredQuery[]> {
+  const res = await http.request<WmApiResponse<GscDiscoveredQuery[]>>(
+    "get",
+    `${projectBase(projectId)}/gsc-discovered`
+  );
+  return res.data ?? [];
+}
+
+export interface ImportGscKeywordsPayload {
+  items: Array<{ query: string; siteId?: string }>;
+}
+
+export interface ImportGscKeywordsResult {
+  created: number;
+  skipped: number;
+  items: KeywordEntryItem[];
+}
+
+export async function importGscKeywords(
+  projectId: string,
+  payload: ImportGscKeywordsPayload
+): Promise<ImportGscKeywordsResult> {
+  const res = await http.request<WmApiResponse<ImportGscKeywordsResult>>(
+    "post",
+    `${projectBase(projectId)}/import-from-gsc`,
     { data: payload }
   );
   return res.data;

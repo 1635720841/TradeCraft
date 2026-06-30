@@ -20,6 +20,7 @@ import { daysRemaining, isSubscriptionActive } from './subscription.util';
 
 const ARTICLE_SERVICE_TYPE = 'ARTICLE';
 const ARTICLE_PROVIDER = 'platform';
+const USAGE_EXPORT_MAX_ROWS = 5000;
 
 export interface QuotaSummary {
   planName: string;
@@ -145,13 +146,23 @@ export class BillingService {
     if (range?.from) createdAt.gte = new Date(range.from);
     if (range?.to) createdAt.lte = new Date(range.to);
 
+    const where = {
+      organizationId,
+      ...(Object.keys(createdAt).length > 0 ? { createdAt } : {}),
+    };
+
+    const total = await this.prisma.creditUsage.count({ where });
+    if (total > USAGE_EXPORT_MAX_ROWS) {
+      throw new BusinessException(
+        ErrorCodes.VALIDATION_ERROR,
+        `导出记录过多（${total} 条），请缩小日期范围；单次最多 ${USAGE_EXPORT_MAX_ROWS} 条`,
+      );
+    }
+
     const items = await this.prisma.creditUsage.findMany({
-      where: {
-        organizationId,
-        ...(Object.keys(createdAt).length > 0 ? { createdAt } : {}),
-      },
+      where,
       orderBy: { createdAt: 'desc' },
-      take: 5000,
+      take: USAGE_EXPORT_MAX_ROWS,
     });
 
     const header = 'id,projectId,serviceType,provider,tokensOrCount,estimatedCost,createdAt\n';

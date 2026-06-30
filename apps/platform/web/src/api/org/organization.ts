@@ -85,13 +85,25 @@ export async function updateOrganizationProfile(
   return res.data;
 }
 
-/** 成员列表 */
-export async function listOrganizationMembers(): Promise<OrganizationMember[]> {
-  const res = await http.request<WmApiResponse<OrganizationMember[]>>(
-    "get",
-    "/api/v1/org/members"
-  );
-  return res.data ?? [];
+/** 成员列表（分页） */
+export async function listOrganizationMembers(
+  page = 1,
+  limit = 100
+): Promise<{
+  items: OrganizationMember[];
+  pagination: { page: number; limit: number; total: number };
+}> {
+  const res = await http.request<
+    WmApiResponse<OrganizationMember[]> & {
+      meta?: { pagination?: { page: number; limit: number; total: number } };
+    }
+  >("get", "/api/v1/org/members", { params: { page, limit } });
+  const pagination = res.meta?.pagination ?? {
+    page,
+    limit,
+    total: res.data?.length ?? 0
+  };
+  return { items: res.data ?? [], pagination };
 }
 
 export interface InviteMemberPayload {

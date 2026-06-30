@@ -103,6 +103,30 @@ export class ConsoleTenantService {
     };
   }
 
+  async listTenantProjects(organizationId: string) {
+    await this.assertCustomerTenant(organizationId);
+    const projects = await this.prisma.project.findMany({
+      where: { organizationId, projectType: 'seo-factory' },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        projectType: true,
+        status: true,
+        createdAt: true,
+        _count: { select: { sites: true } },
+      },
+    });
+    return projects.map((project) => ({
+      id: project.id,
+      name: project.name,
+      projectType: project.projectType,
+      status: project.status,
+      siteCount: project._count.sites,
+      createdAt: project.createdAt,
+    }));
+  }
+
   async getTenant(organizationId: string) {
     await this.assertCustomerTenant(organizationId);
     const [profile, members] = await Promise.all([

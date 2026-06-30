@@ -11,7 +11,7 @@ describe('scraper.config', () => {
     assert.equal(mod.isCompetitorScrapeEnabled(), true);
     const opts = mod.readCompetitorScrapeOptions();
     assert.equal(opts.concurrency, 2);
-    assert.equal(opts.timeoutMs, 15_000);
+    assert.equal(opts.timeoutMs, 20_000);
 
     process.env.SCRAPER_COMPETITOR_ENABLED = 'false';
     assert.equal(mod.isCompetitorScrapeEnabled(), false);

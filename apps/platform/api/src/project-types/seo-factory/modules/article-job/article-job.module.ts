@@ -23,6 +23,9 @@ import { ArticleJobController } from './article-job.controller';
 import { ArticleJobCollabController } from './article-job-collab.controller';
 import { ArticleJobCollabService } from './article-job-collab.service';
 import { ArticleJobService } from './article-job.service';
+import { ArticleJobListService } from './article-job-list.service';
+import { ArticleJobBatchService } from './article-job-batch.service';
+import { ArticleJobQueueService } from './article-job-queue.service';
 import { LinkingModule } from '../linking/linking.module';
 import { ExportModule } from '../export/export.module';
 import { GscModule } from '../gsc/gsc.module';
@@ -33,7 +36,20 @@ import { ArticleJobActivityModule } from './article-job-activity.module';
 @Module({
   imports: [ProjectModule, AccessModule, ArticleJobActivityModule, BillingModule, SeoFactoryQueueModule, SeoCheckerModule, LlmModule, SiteModule, ExportModule, LinkingModule, GscModule, ScraperModule],
   controllers: [ArticleJobController, ArticleJobCollabController],
-  providers: [ArticleJobService, ArticleJobStatsService, ArticleJobCollabService, ArticleJobBriefService, ArticleJobInternalLinksService, ArticleJobRewriteService, ArticleJobDraftEditService, ArticleJobDraftImageService, ArticleJobReviewService],
+  providers: [
+    ArticleJobService,
+    ArticleJobListService,
+    ArticleJobBatchService,
+    ArticleJobQueueService,
+    ArticleJobStatsService,
+    ArticleJobCollabService,
+    ArticleJobBriefService,
+    ArticleJobInternalLinksService,
+    ArticleJobRewriteService,
+    ArticleJobDraftEditService,
+    ArticleJobDraftImageService,
+    ArticleJobReviewService,
+  ],
   exports: [ArticleJobService, ArticleJobStatsService],
 })
 export class ArticleJobModule {}
