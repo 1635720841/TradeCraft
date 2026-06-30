@@ -22,14 +22,39 @@ export const CONTENT_LANGUAGE_OPTIONS = [
   { value: "zh-CN", label: "简体中文" }
 ] as const;
 
-/** 站点目标市场（与 Site.targetMarket 一致，自由文本存储） */
+/** 站点目标市场（与 Site.targetMarket 逗号分隔存储一致，支持多选） */
 export const TARGET_MARKET_OPTIONS = [
   { value: "US", label: "美国 (US)" },
-  { value: "CN", label: "中国 (CN)" },
+  { value: "CA", label: "加拿大 (CA)" },
+  { value: "UK", label: "英国 (UK)" },
   { value: "EU", label: "欧洲 (EU)" },
+  { value: "DE", label: "德国 (DE)" },
+  { value: "AU", label: "澳大利亚 (AU)" },
+  { value: "CN", label: "中国 (CN)" },
   { value: "SEA", label: "东南亚 (SEA)" },
+  { value: "JP", label: "日本 (JP)" },
+  { value: "IN", label: "印度 (IN)" },
+  { value: "MX", label: "墨西哥 (MX)" },
+  { value: "BR", label: "巴西 (BR)" },
   { value: "Global", label: "全球 (Global)" }
 ] as const;
+
+/** Google SERP 抓取国家（Serper gl，与站点设置「搜索国家」一致） */
+export const SERP_COUNTRY_OPTIONS = [
+  { value: "US", label: "美国 (US)" },
+  { value: "GB", label: "英国 (GB)" },
+  { value: "CA", label: "加拿大 (CA)" },
+  { value: "AU", label: "澳大利亚 (AU)" },
+  { value: "SG", label: "新加坡 (SG)" },
+  { value: "IN", label: "印度 (IN)" },
+  { value: "DE", label: "德国 (DE)" },
+  { value: "FR", label: "法国 (FR)" },
+  { value: "JP", label: "日本 (JP)" },
+  { value: "KR", label: "韩国 (KR)" },
+  { value: "VN", label: "越南 (VN)" }
+] as const;
+
+export type SerpCountryCode = (typeof SERP_COUNTRY_OPTIONS)[number]["value"];
 
 export type ContentLanguageCode = (typeof CONTENT_LANGUAGE_OPTIONS)[number]["value"];
 

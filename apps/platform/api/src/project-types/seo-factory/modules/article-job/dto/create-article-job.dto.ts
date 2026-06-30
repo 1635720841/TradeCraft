@@ -7,6 +7,7 @@ import {
   IsString,
   IsUUID,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 import { MAX_SERP_ARTICLE_LIMIT } from '../../../constants/serp-filter';
@@ -33,6 +34,11 @@ export class CreateArticleJobDto {
   @IsOptional()
   @IsBoolean()
   serpArticlesOnly?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(8)
+  serpCountry?: string;
 
   @IsOptional()
   @IsIn(CONTENT_LANGUAGE_VALUES, { message: '内容语言仅支持 en 或 zh-CN' })

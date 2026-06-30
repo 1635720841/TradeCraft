@@ -40,7 +40,7 @@ export interface ResolvedSerpResearchOptions {
 }
 
 export type SerpResearchOverrides = Partial<
-  Pick<ResolvedSerpResearchOptions, 'serpArticleLimit' | 'serpArticlesOnly'> & {
+  Pick<ResolvedSerpResearchOptions, 'serpArticleLimit' | 'serpArticlesOnly' | 'serpCountry'> & {
     organicFetchNum?: number;
     minArticleCandidates?: number;
     bypassCache?: boolean;
@@ -61,6 +61,13 @@ function normalizeSerpCountry(value: unknown): string | undefined {
   const normalized = value.trim().toUpperCase();
   return SERP_COUNTRIES.has(normalized) ? normalized : undefined;
 }
+
+/** 校验并规范化 Google 搜索国家（Serper gl） */
+export function coerceSerpCountry(value: unknown, fallback = 'US'): string {
+  return normalizeSerpCountry(value) ?? fallback;
+}
+
+export { normalizeSerpCountry };
 
 export function parseSiteSerpResearchSettings(raw: unknown): SiteSerpResearchSettings | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
@@ -171,7 +178,10 @@ export function resolveSerpResearchOptions(
 ): ResolvedSerpResearchOptions {
   const siteRoot = (siteSettings ?? {}) as { serpResearch?: unknown };
   const site = parseSiteSerpResearchSettings(siteRoot.serpResearch) ?? {};
-  const serpCountry = normalizeSerpCountry(site.country) ?? 'US';
+  const serpCountry =
+    normalizeSerpCountry(overrides?.serpCountry) ??
+    normalizeSerpCountry(site.country) ??
+    'US';
 
   const serpArticleLimit = clampInt(
     overrides?.serpArticleLimit ?? site.articleLimit,

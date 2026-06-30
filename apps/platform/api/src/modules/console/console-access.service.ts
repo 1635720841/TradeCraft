@@ -21,19 +21,32 @@ export class ConsoleAccessService {
     private readonly auditService: AuditService,
   ) {}
 
-  async listUsers(page: number, limit: number, keyword?: string) {
+  async listUsers(page: number, limit: number, keyword?: string, scope?: string) {
     const safePage = Math.max(1, page);
     const safeLimit = Math.min(100, Math.max(1, limit));
     const skip = (safePage - 1) * safeLimit;
     const trimmed = keyword?.trim();
-    const where = trimmed
-      ? {
-          OR: [
-            { email: { contains: trimmed, mode: 'insensitive' as const } },
-            { name: { contains: trimmed, mode: 'insensitive' as const } },
-          ],
-        }
-      : {};
+
+    const platformRoles = [PrismaRole.SUPER_ADMIN, PrismaRole.PLATFORM_OPERATOR];
+    const tenantRoles = [PrismaRole.ADMIN, PrismaRole.MEMBER];
+    const roleFilter =
+      scope === 'platform'
+        ? { role: { in: platformRoles } }
+        : scope === 'tenant'
+          ? { role: { in: tenantRoles } }
+          : {};
+
+    const where = {
+      ...roleFilter,
+      ...(trimmed
+        ? {
+            OR: [
+              { email: { contains: trimmed, mode: 'insensitive' as const } },
+              { name: { contains: trimmed, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    };
 
     const [items, total] = await Promise.all([
       this.prisma.user.findMany({

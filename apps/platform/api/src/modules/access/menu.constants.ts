@@ -90,7 +90,7 @@ export const MENU_CATALOG: MenuDefinition[] = [
   },
   {
     id: 'console:access',
-    title: '访问控制',
+    title: '平台权限',
     routePath: '/console/access',
     permissionId: 'console:menu:manage',
     targetRoles: [Role.SUPER_ADMIN],

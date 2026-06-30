@@ -299,7 +299,7 @@
           </template>
 
           <button
-            v-if="isAdmin"
+            v-if="isAdmin && displayProjects.length"
             type="button"
             class="mw-home__project-item mw-home__new-project"
             @click="openCreateDialog"

@@ -86,6 +86,23 @@
               <p class="mt-1 text-xs text-gray-500">用户在 Google 会搜的词。</p>
             </el-form-item>
 
+            <el-form-item v-if="singleSerpPicker.showPicker" label="本篇优化市场">
+              <el-select v-model="singleForm.serpCountry" class="w-full">
+                <el-option
+                  v-for="item in singleSerpPicker.options"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+              <p class="mt-1 text-xs text-gray-500">
+                本篇按所选国家的 Google 搜索结果分析竞品并生成大纲。
+                <template v-if="singleSerpPicker.siteMarketsLabel">
+                  站点面向：{{ singleSerpPicker.siteMarketsLabel }}。
+                </template>
+              </p>
+            </el-form-item>
+
             <el-form-item label="搜索意图">
               <el-select v-model="singleForm.searchIntent" class="w-full" placeholder="请选择">
                 <el-option-group label="按读者目的">
@@ -247,6 +264,23 @@
               <p class="mt-1 text-xs text-gray-500">默认跟随站点，可手动覆盖。</p>
             </el-form-item>
 
+            <el-form-item v-if="batchSerpPicker.showPicker" label="本篇优化市场">
+              <el-select v-model="batchForm.serpCountry" class="w-full">
+                <el-option
+                  v-for="item in batchSerpPicker.options"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+              <p class="mt-1 text-xs text-gray-500">
+                批量任务将统一按所选国家分析 Google 搜索结果。
+                <template v-if="batchSerpPicker.siteMarketsLabel">
+                  站点面向：{{ batchSerpPicker.siteMarketsLabel }}。
+                </template>
+              </p>
+            </el-form-item>
+
             <el-form-item label="来源">
               <el-radio-group v-model="batchForm.source">
                 <el-radio value="site-crawl">从网站自动抓取</el-radio>
@@ -355,9 +389,11 @@ import {
   keywordIntentByKeywordTypeDict,
   keywordIntentByPurposeDict,
   articleContentFormDict,
-  type ContentLanguageCode
+  type ContentLanguageCode,
+  type SerpCountryCode
 } from "@/constants/dicts/seo-factory";
 import { message } from "@/utils/message";
+import { formatTargetMarketsLabel, resolveJobSerpCountryPicker } from "@/utils/seo-factory/target-market";
 import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
 import { useArticleQuotaPreview } from "@/composables/useArticleQuotaPreview";
 
@@ -385,7 +421,8 @@ const singleForm = reactive({
   targetKeyword: "",
   searchIntent: "COMMERCIAL",
   contentForm: "ARTICLE" as "ARTICLE" | "PRODUCT_ENHANCED" | "FAQ_PAGE",
-  contentLanguage: "en" as ContentLanguageCode
+  contentLanguage: "en" as ContentLanguageCode,
+  serpCountry: "US" as SerpCountryCode
 });
 
 const batchForm = reactive({
@@ -393,6 +430,7 @@ const batchForm = reactive({
   source: "site-crawl" as "site-crawl" | "keywords",
   keywordsText: "",
   contentLanguage: "en" as ContentLanguageCode,
+  serpCountry: "US" as SerpCountryCode,
   limit: 5,
   seoArticlesOnly: true
 });
@@ -441,6 +479,8 @@ const selectedSingleSite = computed(() =>
   sites.value.find((site) => site.id === singleForm.siteId)
 );
 
+const singleSerpPicker = computed(() => resolveJobSerpCountryPicker(selectedSingleSite.value));
+
 const batchJobCount = computed(() => {
   if (batchForm.source === "keywords") {
     return batchForm.keywordsText
@@ -454,11 +494,15 @@ const selectedBatchSite = computed(() =>
   sites.value.find((site) => site.id === batchForm.siteId)
 );
 
+const batchSerpPicker = computed(() => resolveJobSerpCountryPicker(selectedBatchSite.value));
+
 function siteOptionSubline(site: SiteItem): string | undefined {
   const bits: string[] = [];
   if (site.contentLanguage === "zh-CN") bits.push("简体中文");
   else if (site.contentLanguage === "en") bits.push("英文");
-  if (site.targetMarket) bits.push(site.targetMarket);
+  if (site.targetMarkets?.length || site.targetMarket) {
+    bits.push(formatTargetMarketsLabel(site.targetMarkets ?? site.targetMarket, ""));
+  }
   return bits.length ? bits.join(" · ") : undefined;
 }
 
@@ -551,6 +595,13 @@ function applySiteDefaults(site: SiteItem) {
   const language = (site.contentLanguage === "zh-CN" ? "zh-CN" : "en") as ContentLanguageCode;
   singleForm.contentLanguage = language;
   batchForm.contentLanguage = language;
+  syncSerpCountryForSite(site);
+}
+
+function syncSerpCountryForSite(site: SiteItem) {
+  const picker = resolveJobSerpCountryPicker(site);
+  singleForm.serpCountry = picker.defaultCountry;
+  batchForm.serpCountry = picker.defaultCountry;
 }
 
 function handleBatchSiteChange() {
@@ -560,8 +611,17 @@ function handleBatchSiteChange() {
     batchForm.contentLanguage = (
       site.contentLanguage === "zh-CN" ? "zh-CN" : "en"
     ) as ContentLanguageCode;
+    syncSerpCountryForSite(site);
   }
 }
+
+watch(
+  () => singleForm.siteId,
+  (siteId) => {
+    const site = sites.value.find((item) => item.id === siteId);
+    if (site) syncSerpCountryForSite(site);
+  }
+);
 
 async function loadPreview() {
   if (!batchForm.siteId) return;
@@ -597,7 +657,8 @@ async function handleSingleSubmit() {
       targetKeyword: singleForm.targetKeyword.trim(),
       searchIntent: singleForm.searchIntent,
       contentForm: singleForm.contentForm,
-      contentLanguage: singleForm.contentLanguage
+      contentLanguage: singleForm.contentLanguage,
+      ...(singleSerpPicker.value.showPicker ? { serpCountry: singleForm.serpCountry } : {})
     });
     rememberLastSite(singleForm.siteId);
     message("任务已提交，正在排队处理", { type: "success" });
@@ -637,7 +698,8 @@ async function handleBatchSubmit() {
       keywords,
       limit: batchForm.limit,
       seoArticlesOnly: batchForm.seoArticlesOnly,
-      contentLanguage: batchForm.contentLanguage
+      contentLanguage: batchForm.contentLanguage,
+      ...(batchSerpPicker.value.showPicker ? { serpCountry: batchForm.serpCountry } : {})
     });
 
     rememberLastSite(batchForm.siteId);

@@ -41,7 +41,15 @@ import { parseShopifyCmsConfig } from '../site/site-cms.util';
 import type { CreateBatchArticleJobsDto } from './dto/create-batch-article-jobs.dto';
 import type { CreateArticleJobDto } from './dto/create-article-job.dto';
 import type { RefreshArticleJobSerpDto } from './dto/refresh-article-job-serp.dto';
-import { resolveSerpResearchOptions } from '../../constants/serp-research-settings';
+import { resolveSerpResearchOptions, normalizeSerpCountry } from '../../constants/serp-research-settings';
+import {
+  buildArticleJobScraperOptions,
+  getArticleJobConfig,
+  withArticleJobConfig,
+} from '../../constants/article-job-config';
+import {
+  resolveSerpCountriesFromTargetMarkets,
+} from '../site/target-market.util';
 import { SiteArticleCrawlerService } from '../site/site-article-crawler.service';
 import { SiteService } from '../site/site.service';
 import {
@@ -94,7 +102,7 @@ export class ArticleJobService {
 
     const site = await this.prisma.site.findFirst({
       where: { id: dto.siteId, organizationId, projectId },
-      select: { id: true, contentLanguage: true },
+      select: { id: true, contentLanguage: true, targetMarket: true, settings: true },
     });
 
     if (!site) {
@@ -112,6 +120,8 @@ export class ArticleJobService {
       dto.searchIntent,
     );
 
+    const serpCountry = this.resolveJobSerpCountry(site, dto.serpCountry);
+
     const job = await this.prisma.articleJob.create({
       data: {
         traceId,
@@ -123,6 +133,7 @@ export class ArticleJobService {
         searchIntent,
         contentForm: normalizeArticleContentForm(dto.contentForm),
         status: 'QUEUED',
+        seoCheckData: withArticleJobConfig(null, { serpCountry }) as object,
       },
       select: {
         id: true,
@@ -133,7 +144,7 @@ export class ArticleJobService {
       },
     });
 
-    const scraperOptions = this.buildScraperOptions(dto);
+    const scraperOptions = this.buildScraperOptions(dto, serpCountry);
 
     await this.enqueueArticleJob(
       {
@@ -263,6 +274,7 @@ export class ArticleJobService {
           contentLanguage: dto.contentLanguage,
           serpArticleLimit: scraperOptions.serpArticleLimit,
           serpArticlesOnly: scraperOptions.serpArticlesOnly,
+          serpCountry: dto.serpCountry ?? scraperOptions.serpCountry,
         }),
       );
     }
@@ -1094,6 +1106,7 @@ export class ArticleJobService {
         targetKeyword: true,
         contentLanguage: true,
         serpData: true,
+        seoCheckData: true,
         site: { select: { targetMarket: true, settings: true } },
       },
     });
@@ -1110,7 +1123,9 @@ export class ArticleJobService {
       filterMeta?: { limit?: number; articlesOnly?: boolean };
     } | null;
 
+    const jobConfig = getArticleJobConfig(job.seoCheckData);
     const serp = resolveSerpResearchOptions(job.site.settings, {
+      serpCountry: jobConfig.serpCountry,
       serpArticleLimit: dto.serpArticleLimit ?? serpData?.filterMeta?.limit,
       serpArticlesOnly: dto.serpArticlesOnly ?? serpData?.filterMeta?.articlesOnly,
       bypassCache: dto.bypassCache ?? true,
@@ -1359,6 +1374,7 @@ export class ArticleJobService {
 
     const resumeFrom = resolveResumeStep(job);
     const retryTraceId = `tr_${uuidv4()}`;
+    const retryScraperOptions = buildArticleJobScraperOptions(getArticleJobConfig(job.seoCheckData));
 
     // 清除上次「Semrush 检测已取消」标记，否则续跑到 optimizing 时
     // assertSemrushWorkNotCancelled 会立即再次中止。
@@ -1388,6 +1404,7 @@ export class ArticleJobService {
         organizationId,
         projectId,
         resumeFrom,
+        scraperOptions: retryScraperOptions,
       },
       `retry_${job.id}_${Date.now()}`,
     );
@@ -1636,16 +1653,41 @@ export class ArticleJobService {
     };
   }
 
+  private resolveJobSerpCountry(
+    site: { targetMarket: string | null; settings: unknown },
+    override?: string,
+  ): string {
+    const normalized = normalizeSerpCountry(override);
+    if (normalized) return normalized;
+
+    const fromTargets = resolveSerpCountriesFromTargetMarkets(
+      site.targetMarket,
+      (value) => normalizeSerpCountry(value) !== undefined,
+    );
+    if (fromTargets.length > 0) {
+      return fromTargets[0];
+    }
+
+    return resolveSerpResearchOptions(site.settings).serpCountry;
+  }
+
   private buildScraperOptions(
-    dto: Pick<CreateArticleJobDto, 'serpArticleLimit' | 'serpArticlesOnly'>,
+    dto: Pick<CreateArticleJobDto, 'serpArticleLimit' | 'serpArticlesOnly' | 'serpCountry'>,
+    resolvedSerpCountry?: string,
   ): ArticleJobScraperOptions | undefined {
-    if (dto.serpArticleLimit === undefined && dto.serpArticlesOnly === undefined) {
+    const serpCountry = normalizeSerpCountry(dto.serpCountry) ?? resolvedSerpCountry;
+    if (
+      dto.serpArticleLimit === undefined &&
+      dto.serpArticlesOnly === undefined &&
+      !serpCountry
+    ) {
       return undefined;
     }
 
     return {
       serpArticleLimit: dto.serpArticleLimit,
       serpArticlesOnly: dto.serpArticlesOnly,
+      serpCountry,
     };
   }
 

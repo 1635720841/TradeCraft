@@ -26,7 +26,7 @@
         type="info"
         :closable="false"
         show-icon
-        title="此处配置企业级权限（资料、成员、项目列表等）。项目内 SEO 能力须在「项目管理 → 成员」中配置；企业管理员可管理项目但不自动拥有进入权限。"
+        title="本页管理本企业成员与授权。平台运营在 Console 开户时仅创建首位账号；此后增删成员、授予管理员均在此完成。项目内 SEO 能力须在「项目管理 → 成员」中配置。"
       />
 
       <el-table :data="filteredMembers" stripe>
@@ -167,6 +167,9 @@
               </span>
             </el-option>
           </el-select>
+          <div v-if="form.role === 'ADMIN'" class="mt-1 text-xs text-amber-600">
+            管理员可管理本企业成员、项目与订阅查看；请谨慎授予。
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -531,6 +534,24 @@ async function submitForm() {
   if (!formRef.value) return;
   await formRef.value.validate(async valid => {
     if (!valid) return;
+
+    const promotingToAdmin =
+      form.role === "ADMIN" &&
+      (!editingId.value ||
+        members.value.find(m => m.id === editingId.value)?.role !== "ADMIN");
+
+    if (promotingToAdmin) {
+      try {
+        await ElMessageBox.confirm(
+          "企业管理员可管理成员、项目与企业资料。确认授予管理员角色？",
+          "授予管理员",
+          { type: "warning", confirmButtonText: "确认授予" }
+        );
+      } catch {
+        return;
+      }
+    }
+
     saving.value = true;
     try {
       if (editingId.value) {

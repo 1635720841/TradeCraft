@@ -1,5 +1,5 @@
 <!--
-  租户详情页：基本信息、成员、订阅配额与快捷操作。
+  租户详情页：订阅配额、账号概览（只读）与运营操作。
 -->
 <template>
   <div class="p-4 space-y-4">
@@ -8,12 +8,24 @@
       <span class="text-lg font-medium">{{ tenant?.name ?? "租户详情" }}</span>
     </div>
 
-    <el-card v-loading="loading" shadow="never">
-      <template v-if="tenant">
-        <div v-if="canManageTenant" class="mb-4 flex flex-wrap gap-2">
-          <el-button type="primary" @click="editVisible = true">编辑</el-button>
-          <el-button @click="topUpVisible = true">加购配额</el-button>
-        </div>
+    <el-alert
+      type="info"
+      :closable="false"
+      show-icon
+      title="平台运营仅管理租户开户、套餐与配额；成员增删、角色与细粒度权限由该企业在「企业管理 → 成员与权限」自行维护。"
+    />
+
+    <template v-if="tenant">
+      <el-card v-loading="loading" shadow="never">
+        <template #header>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span class="font-medium">订阅与配额</span>
+            <div v-if="canManageTenant" class="flex flex-wrap gap-2">
+              <el-button type="primary" @click="editVisible = true">编辑</el-button>
+              <el-button @click="topUpVisible = true">加购配额</el-button>
+            </div>
+          </div>
+        </template>
 
         <el-descriptions :column="2" border class="mb-4">
           <el-descriptions-item label="企业 ID">{{ tenant.id }}</el-descriptions-item>
@@ -37,11 +49,11 @@
           <el-descriptions-item label="企业有效时间">
             {{ formatPeriodWindow(tenant.currentPeriodStart, tenant.currentPeriodEnd) }}
           </el-descriptions-item>
-          <el-descriptions-item label="成员数">{{ tenant.memberCount }}</el-descriptions-item>
+          <el-descriptions-item label="账号数">{{ tenant.memberCount }}</el-descriptions-item>
           <el-descriptions-item label="项目数">{{ tenant.projectCount }}</el-descriptions-item>
         </el-descriptions>
 
-        <div v-if="tenant.quota" class="mb-4">
+        <div v-if="tenant.quota">
           <div class="mb-2 text-sm font-medium mw-text-body">本账期配额</div>
           <el-progress
             :percentage="quotaPercent"
@@ -52,38 +64,78 @@
             </span>
           </el-progress>
         </div>
+      </el-card>
 
-        <div class="font-medium mb-2">成员列表</div>
-        <el-table :data="tenant.members ?? []" stripe>
-          <el-table-column prop="email" label="邮箱" min-width="180" />
-          <el-table-column prop="name" label="姓名" min-width="120">
-            <template #default="{ row }">{{ row.name || "-" }}</template>
-          </el-table-column>
-          <el-table-column prop="role" label="角色" width="120">
-            <template #default="{ row }">
-              <el-tag :type="dictTagType(memberRoleDict, row.role)">
-                {{ dictLabel(memberRoleDict, row.role) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="createdAt" label="加入时间" min-width="170">
-            <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
-          </el-table-column>
-          <el-table-column v-if="canImpersonate" label="操作" width="100" fixed="right">
-            <template #default="{ row }">
-              <el-button
-                link
-                type="primary"
-                :loading="impersonatingUserId === row.id"
-                @click="handleImpersonate(row)"
-              >
-                代登录
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </template>
-    </el-card>
+      <el-card v-loading="loading" shadow="never">
+        <template #header>
+          <span class="font-medium">账号概览（只读）</span>
+        </template>
+
+        <div v-if="adminMembers.length" class="mb-4">
+          <div class="mb-2 text-sm font-medium mw-text-body">企业管理员</div>
+          <el-table :data="adminMembers" stripe>
+            <el-table-column prop="email" label="邮箱" min-width="180" />
+            <el-table-column prop="name" label="姓名" min-width="120">
+              <template #default="{ row }">{{ row.name || "-" }}</template>
+            </el-table-column>
+            <el-table-column prop="createdAt" label="加入时间" min-width="170">
+              <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+            </el-table-column>
+            <el-table-column v-if="canImpersonate" label="运营操作" width="100" fixed="right">
+              <template #default="{ row }">
+                <el-button
+                  link
+                  type="primary"
+                  :loading="impersonatingUserId === row.id"
+                  @click="handleImpersonate(row)"
+                >
+                  代登录
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+
+        <el-collapse v-if="otherMembers.length">
+          <el-collapse-item :title="`其他成员（${otherMembers.length}）`" name="others">
+            <el-table :data="otherMembers" stripe>
+              <el-table-column prop="email" label="邮箱" min-width="180" />
+              <el-table-column prop="name" label="姓名" min-width="120">
+                <template #default="{ row }">{{ row.name || "-" }}</template>
+              </el-table-column>
+              <el-table-column prop="role" label="角色" width="120">
+                <template #default="{ row }">
+                  <el-tag :type="dictTagType(memberRoleDict, row.role)">
+                    {{ dictLabel(memberRoleDict, row.role) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="createdAt" label="加入时间" min-width="170">
+                <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+              </el-table-column>
+              <el-table-column v-if="canImpersonate" label="运营操作" width="100" fixed="right">
+                <template #default="{ row }">
+                  <el-button
+                    link
+                    type="primary"
+                    :loading="impersonatingUserId === row.id"
+                    @click="handleImpersonate(row)"
+                  >
+                    代登录
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-collapse-item>
+        </el-collapse>
+
+        <el-empty
+          v-if="!tenant.members?.length"
+          description="暂无账号"
+          :image-size="64"
+        />
+      </el-card>
+    </template>
 
     <el-card v-loading="loadingAudit" shadow="never">
       <template #header>
@@ -138,7 +190,8 @@ import {
   impersonateUser,
   listAuditLogs,
   type AuditLogItem,
-  type TenantDetail
+  type TenantDetail,
+  type TenantMember
 } from "@/api/console/index";
 import {
   auditActionDict,
@@ -173,6 +226,14 @@ const editVisible = ref(false);
 const topUpVisible = ref(false);
 const impersonatingUserId = ref<string | null>(null);
 
+const adminMembers = computed(() =>
+  (tenant.value?.members ?? []).filter((m) => m.role === "ADMIN")
+);
+
+const otherMembers = computed(() =>
+  (tenant.value?.members ?? []).filter((m) => m.role !== "ADMIN")
+);
+
 const quotaPercent = computed(() => {
   const quota = tenant.value?.quota;
   if (!quota?.periodQuota) return 0;
@@ -206,7 +267,7 @@ async function onTenantUpdated() {
   await Promise.all([loadTenant(), loadAudit()]);
 }
 
-async function handleImpersonate(member: { id: string; email: string }) {
+async function handleImpersonate(member: TenantMember) {
   try {
     const { value: reason } = await ElMessageBox.prompt(
       `确认以 ${member.email} 身份代登录？将切换为租户视角（15 分钟有效）。`,

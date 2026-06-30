@@ -130,11 +130,13 @@ export class ConsoleController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('keyword') keyword?: string,
+    @Query('scope') scope?: string,
   ) {
     const result = await this.consoleAccessService.listUsers(
       page ? Number(page) : 1,
       limit ? Number(limit) : 50,
       keyword,
+      scope,
     );
     return {
       data: result.items,

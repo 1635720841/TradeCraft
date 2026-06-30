@@ -29,6 +29,7 @@ import { ArticleJobService } from '../article-job/article-job.service';
 import { MAX_BATCH_JOB_LIMIT } from '../../constants/serp-filter';
 import { MAX_BATCH_ACTION_LIMIT } from '../../constants/batch-actions';
 import { enrichBrandVoiceForPrompt } from '../../constants/site-settings';
+import { formatTargetMarketsForPrompt } from '../site/target-market.util';
 import type { CreateKeywordDto } from './dto/create-keyword.dto';
 import type { ConfirmKeywordSeedsDto } from './dto/confirm-keyword-seeds.dto';
 import type { GenerateKeywordSeedsDto } from './dto/generate-keyword-seeds.dto';
@@ -332,7 +333,7 @@ export class KeywordPoolService {
     return this.llmProvider.generateKeywordSeeds({
       siteDomain: site.domain,
       brandVoice: enrichBrandVoiceForPrompt(site.brandVoice, site.settings) ?? undefined,
-      targetMarket: site.targetMarket ?? undefined,
+      targetMarket: formatTargetMarketsForPrompt(site.targetMarket),
       contentLanguage: site.contentLanguage === 'zh-CN' ? 'zh-CN' : 'en',
       count,
       topicHint: dto.topicHint,

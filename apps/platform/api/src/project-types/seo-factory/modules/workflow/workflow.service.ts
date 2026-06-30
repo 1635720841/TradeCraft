@@ -29,6 +29,7 @@ import {
   type WorkflowResumeStep,
 } from '../../constants/workflow-resume';
 import { enrichBrandVoiceForPrompt } from '../../constants/site-settings';
+import { formatTargetMarketsForPrompt, primaryTargetMarket } from '../site/target-market.util';
 import { isBriefApprovalPending, parseSiteWorkflowSettings } from '../../constants/brief-approval';
 import { resolveSerpResearchOptions } from '../../constants/serp-research-settings';
 import { ContentReviewService } from '../content-review/content-review.service';
@@ -99,7 +100,7 @@ export class WorkflowService {
       projectId,
       targetKeyword: job.targetKeyword,
       brandVoice: enrichBrandVoiceForPrompt(job.site.brandVoice, job.site.settings),
-      targetMarket: job.site.targetMarket ?? 'US',
+      targetMarket: formatTargetMarketsForPrompt(job.site.targetMarket) ?? primaryTargetMarket(job.site.targetMarket),
       contentLanguage: job.contentLanguage ?? job.site.contentLanguage ?? 'en',
     };
 

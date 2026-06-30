@@ -18,6 +18,7 @@ import { WorkflowService } from '../modules/workflow/workflow.service';
 export interface ArticleJobScraperOptions {
   serpArticleLimit?: number;
   serpArticlesOnly?: boolean;
+  serpCountry?: string;
 }
 
 export interface ArticleJobQueuePayload {

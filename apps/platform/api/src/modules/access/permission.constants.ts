@@ -33,7 +33,7 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   },
   { id: 'console:tenant:list', name: '租户列表', module: 'console', description: '查看全平台租户', sortOrder: 40 },
   { id: 'console:tenant:read', name: '租户详情', module: 'console', description: '查看租户详情', sortOrder: 41 },
-  { id: 'console:tenant:create', name: '新建租户', module: 'console', description: '创建租户与管理员', sortOrder: 42 },
+  { id: 'console:tenant:create', name: '新建租户', module: 'console', description: '开户并创建首位登录账号', sortOrder: 42 },
   { id: 'console:tenant:update', name: '编辑租户', module: 'console', description: '修改套餐与账期', sortOrder: 43 },
   { id: 'console:menu:manage', name: '访问控制', module: 'console', description: '配置平台运营账号菜单与 Console 权限', sortOrder: 44 },
   { id: 'console:health:read', name: '系统健康', module: 'console', description: '查看队列与 Provider 状态', sortOrder: 45 },

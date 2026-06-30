@@ -1,5 +1,5 @@
 <!--
-  访问控制页：超管为平台管理员账号授予权限；为租户成员覆盖侧栏菜单。
+  平台权限页：超管为平台运营账号授予 Console 权限；租户菜单覆盖为高级能力。
 -->
 <template>
   <div class="p-4 space-y-4">
@@ -7,7 +7,7 @@
       type="info"
       :closable="false"
       show-icon
-      title="平台管理员账号在此授予 console 权限；租户成员侧栏通常由角色与权限自动决定，菜单覆盖仅用于个别特例。"
+      title="本页不管理租户成员。平台运营账号在此配置 Console 权限；租户成员的增删与授权请在「企业管理 → 成员与权限」完成。"
       class="mb-4"
     />
 
@@ -17,7 +17,9 @@
       :page="page"
       :limit="limit"
       :total="total"
+      :scope="userScope"
       v-model:keyword="keyword"
+      @update:scope="onScopeChange"
       @search="searchUsers"
       @select="onSelectUser"
       @page-change="(p) => { page = p; fetchUsers(); }"
@@ -31,7 +33,7 @@
       <el-tabs v-model="configTab">
         <el-tab-pane
           v-if="selectedUser.role === 'PLATFORM_OPERATOR'"
-          label="平台账号权限"
+          label="Console 权限"
           name="platform"
         >
           <ConsolePermissionGrantPanel
@@ -53,7 +55,7 @@
 
         <el-tab-pane
           v-if="selectedUser.role !== 'PLATFORM_OPERATOR'"
-          label="菜单覆盖（高级）"
+          label="侧栏菜单覆盖（高级）"
           name="menu"
         >
           <ConsoleMenuOverridePanel
@@ -70,7 +72,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import {
   getConsoleUserPermissions,
   getUserMenus,
@@ -108,6 +110,7 @@ const page = ref(1);
 const limit = ref(50);
 const total = ref(0);
 const keyword = ref("");
+const userScope = ref<"platform" | "tenant">("platform");
 const selectedUser = ref<ConsoleUserItem | null>(null);
 const configTab = ref("platform");
 const menuConfig = ref<UserMenuConfig | null>(null);
@@ -167,7 +170,12 @@ function clearExtraGrants() {
 async function fetchUsers() {
   loadingUsers.value = true;
   try {
-    const result = await listConsoleUsers(page.value, limit.value, keyword.value.trim());
+    const result = await listConsoleUsers(
+      page.value,
+      limit.value,
+      keyword.value.trim(),
+      userScope.value
+    );
     users.value = result.items;
     total.value = result.pagination.total;
   } finally {
@@ -177,6 +185,14 @@ async function fetchUsers() {
 
 function searchUsers() {
   page.value = 1;
+  void fetchUsers();
+}
+
+function onScopeChange(scope: "platform" | "tenant") {
+  userScope.value = scope;
+  page.value = 1;
+  selectedUser.value = null;
+  menuConfig.value = null;
   void fetchUsers();
 }
 
@@ -247,6 +263,10 @@ async function savePermissions() {
     savingPerms.value = false;
   }
 }
+
+watch(userScope, () => {
+  selectedUser.value = null;
+});
 
 onMounted(async () => {
   await userStore.ensureAuthProfile();

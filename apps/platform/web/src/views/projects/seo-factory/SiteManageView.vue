@@ -39,9 +39,9 @@
 
       <el-table v-loading="sitesLoading" :data="displayedSites" stripe :row-class-name="siteRowClassName">
         <el-table-column prop="domain" label="域名" min-width="180" />
-        <el-table-column prop="targetMarket" label="目标市场" width="100">
+        <el-table-column prop="targetMarket" label="目标市场" min-width="140">
           <template #default="{ row }">
-            {{ row.targetMarket || "-" }}
+            {{ formatTargetMarketsLabel(row.targetMarkets ?? row.targetMarket) }}
           </template>
         </el-table-column>
         <el-table-column prop="contentLanguage" label="输出语言" width="100">
@@ -119,13 +119,16 @@
         </el-form-item>
         <el-form-item label="目标市场">
           <el-select
-            v-model="siteForm.targetMarket"
+            v-model="siteForm.targetMarkets"
             class="w-full"
+            multiple
+            collapse-tags
+            collapse-tags-tooltip
             clearable
             filterable
             allow-create
             default-first-option
-            placeholder="选择或输入市场代码"
+            placeholder="可选择多个国家/地区"
           >
             <el-option
               v-for="item in targetMarketOptions"
@@ -134,6 +137,7 @@
               :value="item.value"
             />
           </el-select>
+          <p class="mt-1 text-xs text-gray-500">独立站可面向多个市场，AI 写作时会一并考虑。</p>
         </el-form-item>
         <el-form-item label="输出语言" prop="contentLanguage">
           <el-select v-model="siteForm.contentLanguage" class="w-full">
@@ -178,13 +182,16 @@
             </el-form-item>
             <el-form-item label="目标市场">
               <el-select
-                v-model="siteForm.targetMarket"
+                v-model="siteForm.targetMarkets"
                 class="w-full"
+                multiple
+                collapse-tags
+                collapse-tags-tooltip
                 clearable
                 filterable
                 allow-create
                 default-first-option
-                placeholder="选择或输入市场代码"
+                placeholder="可选择多个国家/地区"
               >
                 <el-option
                   v-for="item in targetMarketOptions"
@@ -193,6 +200,7 @@
                   :value="item.value"
                 />
               </el-select>
+              <p class="mt-1 text-xs text-gray-500">独立站可面向多个市场，AI 写作时会一并考虑。</p>
             </el-form-item>
             <el-form-item label="输出语言" prop="contentLanguage">
               <el-select v-model="siteForm.contentLanguage" class="w-full">
@@ -372,6 +380,7 @@ import {
 import { dictLabel } from "@/utils/dict";
 import { message } from "@/utils/message";
 import { siteItemHasMinWritingProfile } from "@/utils/seo-factory/site-writing-profile";
+import { formatTargetMarketsLabel, parseTargetMarkets } from "@/utils/seo-factory/target-market";
 import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
 
 defineOptions({ name: "SiteManageView" });
@@ -398,7 +407,7 @@ const targetMarketOptions = TARGET_MARKET_OPTIONS;
 
 const siteForm = reactive({
   domain: "",
-  targetMarket: "",
+  targetMarkets: [] as string[],
   contentLanguage: "en" as ContentLanguageCode,
   brandVoice: "",
   industry: "",
@@ -526,7 +535,7 @@ function clearProfileFilter() {
 
 function resetSiteForm() {
   siteForm.domain = "";
-  siteForm.targetMarket = "";
+  siteForm.targetMarkets = [];
   siteForm.contentLanguage = "en";
   siteForm.brandVoice = "";
   siteForm.industry = "";
@@ -564,7 +573,7 @@ function openEditDialog(site: SiteItem, tab: "basic" | "profile" | "publish" | "
   editingSiteId.value = site.id;
   siteFormTab.value = tab;
   siteForm.domain = site.domain;
-  siteForm.targetMarket = site.targetMarket ?? "";
+  siteForm.targetMarkets = parseTargetMarkets(site.targetMarkets ?? site.targetMarket);
   siteForm.contentLanguage = (site.contentLanguage === "zh-CN" ? "zh-CN" : "en") as ContentLanguageCode;
   siteForm.brandVoice = site.brandVoice ?? "";
   siteForm.industry = site.contentProfile?.industry ?? "";
@@ -589,7 +598,7 @@ function openEditDialog(site: SiteItem, tab: "basic" | "profile" | "publish" | "
 function buildSitePayload() {
   return {
     domain: siteForm.domain.trim(),
-    targetMarket: siteForm.targetMarket.trim() || undefined,
+    targetMarkets: siteForm.targetMarkets.length ? siteForm.targetMarkets : undefined,
     contentLanguage: siteForm.contentLanguage,
     brandVoice: siteForm.brandVoice.trim() || undefined,
     contentProfile: {

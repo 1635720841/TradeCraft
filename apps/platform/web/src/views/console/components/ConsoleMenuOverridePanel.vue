@@ -8,7 +8,7 @@
       type="warning"
       :closable="false"
       show-icon
-      title="常规场景请通过「企业管理 → 成员与权限」控制访问；勿随意覆盖菜单，否则可能与实际权限不一致。"
+      title="高级能力：仅用于个别租户账号的侧栏特例。常规成员授权请在「企业管理 → 成员与权限」完成，勿随意覆盖。"
     />
 
     <div v-if="menuConfig" class="flex flex-wrap items-center justify-between gap-2 mb-4">

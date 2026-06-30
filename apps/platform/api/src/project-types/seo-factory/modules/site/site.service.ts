@@ -26,6 +26,10 @@ import {
   sanitizeCmsForResponse,
 } from './site-cms.util';
 import { normalizeSiteDomain } from './site-domain.util';
+import {
+  parseTargetMarkets,
+  serializeTargetMarkets,
+} from './target-market.util';
 import { parseSiteWorkflowSettings } from '../../constants/brief-approval';
 import { resolveSiteSeoScoreConfig } from '../../constants/site-seo-score-settings';
 import {
@@ -314,7 +318,7 @@ export class SiteService {
           projectId,
           domain,
           brandVoice: dto.brandVoice?.trim() || null,
-          targetMarket: dto.targetMarket?.trim() || null,
+          targetMarket: this.resolveTargetMarketForWrite(dto.targetMarkets, dto.targetMarket),
           contentLanguage: dto.contentLanguage ?? 'en',
           cmsType: cms.cmsType,
           cmsConfig: cms.cmsConfig,
@@ -369,8 +373,8 @@ export class SiteService {
       data.brandVoice = dto.brandVoice.trim() || null;
     }
 
-    if (dto.targetMarket !== undefined) {
-      data.targetMarket = dto.targetMarket.trim() || null;
+    if (dto.targetMarkets !== undefined || dto.targetMarket !== undefined) {
+      data.targetMarket = this.resolveTargetMarketForWrite(dto.targetMarkets, dto.targetMarket);
     }
 
     if (dto.contentLanguage !== undefined) {
@@ -571,6 +575,19 @@ export class SiteService {
     }
   }
 
+  private resolveTargetMarketForWrite(
+    targetMarkets?: string[],
+    legacyTargetMarket?: string,
+  ): string | null {
+    if (targetMarkets !== undefined) {
+      return serializeTargetMarkets(targetMarkets);
+    }
+    if (legacyTargetMarket !== undefined) {
+      return serializeTargetMarkets(parseTargetMarkets(legacyTargetMarket));
+    }
+    return null;
+  }
+
   private toPublicSite(site: {
     id: string;
     domain: string;
@@ -584,11 +601,13 @@ export class SiteService {
   }) {
     const cms = sanitizeCmsForResponse(site.cmsType, site.cmsConfig);
     const parsed = parseSiteSettings(site.settings);
+    const targetMarkets = parseTargetMarkets(site.targetMarket);
     return {
       id: site.id,
       domain: site.domain,
       brandVoice: site.brandVoice,
       targetMarket: site.targetMarket,
+      targetMarkets,
       contentLanguage: site.contentLanguage,
       cmsType: cms.cmsType,
       cmsConfig: cms.cmsConfig,

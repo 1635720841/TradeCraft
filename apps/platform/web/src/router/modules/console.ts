@@ -83,7 +83,7 @@ export default {
       name: "ConsoleAccess",
       component: () => import("@/views/console/ConsoleAccessView.vue"),
       meta: {
-        title: "访问控制",
+        title: "平台权限",
         menuKey: "console:access",
         permission: "console:menu:manage",
         roles: ["super_admin"]

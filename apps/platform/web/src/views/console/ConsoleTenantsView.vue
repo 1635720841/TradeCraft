@@ -3,6 +3,13 @@
 -->
 <template>
   <div class="p-4 space-y-4">
+    <el-alert
+      type="info"
+      :closable="false"
+      show-icon
+      title="租户管理只管开户、套餐与配额；成员与权限在租户企业内的「企业管理 → 成员与权限」维护。"
+    />
+
     <el-card v-loading="loading" shadow="never">
       <template #header>
         <div class="flex flex-wrap items-center justify-between gap-2">
@@ -16,7 +23,7 @@
               @keyup.enter="search"
             />
             <el-button @click="search">搜索</el-button>
-            <el-button v-if="canCreateTenant" type="primary" @click="openCreate">新建租户</el-button>
+            <el-button v-if="canCreateTenant" type="primary" @click="openCreate">开户</el-button>
           </div>
         </div>
       </template>
@@ -35,7 +42,12 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="memberCount" label="成员" width="80" align="center" />
+        <el-table-column label="开户邮箱" min-width="180">
+          <template #default="{ row }">
+            {{ primaryAccountEmail(row) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="memberCount" label="账号数" width="80" align="center" />
         <el-table-column prop="monthlyArticleQuota" label="月配额" width="90" align="right" />
         <el-table-column label="有效至" width="110">
           <template #default="{ row }">
@@ -137,6 +149,11 @@ function search() {
 function onSizeChange() {
   page.value = 1;
   void fetchList();
+}
+
+function primaryAccountEmail(row: TenantItem) {
+  const admin = row.accounts.find((a) => a.role === "ADMIN");
+  return admin?.email ?? row.accounts[0]?.email ?? "-";
 }
 
 function openCreate() {

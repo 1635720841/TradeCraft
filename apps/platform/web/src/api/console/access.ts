@@ -15,12 +15,13 @@ import type {
 export async function listConsoleUsers(
   page = 1,
   limit = 50,
-  keyword?: string
+  keyword?: string,
+  scope?: "platform" | "tenant"
 ): Promise<ConsoleUserListResult> {
   const res = await http.request<WmApiResponse<ConsoleUserItem[]>>(
     "get",
     "/api/v1/console/users",
-    { params: { page, limit, keyword: keyword || undefined } }
+    { params: { page, limit, keyword: keyword || undefined, scope: scope || undefined } }
   );
   const pagination = res.meta?.pagination ?? {
     page,

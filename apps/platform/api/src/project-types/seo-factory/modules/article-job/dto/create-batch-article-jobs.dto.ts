@@ -52,6 +52,11 @@ export class CreateBatchArticleJobsDto {
   serpArticlesOnly?: boolean;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(8)
+  serpCountry?: string;
+
+  @IsOptional()
   @IsIn(CONTENT_LANGUAGE_VALUES, { message: '内容语言仅支持 en 或 zh-CN' })
   contentLanguage?: (typeof CONTENT_LANGUAGE_VALUES)[number];
 }

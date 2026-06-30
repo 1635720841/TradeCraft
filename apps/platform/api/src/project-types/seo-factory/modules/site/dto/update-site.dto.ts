@@ -1,5 +1,14 @@
 import { Type } from 'class-transformer';
-import { IsIn, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from 'class-validator';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsIn,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+  ValidateNested,
+} from 'class-validator';
 import { SiteWordPressConfigDto } from './site-wordpress-config.dto';
 import { SiteShopifyConfigDto } from './site-shopify-config.dto';
 import { SiteWorkflowSettingsDto } from './site-workflow-settings.dto';
@@ -21,7 +30,15 @@ export class UpdateSiteDto {
   @IsOptional()
   @IsString()
   @MaxLength(64)
+  /** @deprecated 请使用 targetMarkets */
   targetMarket?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsString({ each: true })
+  @MaxLength(32, { each: true })
+  targetMarkets?: string[];
 
   @IsOptional()
   @IsString()

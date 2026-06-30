@@ -620,6 +620,7 @@ export interface CreateArticleJobPayload {
   contentForm?: "ARTICLE" | "PRODUCT_ENHANCED" | "FAQ_PAGE";
   serpArticleLimit?: number;
   serpArticlesOnly?: boolean;
+  serpCountry?: string;
 }
 
 export interface DiscoveredSeoArticle {
@@ -636,6 +637,7 @@ export interface CreateBatchArticleJobsPayload {
   contentLanguage?: "en" | "zh-CN";
   serpArticleLimit?: number;
   serpArticlesOnly?: boolean;
+  serpCountry?: string;
 }
 
 export interface BatchArticleJobsResult {
@@ -746,6 +748,7 @@ export interface SiteItem {
   domain: string;
   brandVoice?: string | null;
   targetMarket?: string | null;
+  targetMarkets?: string[];
   contentLanguage?: string | null;
   cmsType?: string | null;
   cmsConfig?: SiteCmsConfig | null;
@@ -779,6 +782,7 @@ export interface CreateSitePayload {
   domain: string;
   brandVoice?: string;
   targetMarket?: string;
+  targetMarkets?: string[];
   contentLanguage?: "en" | "zh-CN";
   cmsType?: "wordpress" | "shopify";
   wordpress?: SiteWordPressPayload;
@@ -792,6 +796,7 @@ export interface UpdateSitePayload {
   domain?: string;
   brandVoice?: string;
   targetMarket?: string;
+  targetMarkets?: string[];
   contentLanguage?: "en" | "zh-CN";
   cmsType?: "wordpress" | "shopify" | null;
   wordpress?: SiteWordPressPayload;
