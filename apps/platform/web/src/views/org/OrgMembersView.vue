@@ -51,7 +51,7 @@
         <el-table-column prop="createdAt" label="加入时间" min-width="170">
           <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="300" fixed="right">
+        <el-table-column label="操作" width="360" fixed="right">
           <template #default="{ row }">
             <el-button
               v-if="canCreate && row.status === 'INVITED'"
@@ -100,6 +100,14 @@
               @click="toggleMemberStatus(row as OrganizationMember, 'ACTIVE')"
             >
               启用
+            </el-button>
+            <el-button
+              v-if="canUpdate && row.role !== 'SUPER_ADMIN' && row.role !== 'PLATFORM_OPERATOR'"
+              type="danger"
+              link
+              @click="onDeleteMember(row as OrganizationMember)"
+            >
+              删除
             </el-button>
           </template>
         </el-table-column>
@@ -294,6 +302,7 @@ import {
 } from "@/api/org/access";
 import {
   createOrganizationMember,
+  deleteOrganizationMember,
   inviteOrganizationMember,
   listOrganizationMembers,
   resendMemberInvite,
@@ -446,6 +455,19 @@ async function toggleMemberStatus(member: OrganizationMember, status: "ACTIVE" |
   });
   await updateOrganizationMemberStatus(member.id, status);
   message(`已${action}`, { type: "success" });
+  await loadMembers();
+}
+
+async function onDeleteMember(member: OrganizationMember) {
+  const invitedHint =
+    member.status === "INVITED" ? "待接受的邀请将一并取消。" : "该成员将从所有项目中移除。";
+  await ElMessageBox.confirm(
+    `确定删除成员 ${member.email}？删除后不可恢复，${invitedHint}`,
+    "删除成员",
+    { type: "warning", confirmButtonText: "删除", confirmButtonClass: "el-button--danger" }
+  );
+  await deleteOrganizationMember(member.id);
+  message("成员已删除", { type: "success" });
   await loadMembers();
 }
 

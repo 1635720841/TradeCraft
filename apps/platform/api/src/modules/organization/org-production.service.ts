@@ -9,7 +9,7 @@ import { PrismaService } from '../../core/database/prisma.service';
 import { BillingService } from '../billing/billing.service';
 import { ProjectAccessService } from '../project/project-access.service';
 import { canReviewInSeoProject } from '../project/project-notification.util';
-import { isPendingHumanReview } from '../../project-types/seo-factory/modules/content-review/ymyl-detect.util';
+import { isPendingHumanReview } from '@wm/shared-core';
 
 export interface OrgProductionProjectSummary {
   id: string;

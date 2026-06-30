@@ -1,5 +1,5 @@
 <!--
-  平台管理概览：租户规模、订阅分布与配额告警。
+  平台管理概览：待办驱动（续费审批 + 配额告警）。
 -->
 <template>
   <div class="p-4 space-y-4">
@@ -7,121 +7,71 @@
       <template #header>
         <div class="flex items-center justify-between">
           <span class="font-medium">运营概览</span>
-          <el-button link type="primary" @click="loadOverview">刷新</el-button>
+          <el-button link type="primary" @click="loadAll">刷新</el-button>
         </div>
       </template>
 
       <template v-if="overview">
-        <div class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <el-statistic title="客户租户总数" :value="overview.totalTenants" />
-          <el-statistic
-            title="活跃订阅"
-            :value="overview.byStatus.ACTIVE ?? 0"
+        <div>
+          <div class="mb-2 font-medium">今日待办</div>
+          <el-empty
+            v-if="!loading && todoItems.length === 0"
+            description="暂无待处理事项"
+            :image-size="72"
           />
-          <el-statistic
-            title="试用中"
-            :value="overview.byStatus.TRIAL ?? 0"
-          />
-          <el-statistic
-            title="配额告警（≥80%）"
-            :value="overview.highQuotaAlerts.length"
-          />
-        </div>
-
-        <el-card v-if="billingRequests.length" shadow="never" class="mb-4 border border-blue-100">
-          <template #header>
-            <span class="font-medium text-blue-700">待审批续费/升级申请</span>
-          </template>
-          <el-table :data="billingRequests" stripe>
+          <el-table v-else :data="todoItems" stripe>
+            <el-table-column label="类型" width="110">
+              <template #default="{ row }">
+                <el-tag size="small" :type="row.tagType">{{ row.typeLabel }}</el-tag>
+              </template>
+            </el-table-column>
             <el-table-column prop="organizationName" label="企业" min-width="160" />
-            <el-table-column prop="type" label="类型" width="100" />
-            <el-table-column prop="message" label="说明" min-width="160">
-              <template #default="{ row }">{{ row.message || "-" }}</template>
+            <el-table-column label="说明" min-width="180">
+              <template #default="{ row }">{{ row.summary }}</template>
             </el-table-column>
-            <el-table-column prop="createdAt" label="申请时间" min-width="170">
-              <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
-            </el-table-column>
-            <el-table-column label="操作" width="160" fixed="right">
+            <el-table-column label="时间" width="170">
               <template #default="{ row }">
-                <el-button
-                  link
-                  type="primary"
-                  :loading="actingRequestId === row.id"
-                  @click="approveRequest(row.id)"
-                >
-                  通过
-                </el-button>
-                <el-button
-                  link
-                  type="danger"
-                  :loading="actingRequestId === row.id"
-                  @click="rejectRequest(row.id)"
-                >
-                  拒绝
-                </el-button>
+                {{ row.time ? formatTime(row.time) : "—" }}
               </template>
             </el-table-column>
-          </el-table>
-        </el-card>
-
-        <el-card v-if="overview.highQuotaAlerts.length" shadow="never" class="mb-4 border border-orange-100">
-          <template #header>
-            <span class="font-medium text-orange-700">配额告警租户</span>
-          </template>
-          <el-table :data="overview.highQuotaAlerts" stripe>
-            <el-table-column prop="name" label="企业" min-width="160" />
-            <el-table-column prop="usagePercent" label="使用率" width="100">
-              <template #default="{ row }">{{ row.usagePercent }}%</template>
-            </el-table-column>
-            <el-table-column prop="remaining" label="剩余" width="90" align="right" />
-            <el-table-column label="操作" width="100" fixed="right">
+            <el-table-column v-if="canManageTenant" label="操作" width="180" fixed="right">
               <template #default="{ row }">
+                <template v-if="row.kind === 'billing'">
+                  <el-button
+                    link
+                    type="primary"
+                    :loading="actingRequestId === row.requestId"
+                    @click="approveRequest(row.requestId!)"
+                  >
+                    通过
+                  </el-button>
+                  <el-button
+                    link
+                    type="danger"
+                    :loading="actingRequestId === row.requestId"
+                    @click="rejectRequest(row.requestId!)"
+                  >
+                    拒绝
+                  </el-button>
+                </template>
                 <router-link
-                  :to="`/console/tenants/${row.id}`"
+                  v-else
+                  :to="`/console/tenants/${row.organizationId}`"
                   class="text-primary text-sm"
                 >
-                  查看
+                  去处理
                 </router-link>
               </template>
             </el-table-column>
           </el-table>
-        </el-card>
-
-        <el-card shadow="never" class="border border-gray-100">
-          <template #header>
-            <span class="font-medium">最近租户</span>
-          </template>
-          <el-table :data="overview.recentTenants" stripe>
-            <el-table-column prop="name" label="企业" min-width="160" />
-            <el-table-column prop="planName" label="套餐" width="100">
-              <template #default="{ row }">
-                {{ dictLabel(planNameDict, row.planName) }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="subscriptionStatus" label="订阅" width="100">
-              <template #default="{ row }">
-                {{ dictLabel(subscriptionStatusDict, row.subscriptionStatus) }}
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="100" fixed="right">
-              <template #default="{ row }">
-                <router-link
-                  :to="`/console/tenants/${row.id}`"
-                  class="text-primary text-sm"
-                >
-                  详情
-                </router-link>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
+        </div>
       </template>
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import {
   approveConsoleBillingRequest,
   getConsoleOverview,
@@ -130,26 +80,69 @@ import {
   type BillingChangeRequestItem,
   type ConsoleOverview
 } from "@/api/console/index";
-import { planNameDict, subscriptionStatusDict } from "@/constants/dicts/platform";
-import { dictLabel } from "@/utils/dict";
+import { billingChangeRequestTypeDict } from "@/constants/dicts/platform";
+import { hasPerms } from "@/utils/auth";
+import { dictLabel, dictTagType } from "@/utils/dict";
 import { message } from "@/utils/message";
 
 defineOptions({ name: "ConsoleOverviewView" });
+
+interface TodoItem {
+  kind: "billing" | "quota";
+  typeLabel: string;
+  tagType: "primary" | "success" | "warning" | "danger" | "info";
+  organizationId: string;
+  organizationName: string;
+  summary: string;
+  time: string | null;
+  requestId?: string;
+}
 
 const loading = ref(false);
 const overview = ref<ConsoleOverview | null>(null);
 const billingRequests = ref<BillingChangeRequestItem[]>([]);
 const actingRequestId = ref<string | null>(null);
+const canManageTenant = computed(() => hasPerms("console:tenant:update"));
+
+const todoItems = computed<TodoItem[]>(() => {
+  const billingTodos: TodoItem[] = billingRequests.value.map((row) => ({
+    kind: "billing" as const,
+    typeLabel: dictLabel(billingChangeRequestTypeDict, row.type) || row.type,
+    tagType: (dictTagType(billingChangeRequestTypeDict, row.type) ?? "primary") as TodoItem["tagType"],
+    organizationId: row.organizationId,
+    organizationName: row.organizationName,
+    summary: row.message || "—",
+    time: row.createdAt,
+    requestId: row.id
+  }));
+
+  const quotaTodos: TodoItem[] = (overview.value?.highQuotaAlerts ?? []).map((row) => ({
+    kind: "quota" as const,
+    typeLabel: "配额告警",
+    tagType: "warning" as const,
+    organizationId: row.id,
+    organizationName: row.name,
+    summary: `使用率 ${row.usagePercent}%，剩余 ${row.remaining}/${row.periodQuota} 篇`,
+    time: null
+  }));
+
+  return [...billingTodos, ...quotaTodos];
+});
 
 function formatTime(iso: string) {
   return new Date(iso).toLocaleString("zh-CN");
 }
 
 async function loadBillingRequests() {
+  if (!canManageTenant.value) {
+    billingRequests.value = [];
+    return;
+  }
   try {
     billingRequests.value = await listConsoleBillingRequests();
-  } catch {
+  } catch (error) {
     billingRequests.value = [];
+    message((error as Error).message ?? "加载待办失败", { type: "error" });
   }
 }
 
@@ -158,7 +151,7 @@ async function approveRequest(requestId: string) {
   try {
     await approveConsoleBillingRequest(requestId);
     message("已通过申请", { type: "success" });
-    await Promise.all([loadOverview(), loadBillingRequests()]);
+    await loadAll();
   } finally {
     actingRequestId.value = null;
   }
@@ -169,7 +162,7 @@ async function rejectRequest(requestId: string) {
   try {
     await rejectConsoleBillingRequest(requestId);
     message("已拒绝申请", { type: "success" });
-    await loadBillingRequests();
+    await loadAll();
   } finally {
     actingRequestId.value = null;
   }
@@ -179,12 +172,19 @@ async function loadOverview() {
   loading.value = true;
   try {
     overview.value = await getConsoleOverview();
+  } catch (error) {
+    overview.value = null;
+    message((error as Error).message ?? "加载概览失败", { type: "error" });
   } finally {
     loading.value = false;
   }
 }
 
+async function loadAll() {
+  await Promise.all([loadOverview(), loadBillingRequests()]);
+}
+
 onMounted(() => {
-  void Promise.all([loadOverview(), loadBillingRequests()]);
+  void loadAll();
 });
 </script>

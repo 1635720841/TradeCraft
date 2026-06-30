@@ -41,6 +41,7 @@ export const PLATFORM_GRANTABLE_PERMISSION_IDS = [
   "console:tenant:create",
   "console:tenant:update",
   "console:menu:manage",
+  "console:health:read",
   "console:prompt:read",
   "console:prompt:manage",
   "console:audit:read"
@@ -61,6 +62,11 @@ export const CONSOLE_PERMISSION_SECTIONS: Array<{
     key: "menu",
     label: "访问控制",
     match: id => id.startsWith("console:menu:")
+  },
+  {
+    key: "health",
+    label: "系统健康",
+    match: id => id.startsWith("console:health:")
   },
   {
     key: "prompt",

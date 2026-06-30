@@ -2,7 +2,7 @@ import { $t } from "@/plugins/i18n";
 import { ensureProjectRouteAccess } from "../guards/project-access";
 import { storageLocal } from "@pureadmin/utils";
 import { userKey } from "@/utils/auth";
-import { resolveConsoleEntryPath, resolveEntryPath } from "../utils";
+import { resolveConsoleEntryPath, resolveOrgEntryPath } from "../utils";
 
 const Layout = () => import("@/layout/index.vue");
 
@@ -97,7 +97,7 @@ export default [
       if (roles.includes("platform_operator") || roles.includes("super_admin")) {
         return resolveConsoleEntryPath(userInfo?.visibleMenuKeys);
       }
-      return resolveEntryPath(userInfo);
+      return resolveOrgEntryPath(userInfo?.visibleMenuKeys);
     },
     meta: { title: "项目列表", showLink: false }
   },

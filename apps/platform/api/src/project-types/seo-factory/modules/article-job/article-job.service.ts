@@ -10,7 +10,7 @@
 
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable } from '@nestjs/common';
-import { JobStatus, KeywordStatus, Prisma } from '@prisma/client';
+import { JobStatus, Prisma } from '@prisma/client';
 import { Queue } from 'bullmq';
 import { v4 as uuidv4 } from 'uuid';
 import { isSeoArticleUrl, keywordFromArticleUrl, normalizeContentLanguage, evaluateReleaseReadiness } from '@wm/shared-core';
@@ -32,11 +32,11 @@ import {
 import { MAX_BATCH_ACTION_LIMIT } from '../../constants/batch-actions';
 import { CALIBRATION_LAB_JOB_ID_PREFIX } from '../../utils/score-calibration-manual-samples.util';
 import { isBriefApprovalPending } from '../../constants/brief-approval';
-import { siteHasWritingProfile, parseSiteSettings } from '../../constants/site-settings';
+import { parseSiteSettings } from '../../constants/site-settings';
 import { resolveSiteSeoScoreConfig } from '../../constants/site-seo-score-settings';
 import { normalizeKeywordIntent, type KeywordIntentValue } from '../../constants/search-intent';
 import { normalizeArticleContentForm } from '../../constants/content-form';
-import { canPublishArticle } from '../content-review/ymyl-detect.util';
+import { canPublishArticle, isPendingHumanReview } from '../content-review/ymyl-detect.util';
 import { parseShopifyCmsConfig } from '../site/site-cms.util';
 import type { CreateBatchArticleJobsDto } from './dto/create-batch-article-jobs.dto';
 import type { CreateArticleJobDto } from './dto/create-article-job.dto';
@@ -50,21 +50,15 @@ import {
   type SemrushCheckPending,
 } from '../../constants/semrush-check';
 import { resolveResumeStep, withWorkflowMeta } from '../../constants/workflow-resume';
-import { isPendingHumanReview } from '../content-review/ymyl-detect.util';
 import { SeoCheckerService } from '../seo-checker/seo-checker.service';
 import { BillingService } from '../../../../modules/billing/billing.service';
 import { GscService } from '../gsc/gsc.service';
 import { ScraperService } from '../scraper/scraper.service';
-import type { DraftStaleness } from '../../constants/draft-edit';
-import { hasActiveStaleness } from './draft-edit.util';
+import { isArticleDraftStale, isCmsPublishFailed } from './article-job-stage.util';
 import { findKeywordConflicts } from '../keyword-pool/keyword-cannibalization.util';
 import { removeBullJobsByArticleJobId } from '../../utils/article-job-queue-cleanup.util';
 import type { PlaywrightJobPayload } from '../../services/semrush-queue.service';
 import { buildExportStoragePrefix } from '../export/export-html.util';
-import { ProjectAccessService } from '../../../../modules/project/project-access.service';
-import {
-  canReviewInSeoProject,
-} from '../../../../modules/project/project-notification.util';
 
 const JOB_LIST_SITE_SELECT = { domain: true, cmsType: true, cmsConfig: true } as const;
 
@@ -80,7 +74,6 @@ export class ArticleJobService {
     private readonly gscService: GscService,
     private readonly scraperService: ScraperService,
     private readonly storage: StorageService,
-    private readonly projectAccessService: ProjectAccessService,
     @InjectQueue(ARTICLE_JOB_QUEUE) private readonly articleJobQueue: Queue<ArticleJobQueuePayload>,
     @InjectQueue(PLAYWRIGHT_QUEUE) private readonly playwrightQueue: Queue<PlaywrightJobPayload>,
     private readonly orgQueueLimiter: OrgQueueLimiterService,
@@ -557,7 +550,7 @@ export class ArticleJobService {
 
     const stale = rows.filter(
       (row) =>
-        this.isDraftStale(row.draftData) &&
+        isArticleDraftStale(row.draftData) &&
         this.matchesKeyword(row.targetKeyword, keyword),
     );
     const total = stale.length;
@@ -676,11 +669,6 @@ export class ArticleJobService {
     return { items, total, page: safePage, limit: safeLimit };
   }
 
-  private isDraftStale(draftData: unknown): boolean {
-    const staleness = (draftData as { staleness?: DraftStaleness | null } | null)?.staleness;
-    return hasActiveStaleness(staleness);
-  }
-
   private async findManyCmsPublishPending(
     organizationId: string,
     projectId: string,
@@ -776,7 +764,7 @@ export class ArticleJobService {
 
     const failed = rows.filter(
       (row) =>
-        this.isCmsPublishFailed(row.seoCheckData) &&
+        isCmsPublishFailed(row.seoCheckData) &&
         this.matchesKeyword(row.targetKeyword, keyword),
     );
     const total = failed.length;
@@ -806,12 +794,6 @@ export class ArticleJobService {
     }).releaseReady;
   }
 
-  private isCmsPublishFailed(seoCheckData: unknown): boolean {
-    const cms = (seoCheckData as { cmsPublish?: { lastError?: string; postUrl?: string | null } } | null)
-      ?.cmsPublish;
-    return Boolean(cms?.lastError && !cms?.postUrl);
-  }
-
   private isCmsPublishPending(
     seoCheckData: unknown,
     siteCmsType: string | null,
@@ -822,7 +804,7 @@ export class ArticleJobService {
     if (!canPublishArticle(seoCheckData)) {
       return false;
     }
-    if (this.isCmsPublishFailed(seoCheckData)) {
+    if (isCmsPublishFailed(seoCheckData)) {
       return false;
     }
     const cms = (seoCheckData as { cmsPublish?: { postUrl?: string | null } } | null)?.cmsPublish;
@@ -1737,200 +1719,5 @@ export class ArticleJobService {
       return error.message;
     }
     return fallback;
-  }
-
-  async getProjectStats(
-    organizationId: string,
-    projectId: string,
-    siteId?: string,
-    actorUserId?: string,
-  ) {
-    const jobWhere = { organizationId, projectId, ...(siteId ? { siteId } : {}) };
-    const siteWhere = { organizationId, projectId, ...(siteId ? { id: siteId } : {}) };
-    const keywordWhere = {
-      organizationId,
-      projectId,
-      ...(siteId ? { OR: [{ siteId }, { siteId: null }] } : {}),
-    };
-    const activeStatusFilter = { notIn: [JobStatus.COMPLETED, JobStatus.FAILED] };
-
-    const [totalJobs, completedJobs, failedJobs, activeJobs, queuedJobs, optimizingJobs, ymylCandidates, pendingBriefJobs, publishCandidates, staleDraftCandidates, siteRows, keywordTotalCount, keywordQueueableCount, keywordUnclusteredCount] =
-      await Promise.all([
-        this.prisma.articleJob.count({ where: jobWhere }),
-        this.prisma.articleJob.count({
-          where: { ...jobWhere, status: 'COMPLETED' },
-        }),
-        this.prisma.articleJob.count({
-          where: { ...jobWhere, status: 'FAILED' },
-        }),
-        this.prisma.articleJob.count({
-          where: {
-            ...jobWhere,
-            status: activeStatusFilter,
-          },
-        }),
-        this.prisma.articleJob.count({
-          where: { ...jobWhere, status: 'QUEUED' },
-        }),
-        this.prisma.articleJob.count({
-          where: { ...jobWhere, status: 'OPTIMIZING' },
-        }),
-        this.prisma.articleJob.findMany({
-          where: {
-            ...jobWhere,
-            status: 'COMPLETED',
-            seoCheckData: {
-              path: ['ymylReview', 'requires_human_review'],
-              equals: true,
-            },
-          },
-          select: { seoCheckData: true },
-        }),
-        this.prisma.articleJob.count({
-          where: {
-            ...jobWhere,
-            status: 'DRAFTING',
-            briefData: {
-              path: ['approvalStatus'],
-              equals: 'pending',
-            },
-          },
-        }),
-        this.prisma.articleJob.findMany({
-          where: {
-            ...jobWhere,
-            status: 'COMPLETED',
-            outputUrl: { not: null },
-          },
-          select: { seoCheckData: true },
-        }),
-        this.prisma.articleJob.findMany({
-          where: {
-            ...jobWhere,
-            status: { notIn: ['FAILED', 'QUEUED'] },
-          },
-          select: { draftData: true },
-          take: 500,
-        }),
-        this.prisma.site.findMany({
-          where: siteWhere,
-          select: {
-            settings: true,
-            gscConnection: { select: { refreshToken: true, lastSyncAt: true } },
-          },
-        }),
-        this.prisma.keywordEntry.count({ where: keywordWhere }),
-        this.prisma.keywordEntry.count({
-          where: {
-            ...keywordWhere,
-            status: { in: [KeywordStatus.PENDING, KeywordStatus.APPROVED] },
-          },
-        }),
-        this.prisma.keywordEntry.count({
-          where: { ...keywordWhere, clusterId: null },
-        }),
-      ]);
-
-    const pendingReviewCount = ymylCandidates.filter((row) =>
-      isPendingHumanReview(row.seoCheckData),
-    ).length;
-
-    const pendingPublishCount = publishCandidates.filter((row) => {
-      const cmsPublish = (row.seoCheckData as { cmsPublish?: { postUrl?: string | null } } | null)
-        ?.cmsPublish;
-      return !cmsPublish?.postUrl;
-    }).length;
-
-    const cmsPublishFailedCount = publishCandidates.filter((row) =>
-      this.isCmsPublishFailed(row.seoCheckData),
-    ).length;
-
-    const staleDraftCount = staleDraftCandidates.filter((row) =>
-      this.isDraftStale(row.draftData),
-    ).length;
-
-    const siteCount = siteRows.length;
-    const sitesMissingProfileCount = siteRows.filter(
-      (row) => !siteHasWritingProfile(row.settings),
-    ).length;
-    const gscPendingSyncCount = siteRows.filter(
-      (row) => row.gscConnection?.refreshToken && !row.gscConnection.lastSyncAt,
-    ).length;
-    const gscStaleSyncMs = 7 * 24 * 60 * 60 * 1000;
-    const gscStaleSyncCount = siteRows.filter((row) => {
-      const lastSyncAt = row.gscConnection?.lastSyncAt;
-      if (!row.gscConnection?.refreshToken || !lastSyncAt) return false;
-      return Date.now() - lastSyncAt.getTime() > gscStaleSyncMs;
-    }).length;
-
-    const gscUnderperformingJobs =
-      gscPendingSyncCount > 0
-        ? []
-        : await this.gscService.getUnderperformingJobs(organizationId, projectId, siteId);
-
-    let myAssignedCount = 0;
-    let canReviewInProject = false;
-    if (actorUserId) {
-      myAssignedCount = await this.prisma.articleJobAssignee.count({
-        where: {
-          userId: actorUserId,
-          job: {
-            organizationId,
-            projectId,
-            ...(siteId ? { siteId } : {}),
-            status: { notIn: [JobStatus.COMPLETED, JobStatus.FAILED] },
-          },
-        },
-      });
-
-      const member = await this.prisma.projectMember.findUnique({
-        where: { projectId_userId: { projectId, userId: actorUserId } },
-        select: { id: true, role: true },
-      });
-      if (member) {
-        const project = await this.prisma.project.findFirst({
-          where: { id: projectId, organizationId },
-          select: { projectType: true },
-        });
-        if (project) {
-          const perms = await this.projectAccessService.resolveMemberPermissions(
-            member.id,
-            member.role,
-            project.projectType,
-          );
-          canReviewInProject = canReviewInSeoProject(perms);
-        }
-      }
-    }
-
-    const myReviewPendingCount = canReviewInProject
-      ? pendingBriefJobs + pendingReviewCount
-      : 0;
-
-    return {
-      totalJobs,
-      completedJobs,
-      failedJobs,
-      activeJobs,
-      queuedJobs,
-      optimizingJobs,
-      pendingBriefCount: pendingBriefJobs,
-      pendingPublishCount,
-      cmsPublishFailedCount,
-      pendingReviewCount,
-      staleDraftCount,
-      siteCount,
-      sitesMissingProfileCount,
-      gscPendingSyncCount,
-      gscStaleSyncCount,
-      gscUnderperformingCount: gscUnderperformingJobs.length,
-      gscUnderperformingJobs,
-      keywordTotalCount,
-      keywordQueueableCount,
-      keywordUnclusteredCount,
-      myAssignedCount,
-      myReviewPendingCount,
-      canReviewInProject,
-    };
   }
 }

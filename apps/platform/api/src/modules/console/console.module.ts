@@ -15,7 +15,9 @@ import { OrganizationModule } from '../organization/organization.module';
 import { ConsoleController } from './console.controller';
 import { ConsoleHealthController } from './console-health.controller';
 import { ConsoleHealthService } from './console-health.service';
+import { ConsoleAccessService } from './console-access.service';
 import { ConsoleService } from './console.service';
+import { ConsoleTenantService } from './console-tenant.service';
 
 @Module({
   imports: [
@@ -27,6 +29,11 @@ import { ConsoleService } from './console.service';
     BullModule.registerQueue({ name: GSC_SYNC_QUEUE }),
   ],
   controllers: [ConsoleController, ConsoleHealthController],
-  providers: [ConsoleService, ConsoleHealthService],
+  providers: [
+    ConsoleService,
+    ConsoleTenantService,
+    ConsoleAccessService,
+    ConsoleHealthService,
+  ],
 })
 export class ConsoleModule {}

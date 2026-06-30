@@ -46,6 +46,28 @@ export default {
       }
     },
     {
+      path: "/console/audit",
+      name: "ConsoleAudit",
+      component: () => import("@/views/console/ConsoleAuditView.vue"),
+      meta: {
+        title: "操作审计",
+        menuKey: "console:audit",
+        permission: "console:audit:read",
+        roles: ["super_admin", "platform_operator"]
+      }
+    },
+    {
+      path: "/console/health",
+      name: "ConsoleHealth",
+      component: () => import("@/views/console/ConsoleHealthView.vue"),
+      meta: {
+        title: "系统健康",
+        menuKey: "console:health",
+        permission: "console:health:read",
+        roles: ["super_admin", "platform_operator"]
+      }
+    },
+    {
       path: "/console/prompts",
       name: "ConsolePrompts",
       component: () => import("@/views/console/PromptManageView.vue"),
@@ -64,36 +86,23 @@ export default {
         title: "访问控制",
         menuKey: "console:access",
         permission: "console:menu:manage",
-        roles: ["super_admin", "platform_operator"]
+        roles: ["super_admin"]
       }
     },
     {
       path: "/console/menus",
       redirect: "/console/access",
       meta: {
+        title: "菜单管理",
         showLink: false
       }
     },
     {
-      path: "/console/health",
-      name: "ConsoleHealth",
-      component: () => import("@/views/console/ConsoleHealthView.vue"),
+      path: "/console/system",
+      redirect: "/console/health",
       meta: {
-        title: "系统健康",
-        menuKey: "console:health",
-        permission: "console:tenant:read",
-        roles: ["super_admin", "platform_operator"]
-      }
-    },
-    {
-      path: "/console/audit",
-      name: "ConsoleAudit",
-      component: () => import("@/views/console/ConsoleAuditView.vue"),
-      meta: {
-        title: "操作审计",
-        menuKey: "console:audit",
-        permission: "console:audit:read",
-        roles: ["super_admin", "platform_operator"]
+        title: "系统管理",
+        showLink: false
       }
     }
   ]

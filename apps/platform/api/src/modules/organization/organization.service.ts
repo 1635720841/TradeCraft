@@ -408,6 +408,70 @@ export class OrganizationService {
     return updated;
   }
 
+  async removeMember(
+    organizationId: string,
+    actorUserId: string,
+    traceId: string,
+    userId: string,
+  ) {
+    if (actorUserId === userId) {
+      throw new BusinessException(ErrorCodes.FORBIDDEN, '不能删除自己');
+    }
+
+    const member = await this.prisma.user.findFirst({
+      where: { id: userId, organizationId },
+      select: { id: true, email: true, role: true, status: true },
+    });
+
+    if (!member) {
+      throw new BusinessException(ErrorCodes.MEMBER_NOT_FOUND, '成员不存在');
+    }
+
+    if (member.role === PrismaRole.SUPER_ADMIN || member.role === PrismaRole.PLATFORM_OPERATOR) {
+      throw new BusinessException(ErrorCodes.FORBIDDEN, '平台账号不可通过企业管理删除');
+    }
+
+    if (member.role === PrismaRole.ADMIN && member.status === 'ACTIVE') {
+      const activeAdminCount = await this.prisma.user.count({
+        where: { organizationId, role: PrismaRole.ADMIN, status: 'ACTIVE' },
+      });
+      if (activeAdminCount <= 1) {
+        throw new BusinessException(ErrorCodes.LAST_ADMIN_REQUIRED, '企业至少需要保留一名启用的企业管理员');
+      }
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.memberInvite.deleteMany({
+        where: { organizationId, email: member.email },
+      }),
+      this.prisma.userNotification.deleteMany({
+        where: { organizationId, userId },
+      }),
+      this.prisma.userNotificationPreference.deleteMany({
+        where: { organizationId, userId },
+      }),
+      this.prisma.projectAccessRequest.deleteMany({
+        where: { organizationId, userId },
+      }),
+      this.prisma.articleJobAssignee.deleteMany({
+        where: { organizationId, userId },
+      }),
+      this.prisma.user.delete({ where: { id: userId } }),
+    ]);
+
+    await this.auditService.log({
+      organizationId,
+      actorUserId,
+      action: 'org.member.delete',
+      targetType: 'User',
+      targetId: userId,
+      metadata: { email: member.email },
+      traceId,
+    });
+
+    return { id: userId, email: member.email };
+  }
+
   getMemberPermissions(organizationId: string, userId: string, viewerRole?: Role) {
     return this.assertTenantVisibleMember(organizationId, userId, viewerRole).then(() =>
       this.accessService.getUserPermissions(userId, organizationId),

@@ -9,6 +9,7 @@ import { ReqCtx } from '../../core/decorators/request-context.decorator';
 import { Permissions } from '../../core/decorators/permissions.decorator';
 import { BillingRequestService } from './billing-request.service';
 import { BillingService } from './billing.service';
+import { CreateBillingRequestDto } from './dto/create-billing-request.dto';
 import { EntitlementsService } from './entitlements.service';
 import { SubscriptionPlanService } from './subscription-plan.service';
 
@@ -72,17 +73,8 @@ export class OrgBillingController {
 
   @Post('requests')
   @Permissions('org:billing:read')
-  async createRequest(
-    @ReqCtx() ctx: RequestContext,
-    @Body()
-    body: {
-      type: 'RENEW' | 'UPGRADE' | 'TOPUP';
-      targetPlanId?: string;
-      topUpAmount?: number;
-      message?: string;
-    },
-  ) {
-    const data = await this.billingRequestService.create(ctx, body);
+  async createRequest(@ReqCtx() ctx: RequestContext, @Body() dto: CreateBillingRequestDto) {
+    const data = await this.billingRequestService.create(ctx, dto);
     return { data, meta: { traceId: ctx.traceId } };
   }
 

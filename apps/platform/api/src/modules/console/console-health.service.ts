@@ -10,6 +10,7 @@ import {
   GSC_SYNC_QUEUE,
   PLAYWRIGHT_QUEUE,
 } from '../../core/queue/queue.constants';
+import { getQueueJobEnrichment } from '../../core/console/queue-job-enrichment.port';
 import { PrismaService } from '../../core/database/prisma.service';
 
 export interface ConsoleQueueJobItem {
@@ -19,16 +20,19 @@ export interface ConsoleQueueJobItem {
   state: string;
   position: number | null;
   enqueuedAt: string | null;
-  jobId: string;
+  jobId?: string;
+  jobName?: string;
   traceId: string;
   organizationId: string;
   organizationName: string | null;
-  projectId: string;
+  projectId?: string;
   targetKeyword: string | null;
   articleStatus: string | null;
   workflowPhase: string | null;
   resumeFrom: string | null;
 }
+
+type QueueJobState = 'waiting' | 'active' | 'delayed' | 'failed' | 'all';
 
 const QUEUE_LABELS: Record<string, string> = {
   [ARTICLE_JOB_QUEUE]: '文章生成',
@@ -62,10 +66,10 @@ export class ConsoleHealthService {
   }
 
   async getQueueJobs(options: {
-    state?: 'waiting' | 'active' | 'delayed' | 'all';
+    state?: QueueJobState;
     queue?: string;
     limit?: number;
-  } = {}): Promise<{ items: ConsoleQueueJobItem[]; total: number }> {
+  } = {}): Promise<{ items: ConsoleQueueJobItem[]; total: number; truncated: boolean }> {
     const safeLimit = Math.min(Math.max(options.limit ?? 100, 1), 200);
     const states =
       !options.state || options.state === 'all'
@@ -75,6 +79,7 @@ export class ConsoleHealthService {
     const queueDefs = [
       { name: ARTICLE_JOB_QUEUE, queue: this.articleQueue },
       { name: PLAYWRIGHT_QUEUE, queue: this.playwrightQueue },
+      { name: GSC_SYNC_QUEUE, queue: this.gscQueue },
     ].filter((item) => !options.queue || item.name === options.queue);
 
     const rawItems: Array<{
@@ -86,13 +91,7 @@ export class ConsoleHealthService {
 
     for (const { name, queue } of queueDefs) {
       for (const state of states) {
-        const jobs =
-          state === 'waiting'
-            ? await queue.getWaiting(0, safeLimit - 1)
-            : state === 'active'
-              ? await queue.getActive(0, safeLimit - 1)
-              : await queue.getDelayed(0, safeLimit - 1);
-
+        const jobs = await this.fetchJobsByState(queue, state, safeLimit - 1);
         jobs.forEach((bullJob, index) => {
           rawItems.push({
             bullJob,
@@ -104,7 +103,7 @@ export class ConsoleHealthService {
       }
     }
 
-    const jobIds = [
+    const articleJobIds = [
       ...new Set(
         rawItems
           .map((item) => this.resolveArticleJobId(item.bullJob, item.queueName))
@@ -112,22 +111,12 @@ export class ConsoleHealthService {
       ),
     ];
 
-    const articleRows =
-      jobIds.length > 0
-        ? await this.prisma.articleJob.findMany({
-            where: { id: { in: jobIds } },
-            select: {
-              id: true,
-              targetKeyword: true,
-              status: true,
-              organizationId: true,
-              projectId: true,
-              seoCheckData: true,
-            },
-          })
-        : [];
+    const enrichment = getQueueJobEnrichment();
+    const articleMap = enrichment
+      ? await enrichment.enrichArticleJobs(articleJobIds)
+      : new Map();
 
-    const orgIds = [...new Set(articleRows.map((row) => row.organizationId))];
+    const orgIds = [...new Set([...articleMap.values()].map((row) => row.organizationId))];
     const orgRows =
       orgIds.length > 0
         ? await this.prisma.organization.findMany({
@@ -137,10 +126,14 @@ export class ConsoleHealthService {
         : [];
     const orgMap = new Map(orgRows.map((row) => [row.id, row.name]));
 
-    const articleMap = new Map(articleRows.map((row) => [row.id, row]));
-
     const items = rawItems.flatMap((item) => {
-      const articleJobId = this.resolveArticleJobId(item.bullJob, item.queueName);
+      const queueName = item.queueName;
+      const articleJobId = this.resolveArticleJobId(item.bullJob, queueName);
+
+      if (queueName === GSC_SYNC_QUEUE) {
+        return [this.buildGscQueueJobItem(item)];
+      }
+
       if (!articleJobId) return [];
 
       const payload = item.bullJob.data as {
@@ -151,28 +144,26 @@ export class ConsoleHealthService {
         resumeFrom?: string;
       };
       const article = articleMap.get(articleJobId);
-      const seoCheckData = (article?.seoCheckData ?? {}) as {
-        workflowProgress?: { phase?: string };
-      };
       const organizationId = article?.organizationId ?? payload.organizationId ?? '';
 
       const row: ConsoleQueueJobItem = {
         bullJobId: String(item.bullJob.id),
-        queue: item.queueName,
-        queueLabel: QUEUE_LABELS[item.queueName] ?? item.queueName,
+        queue: queueName,
+        queueLabel: QUEUE_LABELS[queueName] ?? queueName,
         state: item.state,
         position: item.position,
         enqueuedAt: item.bullJob.timestamp
           ? new Date(item.bullJob.timestamp).toISOString()
           : null,
         jobId: articleJobId,
+        jobName: item.bullJob.name,
         traceId: payload.traceId ?? '',
         organizationId,
         organizationName: orgMap.get(organizationId) ?? null,
         projectId: article?.projectId ?? payload.projectId ?? '',
         targetKeyword: article?.targetKeyword ?? null,
         articleStatus: article?.status ?? null,
-        workflowPhase: seoCheckData.workflowProgress?.phase ?? null,
+        workflowPhase: article?.workflowPhase ?? null,
         resumeFrom: payload.resumeFrom ?? null,
       };
       return [row];
@@ -180,16 +171,54 @@ export class ConsoleHealthService {
 
     items.sort((a, b) => {
       const stateOrder = (s: string) =>
-        s === 'active' ? 0 : s === 'waiting' ? 1 : 2;
+        s === 'active' ? 0 : s === 'waiting' ? 1 : s === 'failed' ? 2 : 3;
       const byState = stateOrder(a.state) - stateOrder(b.state);
       if (byState !== 0) return byState;
       if (a.position != null && b.position != null) return a.position - b.position;
       return (a.enqueuedAt ?? '').localeCompare(b.enqueuedAt ?? '');
     });
 
+    const total = items.length;
     const limited = items.slice(0, safeLimit);
 
-    return { items: limited, total: limited.length };
+    return { items: limited, total, truncated: total > safeLimit };
+  }
+
+  private async fetchJobsByState(
+    queue: Queue,
+    state: 'waiting' | 'active' | 'delayed' | 'failed',
+    end: number,
+  ): Promise<Job[]> {
+    if (state === 'waiting') return queue.getWaiting(0, end);
+    if (state === 'active') return queue.getActive(0, end);
+    if (state === 'delayed') return queue.getDelayed(0, end);
+    return queue.getFailed(0, end);
+  }
+
+  private buildGscQueueJobItem(item: {
+    bullJob: Job;
+    queueName: string;
+    state: string;
+    position: number | null;
+  }): ConsoleQueueJobItem {
+    return {
+      bullJobId: String(item.bullJob.id),
+      queue: item.queueName,
+      queueLabel: QUEUE_LABELS[item.queueName] ?? item.queueName,
+      state: item.state,
+      position: item.position,
+      enqueuedAt: item.bullJob.timestamp
+        ? new Date(item.bullJob.timestamp).toISOString()
+        : null,
+      jobName: item.bullJob.name ?? 'sync-stale',
+      traceId: '',
+      organizationId: '',
+      organizationName: null,
+      targetKeyword: 'GSC 定时同步',
+      articleStatus: null,
+      workflowPhase: null,
+      resumeFrom: null,
+    };
   }
 
   private resolveArticleJobId(bullJob: Job, queueName: string): string | null {

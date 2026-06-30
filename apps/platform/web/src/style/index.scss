@@ -39,3 +39,28 @@
 .html-weakness {
   filter: invert(80%);
 }
+
+/* MERWISE 语义 utility（Console / 业务页复用） */
+.mw-text-muted {
+  color: var(--mw-text-muted);
+}
+
+.mw-text-body {
+  color: var(--mw-text-body);
+}
+
+.mw-text-primary {
+  color: var(--mw-blue);
+}
+
+.mw-text-warning {
+  color: var(--mw-warning);
+}
+
+.mw-border-card {
+  border-color: var(--mw-border-card);
+}
+
+.mw-bg-warning-soft {
+  background-color: var(--mw-warning-soft);
+}

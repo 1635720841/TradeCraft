@@ -99,7 +99,8 @@ async function ensureCatalogs() {
     ['console:tenant:read', '租户详情', 'console', '查看租户详情', 41],
     ['console:tenant:create', '新建租户', 'console', '创建租户与管理员', 42],
     ['console:tenant:update', '编辑租户', 'console', '修改套餐与账期', 43],
-    ['console:menu:manage', '菜单管理', 'console', '按账号配置侧栏菜单', 44],
+    ['console:menu:manage', '访问控制', 'console', '配置平台运营账号菜单与 Console 权限', 44],
+    ['console:health:read', '系统健康', 'console', '查看队列与 Provider 状态', 45],
     ['console:prompt:read', '查看 Prompt', 'console', '查看 Prompt 模板', 50],
     ['console:prompt:manage', '管理 Prompt', 'console', '编辑 Prompt 与绑定', 51],
     ['console:audit:read', '操作审计', 'console', '查看平台操作日志', 52],
@@ -143,7 +144,7 @@ async function ensureCatalogs() {
     ['console:tenants', '租户管理', '/console/tenants', 'console:tenant:list', ['SUPER_ADMIN', 'PLATFORM_OPERATOR'], 21],
     ['console:prompts', 'Prompt 运营', '/console/prompts', 'console:prompt:read', ['SUPER_ADMIN'], 22],
     ['console:access', '访问控制', '/console/access', 'console:menu:manage', ['SUPER_ADMIN'], 23],
-    ['console:health', '系统健康', '/console/health', 'console:tenant:read', ['SUPER_ADMIN', 'PLATFORM_OPERATOR'], 24],
+    ['console:health', '系统健康', '/console/health', 'console:health:read', ['SUPER_ADMIN', 'PLATFORM_OPERATOR'], 24],
     ['console:audit', '操作审计', '/console/audit', 'console:audit:read', ['SUPER_ADMIN', 'PLATFORM_OPERATOR'], 25],
   ];
 

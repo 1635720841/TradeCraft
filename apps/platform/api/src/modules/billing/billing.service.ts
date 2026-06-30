@@ -165,9 +165,26 @@ export class BillingService {
   }
 
   async getQuotaSummary(organizationId: string): Promise<QuotaSummary> {
-    const org = await this.prisma.organization.findFirst({
-      where: { id: organizationId },
+    const map = await this.getQuotaSummariesForOrganizations([organizationId]);
+    const summary = map.get(organizationId);
+    if (!summary) {
+      throw new BusinessException(ErrorCodes.NOT_FOUND, '企业不存在');
+    }
+    return summary;
+  }
+
+  /** 批量配额汇总（Console 概览等场景，避免 N+1） */
+  async getQuotaSummariesForOrganizations(
+    organizationIds: string[],
+  ): Promise<Map<string, QuotaSummary>> {
+    const uniqueIds = [...new Set(organizationIds.filter(Boolean))];
+    const result = new Map<string, QuotaSummary>();
+    if (uniqueIds.length === 0) return result;
+
+    const orgs = await this.prisma.organization.findMany({
+      where: { id: { in: uniqueIds } },
       select: {
+        id: true,
         planId: true,
         planName: true,
         monthlyArticleQuota: true,
@@ -178,50 +195,73 @@ export class BillingService {
       },
     });
 
-    if (!org) {
-      throw new BusinessException(ErrorCodes.NOT_FOUND, '企业不存在');
-    }
+    if (orgs.length === 0) return result;
 
-    const { periodStart, periodEnd } = this.resolvePeriodRange(org);
-    const periodQuota = org.monthlyArticleQuota + org.articleQuotaBonus;
+    const periodByOrg = new Map(
+      orgs.map((org) => [org.id, this.resolvePeriodRange(org)] as const),
+    );
+    const earliestStart = orgs.reduce((min, org) => {
+      const { periodStart } = periodByOrg.get(org.id)!;
+      return periodStart < min ? periodStart : min;
+    }, periodByOrg.get(orgs[0].id)!.periodStart);
 
-    const [usedThisMonth, inFlightJobs] = await Promise.all([
-      this.prisma.creditUsage.count({
+    const [usageRows, inFlightGroups] = await Promise.all([
+      this.prisma.creditUsage.findMany({
         where: {
-          organizationId,
+          organizationId: { in: uniqueIds },
           serviceType: ARTICLE_SERVICE_TYPE,
-          createdAt: { gte: periodStart, lt: periodEnd },
+          createdAt: { gte: earliestStart },
         },
+        select: { organizationId: true, createdAt: true },
       }),
-      this.prisma.articleJob.count({
+      this.prisma.articleJob.groupBy({
+        by: ['organizationId'],
         where: {
-          organizationId,
+          organizationId: { in: uniqueIds },
           status: { notIn: ['COMPLETED', 'FAILED'] },
         },
+        _count: { _all: true },
       }),
     ]);
 
-    const reservedTotal = usedThisMonth + inFlightJobs;
-    const remaining = Math.max(0, periodQuota - reservedTotal);
+    const inFlightMap = new Map(
+      inFlightGroups.map((row) => [row.organizationId, row._count._all]),
+    );
 
-    return {
-      planName: org.planName,
-      planId: org.planId,
-      monthlyQuota: org.monthlyArticleQuota,
-      bonusQuota: org.articleQuotaBonus,
-      periodQuota,
-      usedThisMonth,
-      inFlightJobs,
-      reservedTotal,
-      remaining,
-      periodStart: periodStart.toISOString(),
-      periodEnd: periodEnd.toISOString(),
-      subscriptionStatus: org.subscriptionStatus,
-      subscriptionActive: isSubscriptionActive(org.subscriptionStatus, org.currentPeriodEnd),
-      daysRemaining: org.currentPeriodEnd
-        ? daysRemaining(org.currentPeriodEnd)
-        : daysRemaining(periodEnd),
-    };
+    for (const org of orgs) {
+      const { periodStart, periodEnd } = periodByOrg.get(org.id)!;
+      const periodQuota = org.monthlyArticleQuota + org.articleQuotaBonus;
+      const usedThisMonth = usageRows.filter(
+        (row) =>
+          row.organizationId === org.id &&
+          row.createdAt >= periodStart &&
+          row.createdAt < periodEnd,
+      ).length;
+      const inFlightJobs = inFlightMap.get(org.id) ?? 0;
+      const reservedTotal = usedThisMonth + inFlightJobs;
+      const remaining = Math.max(0, periodQuota - reservedTotal);
+
+      result.set(org.id, {
+        planName: org.planName,
+        planId: org.planId,
+        monthlyQuota: org.monthlyArticleQuota,
+        bonusQuota: org.articleQuotaBonus,
+        periodQuota,
+        usedThisMonth,
+        inFlightJobs,
+        reservedTotal,
+        remaining,
+        periodStart: periodStart.toISOString(),
+        periodEnd: periodEnd.toISOString(),
+        subscriptionStatus: org.subscriptionStatus,
+        subscriptionActive: isSubscriptionActive(org.subscriptionStatus, org.currentPeriodEnd),
+        daysRemaining: org.currentPeriodEnd
+          ? daysRemaining(org.currentPeriodEnd)
+          : daysRemaining(periodEnd),
+      });
+    }
+
+    return result;
   }
 
   async assertArticleQuota(organizationId: string, additionalCount = 1): Promise<void> {

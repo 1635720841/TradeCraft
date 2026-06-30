@@ -17,6 +17,7 @@ import { ArticleJobDraftEditService } from './article-job-draft-edit.service';
 import { ArticleJobDraftImageService } from './article-job-draft-image.service';
 import { ArticleJobRewriteService } from './article-job-rewrite.service';
 import { ArticleJobReviewService } from './article-job-review.service';
+import { ArticleJobStatsService } from './article-job-stats.service';
 import { ArticleJobBriefService } from './article-job-brief.service';
 import { ArticleJobController } from './article-job.controller';
 import { ArticleJobCollabController } from './article-job-collab.controller';
@@ -32,7 +33,7 @@ import { ArticleJobActivityModule } from './article-job-activity.module';
 @Module({
   imports: [ProjectModule, AccessModule, ArticleJobActivityModule, BillingModule, SeoFactoryQueueModule, SeoCheckerModule, LlmModule, SiteModule, ExportModule, LinkingModule, GscModule, ScraperModule],
   controllers: [ArticleJobController, ArticleJobCollabController],
-  providers: [ArticleJobService, ArticleJobCollabService, ArticleJobBriefService, ArticleJobInternalLinksService, ArticleJobRewriteService, ArticleJobDraftEditService, ArticleJobDraftImageService, ArticleJobReviewService],
-  exports: [ArticleJobService],
+  providers: [ArticleJobService, ArticleJobStatsService, ArticleJobCollabService, ArticleJobBriefService, ArticleJobInternalLinksService, ArticleJobRewriteService, ArticleJobDraftEditService, ArticleJobDraftImageService, ArticleJobReviewService],
+  exports: [ArticleJobService, ArticleJobStatsService],
 })
 export class ArticleJobModule {}

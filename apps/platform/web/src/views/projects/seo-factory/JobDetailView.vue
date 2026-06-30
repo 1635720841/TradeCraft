@@ -166,149 +166,32 @@
       </section>
 
       <div class="job-detail-layout">
-        <aside class="job-detail-sidebar">
-          <div class="job-detail-panel job-detail-progress">
-            <div class="job-detail-panel__head">生成进度</div>
-            <div class="job-detail-panel__body">
-              <ArticleJobGenerationTimeline
-                :job="job"
-                :activity-items="activityItems"
-                :collapsible="job.status === 'COMPLETED'"
-              />
-            </div>
-          </div>
-
-          <div class="job-detail-panel">
-            <div class="job-detail-panel__head">导出与发布</div>
-            <div class="job-detail-panel__body">
-              <div v-if="exportStale" class="mb-3 text-sm text-amber-600">
-                稿件已编辑，导出物已失效。
-                <el-button
-                  type="primary"
-                  link
-                  @click="handleResolveDraftStale('regenerate_export')"
-                >
-                  重新生成
-                </el-button>
-              </div>
-              <div v-else-if="job.outputUrl" class="job-detail-export-actions">
-                <div class="job-detail-export-actions__downloads">
-                  <el-button
-                    :loading="exportDownloading === 'package'"
-                    @click="handleDownloadExport('package')"
-                  >
-                    <IconifyIconOnline icon="ri:folder-zip-line" />
-                    资产包
-                  </el-button>
-                  <el-button
-                    :loading="exportDownloading === 'html'"
-                    @click="handleDownloadExport('html')"
-                  >
-                    <IconifyIconOnline icon="ri:file-code-line" />
-                    HTML
-                  </el-button>
-                  <el-button
-                    :loading="exportDownloading === 'jsonld'"
-                    @click="handleDownloadExport('jsonld')"
-                  >
-                    <IconifyIconOnline icon="ri:braces-line" />
-                    JSON-LD
-                  </el-button>
-                </div>
-                <el-button
-                  v-if="cmsUiEnabled && canPublishToCms"
-                  type="success"
-                  :loading="cmsPublishing"
-                  @click="handlePublishToCms"
-                >
-                  <IconifyIconOnline icon="ri:send-plane-line" class="mr-1" />
-                  {{ cmsPublishButtonLabel }}
-                </el-button>
-                <el-link
-                  v-if="cmsUiEnabled && cmsPublishResult?.postUrl"
-                  :href="cmsPublishResult.postUrl"
-                  target="_blank"
-                  type="primary"
-                  class="job-detail-export-actions__link"
-                >
-                  查看 CMS 文章 →
-                </el-link>
-              </div>
-              <span
-                v-else-if="requiresHumanReview"
-                class="text-sm text-amber-600"
-              >
-                YMYL 需人工审核，未生成可发布 HTML
-              </span>
-              <span v-else class="text-sm text-gray-500">任务完成后可导出</span>
-            </div>
-          </div>
-
-          <ArticleJobDraftPublishChecklist
-            v-if="prePublishChecklistItems.length && activeTab !== 'article'"
-            variant="pre-publish"
-            :items="prePublishChecklistItems"
-            @action="handlePrePublishChecklistAction"
-            @go-ymyl="goDetailTab('diagnose', 'ymyl')"
-            @go-seo="goDetailTab('diagnose', 'seo')"
-            @go-edit="goDetailTab('article')"
-            @go-tab="handleChecklistGoTab"
-            @go-sites="goSiteManage"
-          />
-
-          <ArticleJobDraftPublishChecklist
-            v-if="publishChecklistItems.length && activeTab !== 'article'"
-            :items="publishChecklistItems"
-            @action="handleChecklistAction"
-            @go-ymyl="goDetailTab('diagnose', 'ymyl')"
-            @go-edit="goDetailTab('article')"
-          />
-
-          <div class="job-detail-panel">
-            <el-collapse>
-              <el-collapse-item title="活动" name="activity">
-                <ArticleJobActivityTimeline
-                  v-if="job"
-                  :project-id="projectId"
-                  :job-id="job.id"
-                />
-              </el-collapse-item>
-              <el-collapse-item title="协作" name="collab">
-                <ArticleJobCollabPanel
-                  v-if="job"
-                  :project-id="projectId"
-                  :job-id="job.id"
-                  :can-write="canWriteJob"
-                />
-              </el-collapse-item>
-              <el-collapse-item title="高级信息" name="advanced">
-                <ul class="job-detail-meta-list">
-                  <li class="job-detail-meta-list__item">
-                    <span class="job-detail-meta-list__label">任务 ID</span>
-                    <span class="job-detail-meta-list__value text-xs">{{
-                      job.id
-                    }}</span>
-                  </li>
-                  <li class="job-detail-meta-list__item">
-                    <span class="job-detail-meta-list__label">Trace</span>
-                    <span class="job-detail-meta-list__value text-xs">{{
-                      job.traceId
-                    }}</span>
-                  </li>
-                  <li
-                    v-if="job.serpData?.fingerprint"
-                    class="job-detail-meta-list__item"
-                  >
-                    <span class="job-detail-meta-list__label">SERP 指纹</span>
-                    <span class="job-detail-meta-list__value text-xs">
-                      {{ job.serpData.fingerprint }}
-                    </span>
-                  </li>
-                </ul>
-              </el-collapse-item>
-            </el-collapse>
-          </div>
-        </aside>
+        <ArticleJobDetailSidebar
+          v-if="job"
+          :job="job"
+          :activity-items="activityItems"
+          :project-id="projectId"
+          :can-write-job="canWriteJob"
+          :cms-ui-enabled="cmsUiEnabled"
+          :export-stale="exportStale"
+          :export-downloading="exportDownloading"
+          :cms-publishing="cmsPublishing"
+          :can-publish-to-cms="canPublishToCms"
+          :cms-publish-button-label="cmsPublishButtonLabel"
+          :cms-publish-result="cmsPublishResult"
+          :requires-human-review="requiresHumanReview"
+          :pre-publish-checklist-items="prePublishChecklistItems"
+          :publish-checklist-items="publishChecklistItems"
+          :active-tab="activeTab"
+          @resolve-draft-stale="handleResolveDraftStale('regenerate_export')"
+          @download-export="handleDownloadExport"
+          @publish-cms="handlePublishToCms"
+          @pre-publish-action="handlePrePublishChecklistAction"
+          @checklist-action="handleChecklistAction"
+          @go-tab="goDetailTab"
+          @checklist-go-tab="handleChecklistGoTab"
+          @go-sites="goSiteManage"
+        />
 
         <main class="job-detail-main">
           <div class="job-detail-tabs-panel job-detail-tabs-panel--seo">
@@ -548,9 +431,8 @@ import { isBriefPending } from "@/utils/seo-factory/job-progress";
 import { formatWorkflowProgressShort } from "@/utils/seo-factory/workflow-progress";
 import type { DiagnoseSection } from "@/utils/seo-factory/job-detail-summary";
 import { resolveEffectiveLocalSeoScore } from "@/utils/seo-factory/local-seo-display";
+import ArticleJobDetailSidebar from "./components/ArticleJobDetailSidebar.vue";
 import ArticleJobBriefPanel from "./components/ArticleJobBriefPanel.vue";
-import ArticleJobCollabPanel from "./components/ArticleJobCollabPanel.vue";
-import ArticleJobActivityTimeline from "./components/ArticleJobActivityTimeline.vue";
 import ArticleJobBriefReviewPanel from "./components/ArticleJobBriefReviewPanel.vue";
 import ArticleJobCreationReport from "./components/ArticleJobCreationReport.vue";
 import ArticleJobDiagnosePanel from "./components/ArticleJobDiagnosePanel.vue";
@@ -563,7 +445,6 @@ import ArticleJobDraftRollbackDialog from "./components/ArticleJobDraftRollbackD
 import ArticleJobDraftSaveDialog from "./components/ArticleJobDraftSaveDialog.vue";
 import ArticleJobDraftStalenessBanner from "./components/ArticleJobDraftStalenessBanner.vue";
 import ArticleJobDraftVersionConflictDialog from "./components/ArticleJobDraftVersionConflictDialog.vue";
-import ArticleJobGenerationTimeline from "./components/ArticleJobGenerationTimeline.vue";
 import ArticleJobOutcomeSummaryCard from "./components/ArticleJobOutcomeSummaryCard.vue";
 import ArticleJobRewriteDrawer from "./components/ArticleJobRewriteDrawer.vue";
 import ArticleJobRewriteResult from "./components/ArticleJobRewriteResult.vue";

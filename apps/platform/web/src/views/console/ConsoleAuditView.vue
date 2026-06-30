@@ -30,23 +30,13 @@
                 :value="tenant.id"
               />
             </el-select>
-            <el-select
-              v-model="filters.actorUserId"
-              placeholder="全部操作人"
+            <el-input
+              v-model="filters.actorKeyword"
+              placeholder="操作人邮箱/姓名"
               clearable
-              filterable
-              remote
-              :remote-method="searchActors"
-              :loading="loadingActors"
               class="w-52"
-            >
-              <el-option
-                v-for="user in actorOptions"
-                :key="user.id"
-                :label="actorOptionLabel(user)"
-                :value="user.id"
-              />
-            </el-select>
+              @keyup.enter="search"
+            />
             <el-select
               v-model="filters.action"
               placeholder="操作类型"
@@ -82,13 +72,13 @@
         <el-table-column label="操作" min-width="140">
           <template #default="{ row }">
             {{ actionLabel(row.action) }}
-            <div class="text-xs text-gray-400">{{ row.action }}</div>
+            <div class="text-xs mw-text-muted">{{ row.action }}</div>
           </template>
         </el-table-column>
         <el-table-column label="操作人" min-width="200">
           <template #default="{ row }">
             <div>{{ row.actorEmail || row.actorUserId }}</div>
-            <div v-if="row.actorName || row.actorRole" class="text-xs text-gray-400">
+            <div v-if="row.actorName || row.actorRole" class="text-xs mw-text-muted">
               <span v-if="row.actorName">{{ row.actorName }}</span>
               <span v-if="row.actorRole">
                 {{ row.actorName ? " · " : "" }}{{ dictLabel(memberRoleDict, row.actorRole) }}
@@ -106,7 +96,7 @@
         </el-table-column>
         <el-table-column type="expand" width="48">
           <template #default="{ row }">
-            <div class="p-3 text-sm text-gray-600">
+            <div class="p-3 text-sm mw-text-body">
               <div v-if="row.organizationId">企业 ID: {{ row.organizationId }}</div>
               <div v-if="row.traceId">Trace: {{ row.traceId }}</div>
               <div v-if="row.targetId">目标 ID: {{ row.targetId }}</div>
@@ -136,51 +126,40 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
+import { useRoute } from "vue-router";
 import {
-  AUDIT_ACTION_OPTIONS,
   listAuditLogs,
-  listConsoleUsers,
   listTenants,
   type AuditLogItem,
-  type ConsoleUserItem,
   type TenantItem
 } from "@/api/console/index";
-import { memberRoleDict } from "@/constants/dicts/platform";
-import { dictLabel } from "@/utils/dict";
+import { auditActionDict, memberRoleDict } from "@/constants/dicts/platform";
+import { dictLabel, dictOptions } from "@/utils/dict";
 
 defineOptions({ name: "ConsoleAuditView" });
 
+const route = useRoute();
+
 const loading = ref(false);
-const loadingActors = ref(false);
 const items = ref<AuditLogItem[]>([]);
 const page = ref(1);
 const limit = ref(50);
 const total = ref(0);
 const dateRange = ref<[string, string] | null>(null);
-const auditActionOptions = AUDIT_ACTION_OPTIONS;
+const auditActionOptions = dictOptions(auditActionDict);
 const tenantOptions = ref<TenantItem[]>([]);
-const actorOptions = ref<ConsoleUserItem[]>([]);
 const filters = reactive({
   organizationId: "",
-  actorUserId: "",
+  actorKeyword: "",
   action: ""
 });
 
-const actionLabelMap = Object.fromEntries(
-  AUDIT_ACTION_OPTIONS.map((item) => [item.value, item.label])
-);
+function actionLabel(action: string) {
+  return dictLabel(auditActionDict, action) || action;
+}
 
 function formatTime(iso: string) {
   return new Date(iso).toLocaleString("zh-CN");
-}
-
-function actionLabel(action: string) {
-  return actionLabelMap[action] ?? action;
-}
-
-function actorOptionLabel(user: ConsoleUserItem) {
-  const role = dictLabel(memberRoleDict, user.role);
-  return `${user.email}（${role} · ${user.organizationName}）`;
 }
 
 async function loadTenantOptions() {
@@ -188,22 +167,12 @@ async function loadTenantOptions() {
   tenantOptions.value = result.items;
 }
 
-async function searchActors(keyword: string) {
-  loadingActors.value = true;
-  try {
-    const result = await listConsoleUsers(1, 50, keyword.trim() || undefined);
-    actorOptions.value = result.items;
-  } finally {
-    loadingActors.value = false;
-  }
-}
-
 async function fetchLogs() {
   loading.value = true;
   try {
     const result = await listAuditLogs(page.value, limit.value, {
       organizationId: filters.organizationId || undefined,
-      actorUserId: filters.actorUserId || undefined,
+      actorKeyword: filters.actorKeyword.trim() || undefined,
       action: filters.action || undefined,
       dateFrom: dateRange.value?.[0],
       dateTo: dateRange.value?.[1]
@@ -224,7 +193,7 @@ function search() {
 
 function resetFilters() {
   filters.organizationId = "";
-  filters.actorUserId = "";
+  filters.actorKeyword = "";
   filters.action = "";
   dateRange.value = null;
   page.value = 1;
@@ -237,8 +206,11 @@ function onSizeChange() {
 }
 
 onMounted(() => {
+  const orgFromQuery = route.query.organizationId;
+  if (typeof orgFromQuery === "string" && orgFromQuery) {
+    filters.organizationId = orgFromQuery;
+  }
   void loadTenantOptions();
-  void searchActors("");
   void fetchLogs();
 });
 </script>

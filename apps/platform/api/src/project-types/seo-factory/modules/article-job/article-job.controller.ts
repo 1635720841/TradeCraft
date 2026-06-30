@@ -48,6 +48,7 @@ import { ArticleJobBriefService } from './article-job-brief.service';
 import { ArticleJobInternalLinksService } from './article-job-internal-links.service';
 import { PatchInternalLinksDto } from './dto/patch-internal-links.dto';
 import { ArticleJobService } from './article-job.service';
+import { ArticleJobStatsService } from './article-job-stats.service';
 import { CmsPublishService } from '../export/cms-publish.service';
 import { PublishArticleJobDto } from '../export/dto/publish-article-job.dto';
 import { seoFactoryRoutes } from '../../constants/seo-factory-routes';
@@ -66,6 +67,7 @@ import { ExportService } from '../export/export.service';
 export class ArticleJobController {
   constructor(
     private readonly articleJobService: ArticleJobService,
+    private readonly articleJobStatsService: ArticleJobStatsService,
     private readonly articleJobRewriteService: ArticleJobRewriteService,
     private readonly articleJobDraftEditService: ArticleJobDraftEditService,
     private readonly articleJobDraftImageService: ArticleJobDraftImageService,
@@ -109,7 +111,7 @@ export class ArticleJobController {
     @Query('siteId') siteId?: string,
   ) {
     await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
-    const data = await this.articleJobService.getProjectStats(
+    const data = await this.articleJobStatsService.getProjectStats(
       ctx.organizationId,
       projectId,
       siteId?.trim() || undefined,

@@ -156,6 +156,18 @@ export class OrgController {
     return { data, meta: { traceId: ctx.traceId } };
   }
 
+  @Delete('members/:userId')
+  @Permissions('org:member:update')
+  async removeMember(@ReqCtx() ctx: RequestContext, @Param('userId') userId: string) {
+    const data = await this.organizationService.removeMember(
+      ctx.organizationId,
+      ctx.userId,
+      ctx.traceId,
+      userId,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
   @Get('members/:userId/permissions')
   @Permissions('org:member:grant')
   async getMemberPermissions(

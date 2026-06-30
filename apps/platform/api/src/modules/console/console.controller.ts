@@ -11,7 +11,10 @@ import { Roles } from '../../core/decorators/roles.decorator';
 import { PermissionService } from '../access/permission.service';
 import { AddQuotaTopUpDto } from '../billing/dto/add-quota-topup.dto';
 import { ConsoleService } from './console.service';
+import { ConsoleTenantService } from './console-tenant.service';
+import { ConsoleAccessService } from './console-access.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
+import { ImpersonateDto } from './dto/impersonate.dto';
 import { SetUserMenusDto } from './dto/set-user-menus.dto';
 import { SetUserPermissionsDto } from './dto/set-user-permissions.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
@@ -21,6 +24,8 @@ import { UpdateTenantDto } from './dto/update-tenant.dto';
 export class ConsoleController {
   constructor(
     private readonly consoleService: ConsoleService,
+    private readonly consoleTenantService: ConsoleTenantService,
+    private readonly consoleAccessService: ConsoleAccessService,
     private readonly permissionService: PermissionService,
   ) {}
 
@@ -39,7 +44,7 @@ export class ConsoleController {
     @Query('limit') limit?: string,
     @Query('keyword') keyword?: string,
   ) {
-    const result = await this.consoleService.listTenants(
+    const result = await this.consoleTenantService.listTenants(
       page ? Number(page) : 1,
       limit ? Number(limit) : 20,
       keyword,
@@ -56,7 +61,7 @@ export class ConsoleController {
   @Post('tenants')
   @Permissions('console:tenant:create')
   async createTenant(@ReqCtx() ctx: RequestContext, @Body() dto: CreateTenantDto) {
-    const data = await this.consoleService.createTenant(ctx.userId, ctx.traceId, dto);
+    const data = await this.consoleTenantService.createTenant(ctx.userId, ctx.traceId, dto);
     return { data, meta: { traceId: ctx.traceId } };
   }
 
@@ -66,7 +71,7 @@ export class ConsoleController {
     @ReqCtx() ctx: RequestContext,
     @Param('organizationId') organizationId: string,
   ) {
-    const data = await this.consoleService.getTenant(organizationId);
+    const data = await this.consoleTenantService.getTenant(organizationId);
     return { data, meta: { traceId: ctx.traceId } };
   }
 
@@ -77,7 +82,7 @@ export class ConsoleController {
     @Param('organizationId') organizationId: string,
     @Body() dto: UpdateTenantDto,
   ) {
-    const data = await this.consoleService.updateTenant(
+    const data = await this.consoleTenantService.updateTenant(
       ctx.userId,
       ctx.traceId,
       organizationId,
@@ -93,7 +98,7 @@ export class ConsoleController {
     @Param('organizationId') organizationId: string,
     @Body() dto: AddQuotaTopUpDto,
   ) {
-    const data = await this.consoleService.addTenantQuotaTopUp(
+    const data = await this.consoleTenantService.addTenantQuotaTopUp(
       ctx.userId,
       ctx.traceId,
       organizationId,
@@ -109,7 +114,7 @@ export class ConsoleController {
     @ReqCtx() ctx: RequestContext,
     @Param('organizationId') organizationId: string,
   ) {
-    const data = await this.consoleService.renewTenantPeriod(
+    const data = await this.consoleTenantService.renewTenantPeriod(
       ctx.userId,
       ctx.traceId,
       organizationId,
@@ -126,7 +131,7 @@ export class ConsoleController {
     @Query('limit') limit?: string,
     @Query('keyword') keyword?: string,
   ) {
-    const result = await this.consoleService.listUsers(
+    const result = await this.consoleAccessService.listUsers(
       page ? Number(page) : 1,
       limit ? Number(limit) : 50,
       keyword,
@@ -143,7 +148,7 @@ export class ConsoleController {
   @Get('users/:userId/permissions')
   @Roles(Role.SUPER_ADMIN)
   async getUserPermissions(@ReqCtx() ctx: RequestContext, @Param('userId') userId: string) {
-    const data = await this.consoleService.getUserPermissions(userId);
+    const data = await this.consoleAccessService.getUserPermissions(userId);
     return { data, meta: { traceId: ctx.traceId } };
   }
 
@@ -154,7 +159,7 @@ export class ConsoleController {
     @Param('userId') userId: string,
     @Body() dto: SetUserPermissionsDto,
   ) {
-    const data = await this.consoleService.setUserPermissions(
+    const data = await this.consoleAccessService.setUserPermissions(
       ctx.userId,
       ctx.role,
       ctx.permissions,
@@ -169,7 +174,7 @@ export class ConsoleController {
   @Roles(Role.SUPER_ADMIN)
   @Permissions('console:menu:manage')
   async getUserMenus(@ReqCtx() ctx: RequestContext, @Param('userId') userId: string) {
-    const data = await this.consoleService.getUserMenus(userId);
+    const data = await this.consoleAccessService.getUserMenus(userId);
     return { data, meta: { traceId: ctx.traceId } };
   }
 
@@ -181,7 +186,7 @@ export class ConsoleController {
     @Param('userId') userId: string,
     @Body() dto: SetUserMenusDto,
   ) {
-    const data = await this.consoleService.setUserMenus(
+    const data = await this.consoleAccessService.setUserMenus(
       ctx.userId,
       ctx.traceId,
       userId,
@@ -258,11 +263,8 @@ export class ConsoleController {
 
   @Post('impersonate')
   @Roles(Role.SUPER_ADMIN)
-  async impersonate(
-    @ReqCtx() ctx: RequestContext,
-    @Body() body: { userId: string; reason: string },
-  ) {
-    const data = await this.consoleService.impersonate(ctx.userId, ctx.traceId, body);
+  async impersonate(@ReqCtx() ctx: RequestContext, @Body() dto: ImpersonateDto) {
+    const data = await this.consoleService.impersonate(ctx.userId, ctx.traceId, dto);
     return { data, meta: { traceId: ctx.traceId } };
   }
 }

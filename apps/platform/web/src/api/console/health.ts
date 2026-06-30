@@ -26,11 +26,12 @@ export interface ConsoleQueueJobItem {
   state: string;
   position: number | null;
   enqueuedAt: string | null;
-  jobId: string;
+  jobId?: string;
+  jobName?: string;
   traceId: string;
   organizationId: string;
   organizationName: string | null;
-  projectId: string;
+  projectId?: string;
   targetKeyword: string | null;
   articleStatus: string | null;
   workflowPhase: string | null;
@@ -56,10 +57,10 @@ export async function getConsoleProviderHealth(): Promise<{
 }
 
 export async function getConsoleQueueJobs(options?: {
-  state?: "waiting" | "active" | "delayed" | "all";
+  state?: "waiting" | "active" | "delayed" | "failed" | "all";
   queue?: string;
   limit?: number;
-}): Promise<{ items: ConsoleQueueJobItem[]; total: number }> {
+}): Promise<{ items: ConsoleQueueJobItem[]; total: number; truncated?: boolean }> {
   const params: Record<string, string | number> = {};
   if (options?.state) params.state = options.state;
   if (options?.queue) params.queue = options.queue;

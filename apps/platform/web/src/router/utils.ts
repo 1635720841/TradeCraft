@@ -79,10 +79,10 @@ const ORG_MENU_PATH_ORDER: Array<{ menuKey: string; path: string }> = [
 const CONSOLE_MENU_PATH_ORDER: Array<{ menuKey: string; path: string }> = [
   { menuKey: "console:overview", path: "/console/overview" },
   { menuKey: "console:tenants", path: "/console/tenants" },
-  { menuKey: "console:prompts", path: "/console/prompts" },
-  { menuKey: "console:access", path: "/console/access" },
+  { menuKey: "console:audit", path: "/console/audit" },
   { menuKey: "console:health", path: "/console/health" },
-  { menuKey: "console:audit", path: "/console/audit" }
+  { menuKey: "console:prompts", path: "/console/prompts" },
+  { menuKey: "console:access", path: "/console/access" }
 ];
 
 export function resolveOrgEntryPath(visibleMenuKeys?: string[]): string {
@@ -105,10 +105,15 @@ export function resolveConsoleEntryPath(visibleMenuKeys?: string[]): string {
   return "/console/overview";
 }
 
-/** 登录后按角色解析首页路径 */
+const { VITE_HIDE_HOME } = import.meta.env;
+
+/** 登录后默认进入项目首页；隐藏首页时按角色回退到首个可访问业务页 */
 export function resolveEntryPath(
   userInfo: DataInfo<number> | null | undefined
 ): string {
+  if (VITE_HIDE_HOME !== "true") {
+    return "/welcome";
+  }
   const roles = userInfo?.roles ?? [];
   if (roles.includes("platform_operator")) {
     return resolveConsoleEntryPath(userInfo?.visibleMenuKeys);

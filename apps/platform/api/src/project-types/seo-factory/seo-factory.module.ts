@@ -23,6 +23,7 @@ import { GscSyncProcessor } from './processors/gsc-sync.processor';
 import { PlaywrightQueueModule } from './playwright-queue.module';
 import { SeoFactoryProvidersModule } from './providers/seo-factory-providers.module';
 import { SeoFactoryQueueModule } from './seo-factory-queue.module';
+import { SeoFactoryQueueJobEnrichmentService } from './modules/console-bridge/seo-factory-queue-job-enrichment.service';
 
 @Module({
   imports: [
@@ -39,6 +40,6 @@ import { SeoFactoryQueueModule } from './seo-factory-queue.module';
     GscModule,
     ScoreCalibrationModule,
   ],
-  providers: [ArticleJobProcessor, GscSyncProcessor],
+  providers: [ArticleJobProcessor, GscSyncProcessor, SeoFactoryQueueJobEnrichmentService],
 })
 export class SeoFactoryModule {}

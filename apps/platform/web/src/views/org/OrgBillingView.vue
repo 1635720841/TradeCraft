@@ -146,7 +146,7 @@
       </template>
       <el-table :data="billingRequests" stripe>
         <el-table-column prop="type" label="类型" width="100">
-          <template #default="{ row }">{{ billingRequestTypeLabel(row.type) }}</template>
+          <template #default="{ row }">{{ dictLabel(billingChangeRequestTypeDict, row.type) || row.type }}</template>
         </el-table-column>
         <el-table-column prop="message" label="说明" min-width="160">
           <template #default="{ row }">{{ row.message || "-" }}</template>
@@ -223,6 +223,7 @@ import {
 import { message } from "@/utils/message";
 import { billingServiceTypeDict } from "@/constants/dicts/billing";
 import {
+  billingChangeRequestTypeDict,
   planNameDict,
   subscriptionStatusDict
 } from "@/constants/dicts/platform";
@@ -310,13 +311,6 @@ async function requestRenew() {
   } catch {
     message("提交失败", { type: "error" });
   }
-}
-
-function billingRequestTypeLabel(type: string) {
-  if (type === "RENEW") return "续费";
-  if (type === "UPGRADE") return "升级";
-  if (type === "TOPUP") return "加购";
-  return type;
 }
 
 function billingRequestStatusLabel(status: string) {

@@ -167,3 +167,14 @@ export async function updateOrganizationMemberStatus(
   );
   return res.data;
 }
+
+/** 删除成员（不可恢复，同时移出所有项目） */
+export async function deleteOrganizationMember(
+  userId: string
+): Promise<{ id: string; email: string }> {
+  const res = await http.request<WmApiResponse<{ id: string; email: string }>>(
+    "delete",
+    `/api/v1/org/members/${userId}`
+  );
+  return res.data;
+}
