@@ -67,6 +67,32 @@ export class ProjectAccessService {
     }
   }
 
+  /** 禁止纯只读成员修改项目资源（媒体库等跨类型能力） */
+  async assertMemberCanMutateProject(
+    ctx: Pick<RequestContext, 'userId' | 'role'>,
+    project: { id: string },
+  ): Promise<void> {
+    if (
+      ctx.role === Role.SUPER_ADMIN ||
+      ctx.role === Role.PLATFORM_OPERATOR
+    ) {
+      return;
+    }
+
+    const member = await this.prisma.projectMember.findUnique({
+      where: { projectId_userId: { projectId: project.id, userId: ctx.userId } },
+      select: { role: true },
+    });
+
+    if (!member) {
+      throw new BusinessException(ErrorCodes.FORBIDDEN, '您不是该项目成员');
+    }
+
+    if (member.role === ProjectMemberRole.VIEWER) {
+      throw new BusinessException(ErrorCodes.FORBIDDEN, '只读成员无法上传或删除文件');
+    }
+  }
+
   /** 校验项目成员是否具备任一指定权限（SUPER_ADMIN 跳过） */
   async assertMemberHasAnyPermission(
     ctx: Pick<RequestContext, 'userId' | 'role'>,

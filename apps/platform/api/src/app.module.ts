@@ -14,6 +14,7 @@ import { OrganizationModule } from './modules/organization/organization.module';
 import { PromptModule } from './modules/prompt/prompt.module';
 import { ProjectModule } from './modules/project/project.module';
 import { NotificationModule } from './modules/notification/notification.module';
+import { MediaModule } from './modules/media/media.module';
 import { SearchModule } from './modules/search/search.module';
 import { WebhookModule } from './modules/webhook/webhook.module';
 import { getRegisteredProjectTypes } from './modules/project/project-type.registry';
@@ -35,6 +36,7 @@ const projectTypeModules = getRegisteredProjectTypes().map(
     PromptModule,
     ProjectModule,
     NotificationModule,
+    MediaModule,
     SearchModule,
     WebhookModule,
     ...projectTypeModules,

@@ -30,11 +30,8 @@ import {
 import { markdownToHtml } from '../../providers/semrush/semrush-content';
 import type { PublishArticleJobDto } from './dto/publish-article-job.dto';
 import type { BatchPublishArticleJobsDto } from '../article-job/dto/batch-article-jobs-actions.dto';
-import { StorageService } from '../../../../core/storage/storage.service';
-import {
-  buildDraftImageStorageKey,
-  parseDraftImageApiUrl,
-} from '../article-job/draft-image.util';
+import { MediaService } from '../../../../modules/media/media.service';
+import { parseMediaAssetApiUrl } from '../../../../modules/media/media-url.util';
 import { fetchRemoteImage } from './export-package.util';
 import { ShopifyFilesService } from './shopify-files.service';
 import {
@@ -113,7 +110,7 @@ export class CmsPublishService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly logger: LoggerService,
-    private readonly storage: StorageService,
+    private readonly mediaService: MediaService,
     private readonly shopifyFiles: ShopifyFilesService,
     private readonly auditService: AuditService,
     private readonly entitlements: EntitlementsService,
@@ -718,20 +715,20 @@ export class CmsPublishService {
 
   private async fetchImageForCms(
     src: string,
-    ctx: Pick<PublishJobContext, 'organizationId' | 'projectId' | 'jobId'>,
+    ctx: Pick<PublishJobContext, 'organizationId' | 'projectId'>,
   ): Promise<{ body: Buffer; contentType?: string } | null> {
     const decoded = decodeHtmlAttr(src);
-    const parsed = parseDraftImageApiUrl(decoded);
-    if (parsed && parsed.projectId === ctx.projectId && parsed.jobId === ctx.jobId) {
-      const key = buildDraftImageStorageKey(
-        ctx.organizationId,
-        ctx.projectId,
-        ctx.jobId,
-        parsed.filename,
-      );
-      const stored = await this.storage.getObject(key);
-      if (!stored) return null;
-      return { body: stored.body, contentType: stored.contentType };
+    const parsed = parseMediaAssetApiUrl(decoded);
+    if (parsed && parsed.projectId === ctx.projectId) {
+      try {
+        return await this.mediaService.getObjectBytes(
+          ctx.organizationId,
+          ctx.projectId,
+          parsed.assetId,
+        );
+      } catch {
+        return null;
+      }
     }
 
     if (decoded.startsWith('http://') || decoded.startsWith('https://')) {

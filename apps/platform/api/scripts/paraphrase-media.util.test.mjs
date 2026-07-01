@@ -3,13 +3,7 @@
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { dirname, resolve } from 'node:path';
-
-const apiRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const utilPath = pathToFileURL(
-  resolve(apiRoot, 'dist/project-types/seo-factory/modules/paraphrase/paraphrase-media.util.js'),
-).href;
+import { loadDist } from './load-dist.mjs';
 
 const {
   extractMarkdownMediaExpressions,
@@ -20,7 +14,7 @@ const {
   shieldParaphraseMedia,
   syncAllMediaFromOriginal,
   unshieldParaphraseMedia,
-} = await import(utilPath);
+} = loadDist('project-types/seo-factory/modules/paraphrase/paraphrase-media.util.js');
 
 const LONG_BFL_URL =
   'https://delivery.eu2.bfl.ai/durable/2026070103/ef746010/sample.jpeg?se=2026-07-01T03%3A36%3A29Z&sig=abc';
@@ -91,5 +85,30 @@ describe('paraphrase-media.util', () => {
 
     const longClean = `## Guide\n\n${'Engineering '.repeat(40)}UAV BMS selection criteria for fleet buyers.`;
     assert.equal(resolveParaphraseChunkSkip(longClean), 'no_ai_cliches');
+  });
+
+  it('allows lead section when AI cliches are present and prose is long enough', () => {
+    const intro = [
+      "In today's digital landscape we delve into battery management system selection criteria",
+      'for industrial drone fleet operators and buyers with clear engineering tradeoffs across',
+      'voltage balancing, thermal design, procurement workflows, warranty terms, fleet deployment',
+      'planning, cell chemistry tradeoffs, charging infrastructure, maintenance intervals, and',
+      'regulatory compliance for long-range UAV operations in demanding environments worldwide.',
+    ].join(' ');
+    const lead = ['# UAV BMS guide', '', intro, '', '## Specs', '', 'Details here.'].join('\n');
+    assert.equal(resolveParaphraseChunkSkip(lead, { isLead: true }), undefined);
+  });
+
+  it('skips lead section without AI cliches', () => {
+    const lead = [
+      '# UAV BMS guide',
+      '',
+      'Flight time depends on pack capacity and BMS firmware configuration for industrial UAV fleets.',
+      '',
+      '## Specs',
+      '',
+      'Details here.',
+    ].join('\n');
+    assert.equal(resolveParaphraseChunkSkip(lead, { isLead: true }), 'lead_section');
   });
 });

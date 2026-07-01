@@ -20,8 +20,8 @@
         <div class="job-detail-top__title-wrap">
           <div class="job-detail-top__title-row">
             <h1>{{ job.targetKeyword }}</h1>
-            <el-tag :type="dictTagType(jobStatusDict, job.status)" size="small">
-              {{ dictLabel(jobStatusDict, job.status) }}
+            <el-tag :type="dictTagType(jobStatusDict, displayStatus)" size="small">
+              {{ dictLabel(jobStatusDict, displayStatus) }}
             </el-tag>
             <el-tag
               v-if="job.searchIntent"
@@ -39,6 +39,25 @@
         </div>
       </div>
       <div class="job-detail-top__actions">
+        <el-button
+          v-if="canPause && canWriteJob"
+          type="warning"
+          size="small"
+          plain
+          :loading="pausing"
+          @click="emit('pause')"
+        >
+          暂停任务
+        </el-button>
+        <el-button
+          v-if="canResume && canWriteJob"
+          type="primary"
+          size="small"
+          :loading="resuming"
+          @click="emit('resume')"
+        >
+          继续执行
+        </el-button>
         <el-button
           v-if="canRetry && canWriteJob"
           type="primary"
@@ -96,16 +115,22 @@ import {
   keywordIntentDict
 } from "@/constants/dicts/seo-factory";
 import { dictLabel, dictTagType } from "@/utils/dict";
+import { resolveJobDisplayStatus } from "@/utils/seo-factory/job-list-status";
 import type { DiagnoseSection } from "@/utils/seo-factory/job-detail-summary";
 import ArticleJobOutcomeSummaryCard from "./ArticleJobOutcomeSummaryCard.vue";
+import { computed } from "vue";
 
 defineOptions({ name: "JobDetailHeader" });
 
-defineProps<{
+const props = defineProps<{
   job: ArticleJobItem;
   polling: boolean;
   canRetry: boolean;
+  canPause: boolean;
+  canResume: boolean;
   canWriteJob: boolean;
+  pausing: boolean;
+  resuming: boolean;
   retrying: boolean;
   exportStale: boolean;
   exportDownloading: "html" | "jsonld" | "package" | null;
@@ -117,8 +142,12 @@ defineProps<{
   deleting: boolean;
 }>();
 
+const displayStatus = computed(() => resolveJobDisplayStatus(props.job));
+
 const emit = defineEmits<{
   (e: "back"): void;
+  (e: "pause"): void;
+  (e: "resume"): void;
   (e: "retry"): void;
   (e: "download-export", format: "html"): void;
   (e: "publish-cms"): void;

@@ -75,7 +75,7 @@ export class SemrushQueueService implements OnModuleInit, OnModuleDestroy {
     hooks?: SemrushQueueRunHooks,
   ): Promise<SeoScore> {
     if (!isPlaywrightQueueEnabled()) {
-      return this.semrushChecker.checkScore(input);
+      return this.semrushChecker.checkScore({ ...input, articleJobId: meta.jobId });
     }
 
     if (!this.queueEvents) {

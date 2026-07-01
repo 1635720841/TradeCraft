@@ -4,6 +4,7 @@
 
 import { Module } from '@nestjs/common';
 import { PlaywrightQueueModule } from '../../playwright-queue.module';
+import { SeoFactoryProvidersModule } from '../../providers/seo-factory-providers.module';
 import { ScoreCalibrationModule } from '../score-calibration/score-calibration.module';
 import { LlmModule } from '../llm/llm.module';
 import { SeoCheckerService } from './seo-checker.service';
@@ -16,7 +17,7 @@ import { SeoCheckerRpaService } from './seo-checker-rpa.service';
 import { SeoCheckerSemrushOptimizeService } from './seo-checker-semrush-optimize.service';
 
 @Module({
-  imports: [LlmModule, PlaywrightQueueModule, ScoreCalibrationModule],
+  imports: [LlmModule, PlaywrightQueueModule, ScoreCalibrationModule, SeoFactoryProvidersModule],
   providers: [
     SeoCheckerProgressService,
     SeoCheckerRpaService,

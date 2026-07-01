@@ -143,7 +143,7 @@
       <div v-if="showRightColumn" class="seo-score-panel__right">
         <div class="seo-score-block">
           <el-tabs v-model="detailTab" class="seo-score-detail-tabs">
-            <el-tab-pane :label="issuesTabTitle" name="issues">
+            <el-tab-pane v-if="!releaseReady" :label="issuesTabTitle" name="issues">
               <div class="seo-score-scroll">
                 <p v-if="releaseReady && issueGroups.length" class="seo-issue-polish-note">
                   评分已达标，以下为可选精修项，不影响发布。
@@ -175,7 +175,11 @@
                 </div>
               </div>
             </el-tab-pane>
-            <el-tab-pane :label="`优化建议${suggestionCount ? ` (${suggestionCount})` : ''}`" name="suggestions">
+            <el-tab-pane
+              v-if="!releaseReady"
+              :label="`优化建议${suggestionCount ? ` (${suggestionCount})` : ''}`"
+              name="suggestions"
+            >
               <div class="seo-score-scroll">
                 <template v-if="suggestionGroups.length">
                   <div
@@ -1326,6 +1330,12 @@ function breakdownBarClass(item: { value: number; max: number }) {
 
 watch(issueItems, (items) => {
   if (items.length > 0) detailTab.value = "issues";
+});
+
+watch(releaseReady, (ready) => {
+  if (ready && (detailTab.value === "suggestions" || detailTab.value === "issues")) {
+    detailTab.value = "issues";
+  }
 });
 
 function phaseLabel(phase: ArticleJobOptimizeRound["phase"]) {

@@ -39,6 +39,7 @@ import { resolveJobLocalGate } from './seo-checker-gate.util';
 import type { PostDraftPipelineSetup } from './seo-checker-pipeline.types';
 import { SeoCheckerLocalPipelineService } from './seo-checker-local-pipeline.service';
 import { SeoCheckerSemrushPipelineService } from './seo-checker-semrush-pipeline.service';
+import { isSemrushWorkAbortedError } from './seo-checker-lifecycle.service';
 
 @Injectable()
 export class SeoCheckerPipelineService {
@@ -206,11 +207,29 @@ export class SeoCheckerPipelineService {
       initialLocalResult,
     });
 
-    await this.semrushPipelineService.runSemrushOptimization({
-      ctx,
-      job,
-      setup,
-      local: localResult,
-    });
+    try {
+      await this.semrushPipelineService.runSemrushOptimization({
+        ctx,
+        job,
+        setup,
+        local: localResult,
+      });
+    } catch (error) {
+      if (isSemrushWorkAbortedError(error)) {
+        const row = await this.prisma.articleJob.findFirst({
+          where: { id: ctx.jobId, organizationId: ctx.organizationId, projectId: ctx.projectId },
+          select: { status: true },
+        });
+        if (String(row?.status ?? '') === 'PAUSED') {
+          this.logger.info('SEO pipeline stopped because job was paused during Semrush', {
+            traceId: ctx.traceId,
+            jobId: ctx.jobId,
+            action: 'seo_checker.pipeline_paused_abort',
+          });
+          return;
+        }
+      }
+      throw error;
+    }
   }
 }

@@ -3,11 +3,13 @@
  */
 
 import type { ArticleJobItem } from "@/api/seo-factory/types";
+import { countArticleImagesForDisplay } from "./article-images-display";
 import { LOCAL_SEO_PASS_THRESHOLD, SEMRUSH_PASS_THRESHOLD } from "@/constants/seo-factory";
 import { summarizeCompetitorSerp } from "@wm/shared-core";
 import { countDraftWords } from "./draft-edit-preview";
 import { resolveEffectiveLocalSeoScore } from "./local-seo-display";
 import { formatJobProgressHeadline } from "./job-progress";
+import { resolveParaphraseOutcomeDisplay } from "./paraphrase-outcome";
 
 export type DiagnoseSection = "seo" | "research" | "links" | "images" | "ymyl";
 
@@ -78,7 +80,11 @@ export function buildJobDetailSummary(job: ArticleJobItem): JobDetailSummary {
     readinessBadges.push(`对标 ${competitor.scrapedCount || competitor.total} 篇样本`);
   }
   if (job.draftData?.paraphraseApplied) {
-    readinessBadges.push("原创度优化");
+    const paraphraseBadge = resolveParaphraseOutcomeDisplay(
+      job.seoCheckData?.quillbot,
+      job.draftData.paraphraseApplied
+    ).badgeLabel;
+    if (paraphraseBadge) readinessBadges.push(paraphraseBadge);
   }
   if (job.status === "COMPLETED" && job.outputUrl) {
     readinessBadges.push("可发布");
@@ -111,7 +117,7 @@ export function buildJobDetailSummary(job: ArticleJobItem): JobDetailSummary {
       ? (job.draftData.internalLinks?.length ?? 0)
       : null,
     imageCount: job.draftData?.imagesApplied
-      ? (job.draftData.articleImages?.length ?? 0)
+      ? countArticleImagesForDisplay(job.draftData.content, job.draftData.articleImages)
       : null,
     competitorSampleCount: competitor.scrapedCount || competitor.total,
     benchmarkLine,

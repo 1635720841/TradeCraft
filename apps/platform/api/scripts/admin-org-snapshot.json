@@ -1,0 +1,147 @@
+{
+  "orgs": [
+    {
+      "id": "00000000-0000-4000-8000-000000000010",
+      "name": "平台管理组织",
+      "type": "PLATFORM",
+      "status": "ACTIVE",
+      "planId": "enterprise",
+      "planName": "enterprise",
+      "subscriptionStatus": "ACTIVE",
+      "createdAt": "2026-07-01T09:18:20.271Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "Test Org Rename",
+      "type": "CUSTOMER",
+      "status": "ACTIVE",
+      "planId": "enterprise",
+      "planName": "trial",
+      "subscriptionStatus": "ACTIVE",
+      "createdAt": "2026-07-01T09:18:20.477Z"
+    },
+    {
+      "id": "9817c5f1-25d7-4caf-bc10-7e5eb97b29fa",
+      "name": "企业1",
+      "type": "CUSTOMER",
+      "status": "ACTIVE",
+      "planId": "trial",
+      "planName": "trial",
+      "subscriptionStatus": "ACTIVE",
+      "createdAt": "2026-07-01T09:20:14.908Z"
+    },
+    {
+      "id": "a57cbd49-386c-48bf-9061-e9ef8d87ceee",
+      "name": "测试3",
+      "type": "CUSTOMER",
+      "status": "ACTIVE",
+      "planId": "trial",
+      "planName": "trial",
+      "subscriptionStatus": "ACTIVE",
+      "createdAt": "2026-07-01T09:20:14.912Z"
+    },
+    {
+      "id": "ebeef14b-c408-4187-a107-625ec31517da",
+      "name": "企业测试账号",
+      "type": "CUSTOMER",
+      "status": "ACTIVE",
+      "planId": "trial",
+      "planName": "trial",
+      "subscriptionStatus": "ACTIVE",
+      "createdAt": "2026-07-01T09:20:14.915Z"
+    },
+    {
+      "id": "13e8bab9-a57a-4645-ae7e-3e201bfdd3bb",
+      "name": "AYAA",
+      "type": "CUSTOMER",
+      "status": "ACTIVE",
+      "planId": "enterprise",
+      "planName": "enterprise",
+      "subscriptionStatus": "ACTIVE",
+      "createdAt": "2026-07-01T09:20:14.918Z"
+    }
+  ],
+  "users": [
+    {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "email": "admin@dev.local",
+      "name": "开发企业管理员",
+      "role": "ADMIN",
+      "status": "ACTIVE",
+      "organizationId": "00000000-0000-4000-8000-000000000001",
+      "createdAt": "2026-07-01T09:18:20.671Z"
+    },
+    {
+      "id": "6f6b164c-dd7f-479c-9285-11a2812a5d99",
+      "email": "123@qq.com",
+      "name": "123",
+      "role": "ADMIN",
+      "status": "ACTIVE",
+      "organizationId": "00000000-0000-4000-8000-000000000010",
+      "createdAt": "2026-07-01T09:20:15.014Z"
+    },
+    {
+      "id": "e5fb6df1-f9c1-4f74-81b5-bff991108d3d",
+      "email": "2131@qq.com",
+      "name": "2131",
+      "role": "ADMIN",
+      "status": "INVITED",
+      "organizationId": "00000000-0000-4000-8000-000000000010",
+      "createdAt": "2026-07-01T09:20:15.016Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000011",
+      "email": "super@dev.local",
+      "name": "超级管理员",
+      "role": "SUPER_ADMIN",
+      "status": "ACTIVE",
+      "organizationId": "00000000-0000-4000-8000-000000000010",
+      "createdAt": "2026-07-01T09:18:20.373Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000012",
+      "email": "ops@dev.local",
+      "name": "平台管理员",
+      "role": "PLATFORM_OPERATOR",
+      "status": "ACTIVE",
+      "organizationId": "00000000-0000-4000-8000-000000000010",
+      "createdAt": "2026-07-01T09:18:20.474Z"
+    },
+    {
+      "id": "13461f5d-8920-4fcb-b5c5-3d3f3351b887",
+      "email": "ayaa@ayaatech.com",
+      "name": "ayaa",
+      "role": "ADMIN",
+      "status": "ACTIVE",
+      "organizationId": "13e8bab9-a57a-4645-ae7e-3e201bfdd3bb",
+      "createdAt": "2026-07-01T09:20:15.022Z"
+    },
+    {
+      "id": "2ffba970-22b4-4cd7-9091-66d9579d8011",
+      "email": "111@qq.com",
+      "name": "111",
+      "role": "ADMIN",
+      "status": "ACTIVE",
+      "organizationId": "9817c5f1-25d7-4caf-bc10-7e5eb97b29fa",
+      "createdAt": "2026-07-01T09:20:15.024Z"
+    },
+    {
+      "id": "eecf13c7-84c1-42ba-8a66-888ee7593a9c",
+      "email": "2222@qq.com",
+      "name": "2222",
+      "role": "ADMIN",
+      "status": "ACTIVE",
+      "organizationId": "a57cbd49-386c-48bf-9061-e9ef8d87ceee",
+      "createdAt": "2026-07-01T09:20:15.026Z"
+    },
+    {
+      "id": "52d3cf41-ba7b-4faa-8c7c-9b364c23350d",
+      "email": "22@qq.com",
+      "name": "22",
+      "role": "ADMIN",
+      "status": "ACTIVE",
+      "organizationId": "ebeef14b-c408-4187-a107-625ec31517da",
+      "createdAt": "2026-07-01T09:20:15.027Z"
+    }
+  ]
+}

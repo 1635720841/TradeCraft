@@ -21,11 +21,11 @@ const {
 describe('extractHtmlImageSrcs', () => {
   it('collects unique img src values', () => {
     const html =
-      '<p><img alt="A" src="/api/v1/projects/p/jobs/j/draft/images/a.png?exp=1&amp;sig=x">' +
+      '<p><img alt="A" src="/api/v1/projects/p/media/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/file?exp=1&amp;sig=x">' +
       '<img alt="B" src="https://cdn.example.com/b.jpg"></p>';
     const srcs = extractHtmlImageSrcs(html);
     assert.equal(srcs.length, 2);
-    assert.match(srcs[0] ?? '', /draft\/images\/a\.png/);
+    assert.match(srcs[0] ?? '', /\/media\/[0-9a-f-]{36}\/file/);
     assert.equal(srcs[1], 'https://cdn.example.com/b.jpg');
   });
 });
@@ -42,9 +42,12 @@ describe('shouldRemapImageForShopify', () => {
     );
   });
 
-  it('remaps platform draft API and external URLs', () => {
+  it('remaps platform media API and external URLs', () => {
     assert.equal(
-      shouldRemapImageForShopify('/api/v1/projects/p/jobs/j/draft/images/a.png', 'demo.myshopify.com'),
+      shouldRemapImageForShopify(
+        '/api/v1/projects/p/media/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/file?exp=1&sig=x',
+        'demo.myshopify.com',
+      ),
       true,
     );
     assert.equal(

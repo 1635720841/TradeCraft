@@ -14,7 +14,6 @@ import type {
   CreateBatchArticleJobsPayload,
   CmsPublishResult,
   DraftEditHistoryResult,
-  DraftImageUploadResult,
   DraftResolveStaleAction,
   PatchArticleDraftPayload,
   PatchArticleDraftResult,
@@ -163,6 +162,31 @@ export async function retryArticleJob(
   return res.data;
 }
 
+/** 暂停进行中的任务（可继续执行） */
+export async function pauseArticleJob(
+  projectId: string,
+  jobId: string,
+  payload?: { reason?: string }
+): Promise<Pick<ArticleJobItem, "id" | "traceId" | "status" | "targetKeyword">> {
+  const res = await http.request<
+    WmApiResponse<Pick<ArticleJobItem, "id" | "traceId" | "status" | "targetKeyword">>
+  >("post", `${projectBase(projectId)}/${jobId}/pause`, {
+    data: payload ?? {}
+  });
+  return res.data;
+}
+
+/** 继续执行已暂停任务（从断点续跑） */
+export async function resumeArticleJob(
+  projectId: string,
+  jobId: string
+): Promise<Pick<ArticleJobItem, "id" | "traceId" | "status" | "targetKeyword">> {
+  const res = await http.request<
+    WmApiResponse<Pick<ArticleJobItem, "id" | "traceId" | "status" | "targetKeyword">>
+  >("post", `${projectBase(projectId)}/${jobId}/resume`);
+  return res.data;
+}
+
 /** 手动触发 Semrush RPA 检测当前初稿（202 异步） */
 export async function triggerSemrushCheck(
   projectId: string,
@@ -218,7 +242,7 @@ export async function rerunArticleOptimization(
   return res.data;
 }
 
-/** 已完成任务仅重跑原创表达优化（202 异步） */
+/** 已完成任务仅重跑表达润色（202 异步） */
 export async function rerunArticleParaphrase(
   projectId: string,
   jobId: string
@@ -320,25 +344,6 @@ export async function resolveArticleDraftStale(
     "post",
     `${projectBase(projectId)}/${jobId}/draft/resolve-stale`,
     { data: { action } }
-  );
-  return res.data;
-}
-
-/** 上传稿件正文插图（本地上传，最大 5MB） */
-export async function uploadArticleDraftImage(
-  projectId: string,
-  jobId: string,
-  file: File
-): Promise<DraftImageUploadResult> {
-  const formData = new FormData();
-  formData.append("file", file);
-  const res = await http.request<WmApiResponse<DraftImageUploadResult>>(
-    "post",
-    `${projectBase(projectId)}/${jobId}/draft/images`,
-    {
-      data: formData,
-      headers: { "Content-Type": "multipart/form-data" }
-    }
   );
   return res.data;
 }
@@ -601,6 +606,7 @@ export interface ArticleImagesPatchPayload {
   articleImages: Array<{
     alt: string;
     url: string;
+    assetId?: string;
     source?: ArticleJobArticleImage["source"];
     insertAfterHeading?: string;
   }>;

@@ -42,8 +42,8 @@ Link and image Markdown may appear as tokens like `⟦MEDIA:0⟧`, `⟦MEDIA:1�
 ## Anti-AI pattern targets (only when present)
 
 Replace or remove template phrases when safe, e.g.:
-- English: "delve into", "landscape", "it's important to note", "in conclusion", "furthermore", "robust solution", "comprehensive guide"
-- 中文: "综上所述", "值得注意的是", "在当今时代", "不可或缺", "深入了解"
+- English: "delve into", "landscape", "it's important to note", "it's worth noting", "in conclusion", "furthermore", "robust solution", "comprehensive guide", "leverage", "game-changer", "seamless", "cutting-edge", "plethora of", "when it comes to", "plays a crucial role", "navigate the complexities", "at the end of the day"
+- 中文: "综上所述", "值得注意的是", "值得一提的是", "在当今时代", "毋庸置疑", "不可或缺", "深入了解", "赋能", "助力", "全方位", "旨在", "随着…的发展"
 
 If none of these patterns appear, return the body **unchanged**.
 

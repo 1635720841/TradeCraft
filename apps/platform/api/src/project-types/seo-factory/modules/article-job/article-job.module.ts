@@ -14,7 +14,6 @@ import { LlmModule } from '../llm/llm.module';
 import { SeoCheckerModule } from '../seo-checker/seo-checker.module';
 import { SiteModule } from '../site/site.module';
 import { ArticleJobDraftEditService } from './article-job-draft-edit.service';
-import { ArticleJobDraftImageService } from './article-job-draft-image.service';
 import { ArticleJobRewriteService } from './article-job-rewrite.service';
 import { ArticleJobReviewService } from './article-job-review.service';
 import { ArticleJobStatsService } from './article-job-stats.service';
@@ -31,12 +30,13 @@ import { ExportModule } from '../export/export.module';
 import { GscModule } from '../gsc/gsc.module';
 import { ScraperModule } from '../scraper/scraper.module';
 import { IllustrationModule } from '../illustration/illustration.module';
+import { MediaModule } from '../../../../modules/media/media.module';
 import { ArticleJobInternalLinksService } from './article-job-internal-links.service';
 import { ArticleJobImagesService } from './article-job-images.service';
 import { ArticleJobActivityModule } from './article-job-activity.module';
 
 @Module({
-  imports: [ProjectModule, AccessModule, ArticleJobActivityModule, BillingModule, SeoFactoryQueueModule, SeoCheckerModule, LlmModule, SiteModule, ExportModule, LinkingModule, IllustrationModule, GscModule, ScraperModule],
+  imports: [ProjectModule, AccessModule, MediaModule, ArticleJobActivityModule, BillingModule, SeoFactoryQueueModule, SeoCheckerModule, LlmModule, SiteModule, ExportModule, LinkingModule, IllustrationModule, GscModule, ScraperModule],
   controllers: [ArticleJobController, ArticleJobCollabController],
   providers: [
     ArticleJobService,
@@ -50,7 +50,6 @@ import { ArticleJobActivityModule } from './article-job-activity.module';
     ArticleJobImagesService,
     ArticleJobRewriteService,
     ArticleJobDraftEditService,
-    ArticleJobDraftImageService,
     ArticleJobReviewService,
   ],
   exports: [ArticleJobService, ArticleJobStatsService],

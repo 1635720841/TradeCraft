@@ -161,16 +161,18 @@ const navItems = computed(() => {
     label: string;
     badge?: number | string;
     badgeMuted?: boolean;
-  }> = [
-    {
+  }> = [];
+
+  if (!releaseReady.value) {
+    items.push({
       id: "fixes",
-      label: fixesNavLabel(releaseReady.value),
-      badge: issues.value || undefined,
-      badgeMuted: releaseReady.value && issues.value > 0
-    },
-    { id: "scores", label: "评分明细" },
-    { id: "research", label: "竞品对标" }
-  ];
+      label: fixesNavLabel(false),
+      badge: issues.value || undefined
+    });
+  }
+
+  items.push({ id: "scores", label: "评分明细" });
+  items.push({ id: "research", label: "竞品对标" });
   items.push({ id: "pipeline", label: "产线明细" });
   return items;
 });

@@ -363,6 +363,33 @@ model User {
   @@index([organizationId, status])
 }
 
+enum MediaAssetSource {
+  BFL
+  UPLOAD
+  URL
+}
+
+/// 项目级媒体资产库：跨项目类型复用，二进制存对象存储，元数据在此表。
+model MediaAsset {
+  id             String           @id @default(uuid())
+  organizationId String
+  projectId      String
+  project        Project          @relation(fields: [projectId], references: [id])
+  storageKey     String           @unique
+  contentType    String
+  sizeBytes      Int
+  source         MediaAssetSource
+  sourceMeta     Json?
+  contentHash    String?
+  referenceCount Int              @default(0)
+  createdBy      String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([organizationId, projectId, createdAt])
+  @@index([organizationId, projectId, source])
+}
+
 model Project {
   id              String           @id @default(uuid())
   organizationId  String
@@ -378,6 +405,7 @@ model Project {
   keywords        KeywordEntry[]
   keywordClusters KeywordCluster[]
   members         ProjectMember[]
+  mediaAssets     MediaAsset[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   deletedAt       DateTime?
@@ -605,6 +633,8 @@ enum JobStatus {
   ILLUSTRATING
   OPTIMIZING
   REVIEWING
+  CANCELLED
+  PAUSED
   COMPLETED
   FAILED
 }

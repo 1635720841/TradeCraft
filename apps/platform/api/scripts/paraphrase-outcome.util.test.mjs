@@ -3,15 +3,11 @@
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { loadDist } from './load-dist.mjs';
 
-const apiRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const utilPath = pathToFileURL(
-  resolve(apiRoot, 'dist/project-types/seo-factory/modules/paraphrase/paraphrase-outcome.util.js'),
-).href;
-
-const { isPolishUnneededOutcome } = await import(utilPath);
+const { isPolishUnneededOutcome } = loadDist(
+  'project-types/seo-factory/modules/paraphrase/paraphrase-outcome.util.js',
+);
 
 describe('isPolishUnneededOutcome', () => {
   it('returns true when all chunks were skipped without issues', () => {
@@ -38,6 +34,19 @@ describe('isPolishUnneededOutcome', () => {
         safetyIssueCount: 0,
         validationPassed: false,
         warnings: ['[chunk-0] 篇幅变化过大（200%）'],
+      }),
+      false,
+    );
+  });
+
+  it('returns false when partial chunk warning is present', () => {
+    assert.equal(
+      isPolishUnneededOutcome({
+        contentUnchanged: true,
+        chunksPolished: 1,
+        safetyIssueCount: 0,
+        validationPassed: true,
+        warnings: ['paraphrase_partial:low_llm_success_rate (0/1)'],
       }),
       false,
     );

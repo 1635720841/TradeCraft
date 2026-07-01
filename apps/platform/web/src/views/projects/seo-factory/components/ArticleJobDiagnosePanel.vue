@@ -34,7 +34,7 @@
     />
 
     <el-collapse v-model="expandedSections" class="job-diagnose-collapse">
-      <el-collapse-item id="diagnose-fixes" name="fixes">
+      <el-collapse-item v-if="showFixesSection" id="diagnose-fixes" name="fixes">
         <template #title>
           <span class="job-diagnose-collapse__title">{{ fixesTitle }}</span>
           <span v-if="fixesHint" class="job-diagnose-collapse__hint">{{ fixesHint }}</span>
@@ -127,7 +127,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import type { RefreshArticleJobSerpPayload } from "@/api/seo-factory/article-job";
 import type {
   ArticleJobItem,
@@ -206,16 +206,33 @@ const issueCount = computed(() => countSeoIssueItems(props.job.seoCheckData));
 const releaseReady = computed(() =>
   isSeoReleaseReady(summary.value.localPassed, summary.value.semrushPassed)
 );
+const showFixesSection = computed(() => !releaseReady.value);
 const fixesTitle = computed(() => fixesSectionTitle(releaseReady.value));
 const fixesHint = computed(() => fixesSectionHint(releaseReady.value, issueCount.value));
 const benchmarkHint = computed(() => summary.value.benchmarkLine);
 
+watch(
+  showFixesSection,
+  (show) => {
+    if (show) return;
+    expandedSections.value = expandedSections.value.filter((section) => section !== "fixes");
+    if (activeSection.value === "fixes") {
+      activeSection.value = "scores";
+    }
+    if (expandedSections.value.length === 0) {
+      expandedSections.value = ["scores"];
+    }
+  },
+  { immediate: true }
+);
+
 function scrollToSection(section: DiagnoseSectionId) {
-  activeSection.value = section;
-  if (!expandedSections.value.includes(section)) {
-    expandedSections.value = [...expandedSections.value, section];
+  const target = section === "fixes" && !showFixesSection.value ? "scores" : section;
+  activeSection.value = target;
+  if (!expandedSections.value.includes(target)) {
+    expandedSections.value = [...expandedSections.value, target];
   }
-  if (section === "pipeline") {
+  if (target === "pipeline") {
     pipelineTab.value = "links";
   }
   requestAnimationFrame(() => {
@@ -225,7 +242,7 @@ function scrollToSection(section: DiagnoseSectionId) {
       research: "diagnose-research",
       pipeline: "diagnose-pipeline"
     };
-    document.getElementById(anchorMap[section])?.scrollIntoView({
+    document.getElementById(anchorMap[target])?.scrollIntoView({
       behavior: "smooth",
       block: "start"
     });

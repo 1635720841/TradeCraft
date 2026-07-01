@@ -107,6 +107,8 @@ export interface SeoCheckInput {
   submittedKeywords?: string[];
   /** 优先固定的 3ue 节点键（如「节点14」）；用于同一 job 的多轮评测保持一致 */
   preferredNodeKey?: string;
+  /** 平台内部：文章任务 ID，用于暂停时协作中止 RPA */
+  articleJobId?: string;
 }
 
 export interface ISeoCheckerProvider {

@@ -10,6 +10,7 @@ import { LoggerService } from '../../../../core/logger/logger.service';
 import type { SeoCheckInput, SeoScore } from '@wm/provider-interfaces';
 import type { LlmJobContext } from '../llm/llm.service';
 import { SemrushQueueService } from '../../services/semrush-queue.service';
+import { SemrushWorkAbortService } from '../../providers/semrush/semrush-work-abort.service';
 import { persistSemrushQueueCheckpoint } from '../../utils/semrush-queue-checkpoint.util';
 import { isPlaywrightJobWaitTimeout } from '../../utils/semrush-queue-wait.util';
 import { hashSemrushContent } from '../../providers/semrush/semrush-content-hash.util';
@@ -23,6 +24,7 @@ import {
 import type { SemrushCheckPending, SemrushRpaInFlight } from '../../constants/semrush-check';
 import { flowCtx } from './seo-checker-scoring.util';
 import { SeoCheckerProgressService } from './seo-checker-progress.service';
+import { isSemrushWorkAbortedError } from './seo-checker-lifecycle.service';
 
 @Injectable()
 export class SeoCheckerRpaService {
@@ -30,6 +32,7 @@ export class SeoCheckerRpaService {
     private readonly prisma: PrismaService,
     private readonly semrushQueue: SemrushQueueService,
     private readonly progressService: SeoCheckerProgressService,
+    private readonly abortService: SemrushWorkAbortService,
     private readonly logger: LoggerService,
   ) {}
 
@@ -122,6 +125,9 @@ export class SeoCheckerRpaService {
         this.logger,
       );
     } catch (error) {
+      if (isSemrushWorkAbortedError(error)) {
+        shouldClearRpaInFlight = true;
+      }
       if (isPlaywrightJobWaitTimeout(error)) {
         shouldClearRpaInFlight = false;
         this.logger.warn('Semrush RPA wait timed out while worker may still be active', {
@@ -265,12 +271,29 @@ export class SeoCheckerRpaService {
       });
     }
 
-    if (job.status !== 'OPTIMIZING') {
+    if (job.status !== 'OPTIMIZING' && job.status !== 'PAUSED') {
       throw new BusinessException(
         ErrorCodes.VALIDATION_ERROR,
         '任务已不在优化中，停止 Semrush 后续步骤',
         { semrushAborted: true },
       );
     }
+  }
+
+  /** 恢复续跑时清除 Redis 中止标记 */
+  async clearAbortSignal(ctx: LlmJobContext): Promise<void> {
+    await this.abortService.clearAbortSignal(ctx.jobId);
+  }
+
+  /** 暂停任务时中止进行中的 Semrush RPA（Redis + 本进程浏览器）。 */
+  async abortInFlightWork(ctx: LlmJobContext): Promise<boolean> {
+    await this.abortService.signalAbort(ctx.jobId);
+    await this.clearSemrushRpaInFlight(ctx);
+    this.logger.info('Semrush in-flight work abort signaled for paused job', {
+      traceId: ctx.traceId,
+      jobId: ctx.jobId,
+      action: 'seo_checker.semrush_inflight_abort',
+    });
+    return true;
   }
 }

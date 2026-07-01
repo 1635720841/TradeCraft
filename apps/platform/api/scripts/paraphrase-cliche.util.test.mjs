@@ -3,19 +3,16 @@
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { loadDist } from './load-dist.mjs';
 
-const apiRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const utilPath = pathToFileURL(
-  resolve(apiRoot, 'dist/project-types/seo-factory/modules/paraphrase/paraphrase-cliche.util.js'),
-).href;
-
-const { applyDeterministicAntiAiPolish, chunkHasAntiAiPhrases } = await import(utilPath);
+const { applyDeterministicAntiAiPolish, chunkHasAntiAiPhrases } = loadDist(
+  'project-types/seo-factory/modules/paraphrase/paraphrase-cliche.util.js',
+);
 
 describe('paraphrase-cliche.util', () => {
   it('detects common AI phrases', () => {
     assert.equal(chunkHasAntiAiPhrases('We will delve into BMS design.'), true);
+    assert.equal(chunkHasAntiAiPhrases('Teams can leverage this platform seamlessly.'), true);
     assert.equal(chunkHasAntiAiPhrases('Flight time depends on pack capacity.'), false);
   });
 
@@ -26,5 +23,13 @@ describe('paraphrase-cliche.util', () => {
     assert.match(result.content, /explore BMS design/);
     assert.doesNotMatch(result.content, /delve into/);
     assert.match(result.content, /^## Guide/);
+  });
+
+  it('replaces leverage with use', () => {
+    const original = '## Guide\n\nOperators can leverage the BMS dashboard for fleet monitoring.';
+    const result = applyDeterministicAntiAiPolish(original);
+    assert.equal(result.changed, true);
+    assert.match(result.content, /use the BMS dashboard/);
+    assert.doesNotMatch(result.content, /leverage/);
   });
 });

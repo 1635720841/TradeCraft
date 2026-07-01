@@ -41,7 +41,7 @@ describe("buildSeoVerdictTitle", () => {
 });
 
 describe("buildSeoVerdictDesc", () => {
-  it("frames residual issues as optional polish after pass", () => {
+  it("uses publish copy after pass without surfacing polish items", () => {
     expect(
       buildSeoVerdictDesc({
         releaseReady: true,
@@ -49,7 +49,7 @@ describe("buildSeoVerdictDesc", () => {
         suggestionCount: 17,
         hasDraftContent: true
       })
-    ).toBe("另有 6 处可读性细节可精修（不影响发布） · 17 条优化建议");
+    ).toBe("可导出或发布");
   });
 
   it("uses blocking copy before pass", () => {
@@ -79,13 +79,15 @@ describe("issuesTabLabel", () => {
 });
 
 describe("buildOutcomeSummaryDesc", () => {
-  it("does not contradict release-ready state", () => {
+  it("does not surface polish items after pass", () => {
     expect(
       buildOutcomeSummaryDesc({
         releaseReady: true,
         issueCount: 6,
         hasDraftContent: true
       })
-    ).toContain("不影响发布");
+    ).toBe(
+      "已完成竞品对标、SEO 评分、内容优化和发布物生成，适合直接交付给运营或推送到 CMS。"
+    );
   });
 });

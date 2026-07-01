@@ -3,7 +3,7 @@
  */
 
 import type { InternalLinkRecord } from '../linking/link-match.util';
-import { countMarkdownImages, type ArticleImageRecord } from './article-image.util';
+import { countEffectiveMarkdownImages, type ArticleImageRecord } from './article-image.util';
 import { insertArticleImageMarkdown } from './article-images-edit.util';
 
 export interface DraftEnrichmentInput {
@@ -83,5 +83,5 @@ export function countMissingEnrichments(input: DraftEnrichmentInput): {
 }
 
 export function hasMinimumImages(content: string, minImages: number): boolean {
-  return countMarkdownImages(content) >= minImages;
+  return countEffectiveMarkdownImages(content) >= minImages;
 }

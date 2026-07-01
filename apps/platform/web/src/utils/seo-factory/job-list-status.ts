@@ -12,10 +12,34 @@ import {
 import { draftEditStatusLabel } from "@/utils/seo-factory/draft-edit-preview";
 import { isBriefPending, isReviewPending } from "@/utils/seo-factory/job-progress";
 import { WORDPRESS_CMS_UI_ENABLED } from "@/constants/feature-flags";
+import type { ArticleJobWorkflowStep } from "@/api/seo-factory/types";
 
 export interface JobListPrimaryTag {
   label: string;
   type: "info" | "success" | "warning" | "danger" | "primary";
+}
+
+/** 列表/详情展示用状态：从暂停恢复后若仍为 QUEUED，按断点步骤显示对应阶段。 */
+export function resolveJobDisplayStatus(job: ArticleJobItem): string {
+  if (job.status !== "QUEUED") return job.status;
+  const paused = job.seoCheckData?.workflow?.pausedStep as ArticleJobWorkflowStep | undefined;
+  if (!paused || paused === "serp") return job.status;
+  switch (paused) {
+    case "brief":
+    case "draft":
+      return "DRAFTING";
+    case "linking":
+      return "LINKING";
+    case "images":
+      return "ILLUSTRATING";
+    case "optimizing":
+    case "paraphrasing":
+      return "OPTIMIZING";
+    case "ymyl":
+      return "REVIEWING";
+    default:
+      return job.status;
+  }
 }
 
 export function resolveJobListPrimaryTag(job: ArticleJobItem): JobListPrimaryTag {
@@ -39,7 +63,7 @@ export function resolveJobListPrimaryTag(job: ArticleJobItem): JobListPrimaryTag
     }
   }
   return {
-    label: dictLabel(jobStatusDict, job.status),
-    type: dictTagType(jobStatusDict, job.status) as JobListPrimaryTag["type"]
+    label: dictLabel(jobStatusDict, resolveJobDisplayStatus(job)),
+    type: dictTagType(jobStatusDict, resolveJobDisplayStatus(job)) as JobListPrimaryTag["type"]
   };
 }

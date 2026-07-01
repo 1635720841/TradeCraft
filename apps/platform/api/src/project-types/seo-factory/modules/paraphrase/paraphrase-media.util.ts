@@ -5,6 +5,9 @@
  * - 不负责：LLM 调用（ParaphraseService）
  */
 
+import { PARAPHRASE_MIN_PROSE_CHARS } from '../../constants/paraphrase';
+import { chunkHasAntiAiPhrases } from './paraphrase-cliche.util';
+
 const MARKDOWN_MEDIA_PATTERN = /!\[[^\]]*\]\([^)]+\)|\[[^\]]+\]\([^)]+\)/g;
 const MEDIA_PLACEHOLDER_PATTERN = /⟦MEDIA:(\d+)⟧/g;
 const FUZZY_MEDIA_PLACEHOLDER_PATTERN = /⟦\s*MEDIA\s*:\s*(\d+)\s*⟧/gi;
@@ -163,9 +166,6 @@ export function measureParaphraseProseLength(content: string): number {
   return withoutPlaceholders.replace(/\s+/g, '').length;
 }
 
-import { PARAPHRASE_MIN_PROSE_CHARS } from '../../constants/paraphrase';
-import { chunkHasAntiAiPhrases } from './paraphrase-cliche.util';
-
 export interface ParaphraseChunkSkipOptions {
   isLead?: boolean;
 }
@@ -175,15 +175,20 @@ export function resolveParaphraseChunkSkip(
   content: string,
   options?: ParaphraseChunkSkipOptions,
 ): string | undefined {
-  if (options?.isLead) return 'lead_section';
-
   const proseLen = measureParaphraseProseLength(content);
   const mediaCount = extractMarkdownMediaExpressions(content).length;
+  const hasCliches = chunkHasAntiAiPhrases(content);
+
+  if (options?.isLead) {
+    if (!hasCliches) return 'lead_section';
+    if (proseLen < PARAPHRASE_MIN_PROSE_CHARS) return 'short_prose';
+    return undefined;
+  }
 
   if (proseLen < 80 && mediaCount > 0) return 'minimal_prose';
   if (proseLen < PARAPHRASE_MIN_PROSE_CHARS) return 'short_prose';
   if (mediaCount > 0 && proseLen < 280) return 'media_heavy';
-  if (!chunkHasAntiAiPhrases(content)) return 'no_ai_cliches';
+  if (!hasCliches) return 'no_ai_cliches';
 
   return undefined;
 }

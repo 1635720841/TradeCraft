@@ -1,5 +1,6 @@
 import type { Locator, Page } from 'playwright';
 import { SEMRUSH_UI_POLL_MS } from './semrush.constants';
+import { assertSemrushNotAbortedInContext, semrushAbortContext } from './semrush-work-abort.context';
 
 export async function pollUntil(
   check: () => Promise<boolean>,
@@ -9,6 +10,7 @@ export async function pollUntil(
   const deadline = Date.now() + options.timeoutMs;
 
   while (Date.now() < deadline) {
+    await assertSemrushNotAbortedInContext();
     if (await check()) return;
     await sleep(intervalMs);
   }
@@ -26,6 +28,7 @@ export async function waitForAnyLocator(
   let lastError: unknown;
 
   while (Date.now() < deadline) {
+    await assertSemrushNotAbortedInContext();
     try {
       const locator = buildLocator(page).first();
       if (await locator.isVisible().catch(() => false)) {
@@ -41,6 +44,19 @@ export async function waitForAnyLocator(
   throw new Error(`等待超时：${options.label}${detail}`);
 }
 
-export function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+const ABORT_SLEEP_SLICE_MS = 400;
+
+export async function sleep(ms: number): Promise<void> {
+  if (!semrushAbortContext.getStore()) {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+    return;
+  }
+
+  let remaining = ms;
+  while (remaining > 0) {
+    await assertSemrushNotAbortedInContext();
+    const slice = Math.min(ABORT_SLEEP_SLICE_MS, remaining);
+    await new Promise((resolve) => setTimeout(resolve, slice));
+    remaining -= slice;
+  }
 }

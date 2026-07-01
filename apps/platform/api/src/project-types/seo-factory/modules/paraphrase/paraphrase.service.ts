@@ -18,6 +18,11 @@ import {
 import {
   applyReadabilityParagraphFix,
   enforceArticleH1Boundary,
+  formatParaphraseChunkProgress,
+  PARAPHRASE_EMPTY_DRAFT_ERROR,
+  PARAPHRASE_PROGRESS_RUNNING,
+  PARAPHRASE_PROGRESS_VALIDATING,
+  PARAPHRASE_SITE_DISABLED,
   SEMRUSH_PARAGRAPH_MAX_SENTENCES,
   SEMRUSH_PARAGRAPH_MAX_WORDS,
   validateAndFixSemrushStructure,
@@ -123,7 +128,7 @@ export class ParaphraseService {
 
     const siteWorkflow = parseSiteWorkflowSettings(job.site?.settings);
     if (!siteWorkflow.enableParaphrase) {
-      await this.markSkipped(ctx, '站点已关闭原创表达优化');
+      await this.markSkipped(ctx, PARAPHRASE_SITE_DISABLED);
       return;
     }
 
@@ -138,7 +143,7 @@ export class ParaphraseService {
 
     const originalContent = draftData?.content?.trim();
     if (!originalContent) {
-      throw new Error('初稿为空，无法执行原创表达优化');
+      throw new Error(PARAPHRASE_EMPTY_DRAFT_ERROR);
     }
 
     const briefContext = buildOptimizeBriefContext(job.briefData);
@@ -159,7 +164,7 @@ export class ParaphraseService {
       semrushMeta: this.extractSemrushWordMeta(job.seoCheckData),
     };
 
-    await this.setWorkflowProgress(ctx.jobId, job.seoCheckData, '正在执行原创表达优化…');
+    await this.setWorkflowProgress(ctx.jobId, job.seoCheckData, PARAPHRASE_PROGRESS_RUNNING);
 
     const rawParaphraseResult = shouldUseChunkedParaphrase(originalContent)
       ? await this.paraphraseByChunks(ctx, job.seoCheckData, originalContent, runContext)
@@ -184,7 +189,7 @@ export class ParaphraseService {
       ],
     };
 
-    await this.setWorkflowProgress(ctx.jobId, job.seoCheckData, '原创表达优化复检中…');
+    await this.setWorkflowProgress(ctx.jobId, job.seoCheckData, PARAPHRASE_PROGRESS_VALIDATING);
 
     const safety = checkParaphraseSafety({
       keyword: ctx.targetKeyword,
@@ -333,7 +338,8 @@ export class ParaphraseService {
     const changesSummary: string[] = [];
     const warnings: string[] = [];
     let polishedCount = 0;
-    let eligibleCount = 0;
+    let llmEligibleCount = 0;
+    let llmPolishedCount = 0;
     let promptVersion = '';
 
     for (let index = 0; index < chunks.length; index++) {
@@ -341,7 +347,7 @@ export class ParaphraseService {
       await this.setWorkflowProgress(
         ctx.jobId,
         seoCheckData,
-        `原创表达优化中（${index + 1}/${chunks.length}）…`,
+        formatParaphraseChunkProgress(index + 1, chunks.length),
       );
 
       const skipReason = resolveParaphraseChunkSkip(chunk.content, { isLead: chunk.isLead });
@@ -364,10 +370,11 @@ export class ParaphraseService {
         continue;
       }
 
-      eligibleCount += 1;
+      llmEligibleCount += 1;
 
-      const chunkHint =
-        'Single H2 section only — change at most 1–2 awkward sentences; do NOT add ##/### headings; keep word count within 98%–102%; preserve protected terms verbatim.';
+      const chunkHint = chunk.isLead
+        ? 'Lead intro section — change at most 1 sentence with obvious AI clichés only; target keyword MUST stay within first 200 characters; do NOT add ##/### headings; preserve protected terms verbatim.'
+        : 'Single H2 section only — change at most 1–2 awkward sentences; do NOT add ##/### headings; keep word count within 98%–102%; preserve protected terms verbatim.';
 
       const result = await this.paraphraseShieldedContent(chunk.content, runContext, chunkHint);
       promptVersion = result.promptVersion;
@@ -379,6 +386,7 @@ export class ParaphraseService {
       if (chunkSafety.passed) {
         polishedChunks.push(result.content);
         polishedCount += 1;
+        llmPolishedCount += 1;
         changesSummary.push(...(result.changesSummary ?? []));
         warnings.push(...(result.warnings ?? []));
       } else {
@@ -387,14 +395,13 @@ export class ParaphraseService {
       }
     }
 
-    if (eligibleCount > 0 && polishedCount / eligibleCount < PARAPHRASE_MIN_CHUNK_SUCCESS_RATIO) {
-      return {
-        content: originalContent,
-        promptVersion,
-        changesSummary: [],
-        warnings: [...warnings, 'paraphrase_aborted:low_chunk_success_rate'],
-        chunkStats: { total: chunks.length, polished: 0 },
-      };
+    if (
+      llmEligibleCount > 0 &&
+      llmPolishedCount / llmEligibleCount < PARAPHRASE_MIN_CHUNK_SUCCESS_RATIO
+    ) {
+      warnings.push(
+        `paraphrase_partial:low_llm_success_rate (${llmPolishedCount}/${llmEligibleCount})`,
+      );
     }
 
     return {

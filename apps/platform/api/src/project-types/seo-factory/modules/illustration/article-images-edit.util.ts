@@ -7,6 +7,7 @@ import type { ArticleImageRecord } from './article-image.util';
 export interface ArticleImageEdit {
   alt: string;
   url: string;
+  assetId?: string;
   source?: ArticleImageRecord['source'];
   insertAfterHeading?: string;
 }
@@ -85,6 +86,7 @@ export function mergeArticleImageEdits(
     return {
       alt,
       url,
+      assetId: edit.assetId ?? base?.assetId,
       source: edit.source ?? base?.source ?? 'upload',
       insertAfterHeading: edit.insertAfterHeading?.trim() || base?.insertAfterHeading,
     };

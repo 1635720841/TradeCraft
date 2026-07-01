@@ -18,6 +18,7 @@ export function isPolishUnneededOutcome(input: {
 
   const warnings = input.warnings;
   if (warnings.some((line) => line.includes('paraphrase_aborted:'))) return false;
+  if (warnings.some((line) => line.includes('paraphrase_partial:'))) return false;
   if (warnings.some((line) => line.includes('内链 URL 丢失') || line.includes('配图 URL 丢失'))) {
     return false;
   }
@@ -36,6 +37,7 @@ export function isTechnicalParaphraseWarning(line: string): boolean {
     line.includes('chunk_skipped:') ||
     line.includes('document_skipped:') ||
     line.includes('validate_skipped:') ||
+    line.includes('paraphrase_partial:') ||
     line.startsWith('format_repaired:') ||
     line === 'readability_repaired_before_save'
   );

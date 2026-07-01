@@ -35,7 +35,12 @@ import {
   shouldRecoverOrphanOptimizing,
   type SemrushCheckPending,
 } from '../../constants/semrush-check';
-import { resolveResumeStep, withWorkflowMeta } from '../../constants/workflow-resume';
+import {
+  getWorkflowMeta,
+  jobStatusForResumeStep,
+  resolveResumeStep,
+  withWorkflowMeta,
+} from '../../constants/workflow-resume';
 import { SeoCheckerService } from '../seo-checker/seo-checker.service';
 import { BillingService } from '../../../../modules/billing/billing.service';
 import { ScraperService } from '../scraper/scraper.service';
@@ -165,11 +170,6 @@ export class ArticleJobService {
     return this.listService.findOne(organizationId, projectId, id);
   }
 
-  async findOneForImageAccess(projectId: string, id: string) {
-    return this.listService.findOneForImageAccess(projectId, id);
-  }
-
-  /** 手动触发 Semrush RPA 检测当前初稿（异步，立即返回 OPTIMIZING） */
   async triggerSemrushCheck(organizationId: string, projectId: string, id: string) {
     const job = await this.prisma.articleJob.findFirst({
       where: { id, organizationId, projectId },
@@ -405,6 +405,7 @@ export class ArticleJobService {
         seoCheckData: withWorkflowMeta(
           {
             ...prevCheck,
+            suppressFailureNotification: true,
             optimizationRerun: {
               reason,
               requestedAt: new Date().toISOString(),
@@ -571,12 +572,15 @@ export class ArticleJobService {
 
     const baseCheck = withWorkflowMeta(job.seoCheckData, null);
     const prevSemrush = baseCheck.semrush as Record<string, unknown> | undefined;
-    const retrySeoCheckData = prevSemrush
-      ? (() => {
-          const { cancelled: _cancelled, ...semrushRest } = prevSemrush;
-          return { ...baseCheck, semrush: semrushRest };
-        })()
-      : baseCheck;
+    const retrySeoCheckData = {
+      ...(prevSemrush
+        ? (() => {
+            const { cancelled: _cancelled, ...semrushRest } = prevSemrush;
+            return { ...baseCheck, semrush: semrushRest };
+          })()
+        : baseCheck),
+      suppressFailureNotification: true,
+    };
 
     await this.prisma.articleJob.update({
       where: { id },
@@ -618,6 +622,233 @@ export class ArticleJobService {
       id: job.id,
       traceId: retryTraceId,
       status: 'QUEUED' as const,
+      targetKeyword: job.targetKeyword,
+    };
+  }
+
+  /** 手动暂停进行中的任务（可从断点恢复）。 */
+  async pause(
+    organizationId: string,
+    projectId: string,
+    id: string,
+    actorUserId: string,
+    reason?: string,
+  ) {
+    const job = await this.prisma.articleJob.findFirst({
+      where: { id, organizationId, projectId },
+      select: {
+        id: true,
+        traceId: true,
+        status: true,
+        targetKeyword: true,
+        serpData: true,
+        briefData: true,
+        draftData: true,
+        seoCheckData: true,
+        semrushScore: true,
+      },
+    });
+
+    if (!job) {
+      throw new BusinessException(ErrorCodes.JOB_NOT_FOUND, '任务不存在');
+    }
+
+    if (String(job.status) === 'PAUSED') {
+      return {
+        id: job.id,
+        traceId: job.traceId,
+        status: 'PAUSED' as const,
+        targetKeyword: job.targetKeyword,
+      };
+    }
+
+    if (!this.isBusyJobStatus(job.status)) {
+      throw new BusinessException(ErrorCodes.VALIDATION_ERROR, '仅进行中任务可暂停');
+    }
+
+    const semrushCtx = {
+      jobId: id,
+      traceId: job.traceId,
+      organizationId,
+      projectId,
+      targetKeyword: job.targetKeyword,
+    };
+    const pending = this.getSemrushPending(job.seoCheckData);
+    if (pending) {
+      await this.seoCheckerService.cancelManualSemrushCheck(
+        semrushCtx,
+        '任务已暂停，Semrush 检测已取消',
+      );
+    }
+
+    const resumeFrom = resolveResumeStep({
+      serpData: job.serpData,
+      briefData: job.briefData,
+      draftData: job.draftData,
+      seoCheckData: job.seoCheckData,
+      semrushScore: job.semrushScore,
+    });
+    const prevWorkflow = getWorkflowMeta(job.seoCheckData);
+    let seoCheckData = withWorkflowMeta(job.seoCheckData, {
+      ...prevWorkflow,
+      failedStep: undefined,
+      pausedStep: resumeFrom,
+      pausedAt: new Date().toISOString(),
+      pausedBy: actorUserId,
+      pauseReason: reason?.trim() || undefined,
+    });
+    if (job.status === 'OPTIMIZING' && !pending) {
+      const prevSemrush = (seoCheckData.semrush ?? {}) as Record<string, unknown>;
+      seoCheckData = {
+        ...seoCheckData,
+        semrush: {
+          ...prevSemrush,
+          cancelled: true,
+          pauseCancelledAt: new Date().toISOString(),
+        },
+      };
+    }
+
+    await this.prisma.articleJob.update({
+      where: { id: job.id },
+      data: {
+        status: 'PAUSED' as never,
+        seoCheckData: seoCheckData as object,
+      },
+    });
+
+    await this.seoCheckerService.abortInFlightSemrushWork(semrushCtx);
+    await this.queueService.removeQueueJobsForArticleJob(job, organizationId, projectId);
+
+    this.logger.info('Article job paused', {
+      traceId: job.traceId,
+      organizationId,
+      projectId,
+      jobId: job.id,
+      resumeFrom,
+      actorUserId,
+      action: 'article_job.pause',
+    });
+
+    return {
+      id: job.id,
+      traceId: job.traceId,
+      status: 'PAUSED' as const,
+      targetKeyword: job.targetKeyword,
+    };
+  }
+
+  /** 恢复已暂停任务，从 pause 记录的步骤续跑。 */
+  async resume(organizationId: string, projectId: string, id: string) {
+    const job = await this.prisma.articleJob.findFirst({
+      where: { id, organizationId, projectId },
+      select: {
+        id: true,
+        traceId: true,
+        status: true,
+        targetKeyword: true,
+        serpData: true,
+        briefData: true,
+        draftData: true,
+        seoCheckData: true,
+        semrushScore: true,
+      },
+    });
+
+    if (!job) {
+      throw new BusinessException(ErrorCodes.JOB_NOT_FOUND, '任务不存在');
+    }
+
+    if (String(job.status) !== 'PAUSED') {
+      if (this.isBusyJobStatus(job.status)) {
+        // 处理“刚暂停又点继续”的竞态：若任务已继续运行，resume 幂等返回当前态。
+        return {
+          id: job.id,
+          traceId: job.traceId,
+          status: job.status,
+          targetKeyword: job.targetKeyword,
+        };
+      }
+      throw new BusinessException(ErrorCodes.VALIDATION_ERROR, '仅暂停任务可继续执行');
+    }
+
+    const workflowMeta = getWorkflowMeta(job.seoCheckData);
+    const resumeFrom =
+      workflowMeta.pausedStep ??
+      resolveResumeStep({
+        serpData: job.serpData,
+        briefData: job.briefData,
+        draftData: job.draftData,
+        seoCheckData: job.seoCheckData,
+        semrushScore: job.semrushScore,
+      });
+    const resumeTraceId = `tr_${uuidv4()}`;
+    const resumeStatus = jobStatusForResumeStep(resumeFrom);
+    let resumeSeoCheckData = withWorkflowMeta(job.seoCheckData, {
+      failedStep: workflowMeta.failedStep,
+      pausedStep: resumeFrom,
+    });
+    if (resumeFrom === 'optimizing' || resumeFrom === 'paraphrasing') {
+      const prevSemrush = (resumeSeoCheckData.semrush ?? {}) as Record<string, unknown>;
+      const { cancelled: _cancelled, pauseCancelledAt: _pauseCancelledAt, ...semrushRest } =
+        prevSemrush;
+      resumeSeoCheckData = { ...resumeSeoCheckData, semrush: semrushRest };
+    }
+
+    await this.prisma.articleJob.update({
+      where: { id: job.id },
+      data: {
+        status: resumeStatus,
+        traceId: resumeTraceId,
+        errorMessage: null,
+        seoCheckData: resumeSeoCheckData as object,
+      },
+    });
+
+    await this.seoCheckerService.clearSemrushAbortSignal({
+      jobId: job.id,
+      traceId: resumeTraceId,
+      organizationId,
+      projectId,
+      targetKeyword: job.targetKeyword,
+    });
+
+    await this.queueService.removeQueueJobsForArticleJob(
+      { id: job.id, traceId: job.traceId },
+      organizationId,
+      projectId,
+    );
+
+    try {
+      await this.queueService.enqueueArticleJob(
+        {
+          jobId: job.id,
+          traceId: resumeTraceId,
+          organizationId,
+          projectId,
+          resumeFrom,
+          scraperOptions: buildArticleJobScraperOptions(getArticleJobConfig(job.seoCheckData)),
+        },
+        `resume_${job.id}_${Date.now()}`,
+      );
+    } catch (error) {
+      await this.compensateEnqueueFailure(job.id, '恢复入队失败，请稍后重试');
+      throw error;
+    }
+
+    this.logger.info('Article job resumed', {
+      traceId: resumeTraceId,
+      organizationId,
+      projectId,
+      jobId: job.id,
+      resumeFrom,
+      action: 'article_job.resume',
+    });
+
+    return {
+      id: job.id,
+      traceId: resumeTraceId,
+      status: resumeStatus,
       targetKeyword: job.targetKeyword,
     };
   }
@@ -893,6 +1124,18 @@ export class ArticleJobService {
   private getSemrushPending(seoCheckData: unknown): SemrushCheckPending | null {
     const data = (seoCheckData ?? {}) as { semrush?: { pending?: SemrushCheckPending } };
     return data.semrush?.pending ?? null;
+  }
+
+  private isBusyJobStatus(status: string): boolean {
+    return (
+      status === 'QUEUED' ||
+      status === 'RESEARCHING' ||
+      status === 'DRAFTING' ||
+      status === 'LINKING' ||
+      status === 'ILLUSTRATING' ||
+      status === 'OPTIMIZING' ||
+      status === 'REVIEWING'
+    );
   }
 
   private async compensateEnqueueFailure(jobId: string, errorMessage: string): Promise<void> {

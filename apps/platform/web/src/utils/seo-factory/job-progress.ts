@@ -4,6 +4,9 @@
 import type { ArticleJobItem, ArticleJobWorkflowStep } from "@/api/seo-factory/types";
 import { WORKFLOW_STEP_ESTIMATES, WORKFLOW_STEPS } from "@wm/shared-core";
 import { formatWorkflowProgressShort, workflowStepLabel } from "./workflow-progress";
+import { countArticleImagesForDisplay } from "./article-images-display";
+
+const SWA_MIN_IMAGES = 2;
 
 export interface JobProgressStep {
   key: ArticleJobWorkflowStep;
@@ -33,6 +36,15 @@ function isParaphraseCompleted(job: ArticleJobItem): boolean {
 
 export function inferCurrentWorkflowStep(job: ArticleJobItem): ArticleJobWorkflowStep | null {
   if (job.status === "COMPLETED" || job.status === "FAILED") return null;
+  if (job.status === "PAUSED") {
+    const paused = job.seoCheckData?.workflow?.pausedStep;
+    return paused ?? null;
+  }
+  if (job.status === "QUEUED") {
+    // 从暂停恢复后会短暂回到 QUEUED，此时优先显示断点步骤，避免视觉上“从头开始”。
+    const paused = job.seoCheckData?.workflow?.pausedStep;
+    if (paused) return paused;
+  }
 
   if (isBriefPending(job)) return "brief";
 
@@ -50,7 +62,10 @@ export function inferCurrentWorkflowStep(job: ArticleJobItem): ArticleJobWorkflo
 
     const draft = job.draftData;
     if (draft?.content && !draft.internalLinksApplied) return "linking";
-    if (draft?.content && draft.internalLinksApplied && !draft.imagesApplied) return "images";
+    const imageCount = countArticleImagesForDisplay(draft?.content, draft?.articleImages);
+    if (draft?.content && draft.internalLinksApplied && (!draft.imagesApplied || imageCount < SWA_MIN_IMAGES)) {
+      return "images";
+    }
     if (isParaphraseCompleted(job)) return "optimizing";
     if (progress?.phase === "semrush" || progress?.phase === "semrush-check") {
       return "optimizing";
@@ -68,6 +83,15 @@ export function inferCurrentWorkflowStep(job: ArticleJobItem): ArticleJobWorkflo
   if (job.status === "QUEUED") return "serp";
 
   return null;
+}
+
+function isImagesStepComplete(job: ArticleJobItem): boolean {
+  if (!job.draftData?.internalLinksApplied) return false;
+  const imageCount = countArticleImagesForDisplay(
+    job.draftData.content,
+    job.draftData.articleImages,
+  );
+  return job.draftData.imagesApplied === true && imageCount >= SWA_MIN_IMAGES;
 }
 
 export function buildJobProgressSteps(job: ArticleJobItem): JobProgressStep[] {
@@ -90,6 +114,15 @@ export function buildJobProgressSteps(job: ArticleJobItem): JobProgressStep[] {
       state = job.status === "FAILED" ? "failed" : "current";
     }
 
+    if (
+      key === "images" &&
+      job.status !== "COMPLETED" &&
+      !isImagesStepComplete(job) &&
+      state === "done"
+    ) {
+      state = current === "images" ? "current" : "pending";
+    }
+
     return {
       key,
       label: workflowStepLabel(key),
@@ -101,6 +134,11 @@ export function buildJobProgressSteps(job: ArticleJobItem): JobProgressStep[] {
 
 export function formatJobProgressHeadline(job: ArticleJobItem): string | null {
   if (job.status === "COMPLETED") return "已完成";
+  if (job.status === "PAUSED") return "任务已暂停，可继续执行";
+  if (job.status === "QUEUED" && job.seoCheckData?.workflow?.pausedStep) {
+    const step = job.seoCheckData.workflow.pausedStep;
+    return `从断点继续：${workflowStepLabel(step)}`;
+  }
   if (isBriefPending(job)) return "待确认大纲";
 
   const progressText = formatWorkflowProgressShort(job.seoCheckData?.workflowProgress);

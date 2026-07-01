@@ -36,7 +36,7 @@
       :closable="false"
       show-icon
       title="图片数量不足 SWA 要求"
-      :description="`当前 ${images.length} 张，建议至少 ${SWA_MIN_IMAGES} 张。`"
+      :description="`当前 ${images.length} 张，建议至少 ${SWA_MIN_IMAGES} 张。可点击「自动配图」补足。`"
     />
 
     <el-descriptions v-if="applied" :column="2" border class="mb-4">
@@ -63,8 +63,12 @@
     <div v-if="editable" class="mb-4 flex flex-wrap gap-2">
       <el-button type="primary" @click="openGenerateDialog">按描述生成</el-button>
       <el-button @click="triggerUploadAdd">上传添加</el-button>
-      <el-button v-if="applied || illustrationError" :loading="reapplying" @click="handleReapply">
-        重跑自动配图
+      <el-button
+        v-if="needsAutoIllustration || applied || illustrationError"
+        :loading="reapplying"
+        @click="handleReapply"
+      >
+        {{ applied || illustrationError ? "重跑自动配图" : "自动配图" }}
       </el-button>
     </div>
 
@@ -127,9 +131,10 @@ import {
   generateArticleImage,
   patchArticleImages,
   reapplyArticleImages,
-  regenerateArticleImage,
-  uploadArticleDraftImage
+  regenerateArticleImage
 } from "@/api/seo-factory/article-job";
+import { uploadMediaAsset } from "@/api/platform/media";
+import { resolveArticleImagesForDisplay } from "@/utils/seo-factory/article-images-display";
 import { ElMessageBox } from "element-plus";
 import { message } from "@/utils/message";
 import { extractHttpErrorMessage } from "@/utils/http-error";
@@ -164,8 +169,11 @@ const emit = defineEmits<{
 }>();
 
 const applied = computed(() => props.imagesApplied === true);
-const images = computed(() => props.articleImages ?? []);
+const images = computed(() =>
+  resolveArticleImagesForDisplay(props.draftContent, props.articleImages)
+);
 const meetsSwa = computed(() => images.value.length >= SWA_MIN_IMAGES);
+const needsAutoIllustration = computed(() => !meetsSwa.value);
 const hasDraftContent = computed(() => Boolean(props.draftContent?.trim()));
 const editable = computed(() => {
   if (!props.projectId || !props.jobId || !hasDraftContent.value) return false;
@@ -246,6 +254,7 @@ function toPatchPayload(list: ArticleJobArticleImage[]) {
     articleImages: list.map((image) => ({
       alt: image.alt,
       url: image.url,
+      assetId: image.assetId,
       source: image.source,
       insertAfterHeading: image.insertAfterHeading
     }))
@@ -287,7 +296,7 @@ async function handleFileChange(event: Event) {
   if (!file || !props.projectId || !props.jobId) return;
 
   try {
-    const uploaded = await uploadArticleDraftImage(props.projectId, props.jobId, file);
+    const uploaded = await uploadMediaAsset(props.projectId, file);
     const alt = file.name.replace(/\.[^.]+$/, "");
     const next = [...images.value];
 
@@ -295,6 +304,7 @@ async function handleFileChange(event: Event) {
       next.push({
         alt,
         url: uploaded.url,
+        assetId: uploaded.id,
         source: "upload"
       });
     } else {
@@ -305,6 +315,7 @@ async function handleFileChange(event: Event) {
         ...previous,
         alt: previous.alt || alt,
         url: uploaded.url,
+        assetId: uploaded.id,
         source: "upload"
       };
     }

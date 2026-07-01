@@ -10,6 +10,8 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../../core/database/prisma.service';
 import { LoggerService } from '../../../../core/logger/logger.service';
 import { StorageService } from '../../../../core/storage/storage.service';
+import { MediaService } from '../../../../modules/media/media.service';
+import { parseMediaAssetApiUrl } from '../../../../modules/media/media-url.util';
 import { BusinessException } from '../../../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { canPublishArticle } from '../content-review/ymyl-detect.util';
@@ -32,10 +34,6 @@ import {
   buildExportHtmlUrl,
   buildExportStoragePrefix,
 } from './export-html.util';
-import {
-  buildDraftImageStorageKey,
-  parseDraftImageApiUrl,
-} from '../article-job/draft-image.util';
 
 export interface ExportJobContext {
   jobId: string;
@@ -49,6 +47,7 @@ export class ExportService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly mediaService: MediaService,
     private readonly logger: LoggerService,
   ) {}
 
@@ -228,7 +227,7 @@ export class ExportService {
       manifestText,
       articleImages: draftData?.articleImages,
       contentMarkdown: exported.content,
-      fetchImage: (url) => this.fetchDraftImageForExport(organizationId, projectId, jobId, url),
+      fetchImage: (url) => this.fetchMediaAssetForExport(organizationId, projectId, url),
     });
 
     this.logger.info('Export package built', {
@@ -319,30 +318,25 @@ export class ExportService {
     return { buffer, fileName, exported, failed, failures };
   }
 
-  private async fetchDraftImageForExport(
+  private async fetchMediaAssetForExport(
     organizationId: string,
     projectId: string,
-    jobId: string,
     url: string,
   ): Promise<{ body: Buffer; contentType?: string } | null> {
-    const parsed = parseDraftImageApiUrl(url);
-    if (!parsed || parsed.projectId !== projectId || parsed.jobId !== jobId) {
+    const mediaParsed = parseMediaAssetApiUrl(url);
+    if (!mediaParsed || mediaParsed.projectId !== projectId) {
       return null;
     }
 
-    const key = buildDraftImageStorageKey(
-      organizationId,
-      projectId,
-      jobId,
-      parsed.filename,
-    );
-    const stored = await this.storage.getObject(key);
-    if (!stored) return null;
-
-    return {
-      body: stored.body,
-      contentType: stored.contentType,
-    };
+    try {
+      return await this.mediaService.getObjectBytes(
+        organizationId,
+        projectId,
+        mediaParsed.assetId,
+      );
+    } catch {
+      return null;
+    }
   }
 
   private async loadExportJob(organizationId: string, projectId: string, jobId: string) {

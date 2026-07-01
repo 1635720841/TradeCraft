@@ -9,11 +9,14 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
+import { MediaAssetSource } from '@prisma/client';
 import { IMAGE_PROVIDER, type IImageProvider } from '@wm/provider-interfaces';
 import { BusinessException } from '../../../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { PrismaService } from '../../../../core/database/prisma.service';
 import { LoggerService } from '../../../../core/logger/logger.service';
+import { MediaIngestService } from '../../../../modules/media/media-ingest.service';
+import { MediaService } from '../../../../modules/media/media.service';
 import { parseSiteWorkflowSettings } from '../../constants/brief-approval';
 import { SWA_MIN_IMAGES } from '../../constants/swa-content';
 import {
@@ -22,7 +25,14 @@ import {
   extractFirstSectionHint,
   finalizeArticleImagePrompt,
 } from './article-image-prompt.util';
-import { countMarkdownImages, stripAllMarkdownImages, type ArticleImageRecord } from './article-image.util';
+import {
+  countEffectiveMarkdownImages,
+  countMarkdownImages,
+  isPlaceholderImageUrl,
+  stripAllMarkdownImages,
+  stripPlaceholderMarkdownImages,
+  type ArticleImageRecord,
+} from './article-image.util';
 import { insertArticleImageMarkdown } from './article-images-edit.util';
 
 export interface IllustrationJobContext {
@@ -39,6 +49,8 @@ export class IllustrationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly logger: LoggerService,
+    private readonly mediaIngestService: MediaIngestService,
+    private readonly mediaService: MediaService,
     @Inject(IMAGE_PROVIDER) private readonly imageProvider: IImageProvider,
   ) {}
 
@@ -87,23 +99,52 @@ export class IllustrationService {
       return;
     }
 
+    const strippedContent = stripPlaceholderMarkdownImages(content);
+    const placeholderCount = countMarkdownImages(content) - countEffectiveMarkdownImages(strippedContent);
+    const workingContent = strippedContent;
+    const effectiveImageCount = countEffectiveMarkdownImages(workingContent);
+
+    if (placeholderCount > 0) {
+      await this.prisma.articleJob.update({
+        where: { id: ctx.jobId },
+        data: {
+          draftData: {
+            ...draftData,
+            content: workingContent,
+            articleImages: (draftData.articleImages ?? []).filter(
+              (image) => !isPlaceholderImageUrl(image.url),
+            ),
+          } as object,
+        },
+      });
+      this.logger.info('Removed draft placeholder images before illustration', {
+        traceId: ctx.traceId,
+        jobId: ctx.jobId,
+        action: 'illustration.placeholder_removed',
+        placeholderCount,
+      });
+    }
+
     if (
       !options?.force &&
       draftData.imagesApplied &&
-      countMarkdownImages(content) >= SWA_MIN_IMAGES
+      effectiveImageCount >= SWA_MIN_IMAGES
     ) {
       this.logger.info('Skip illustration: already enriched', {
         traceId: ctx.traceId,
         jobId: ctx.jobId,
         action: 'illustration.skip_already_applied',
-        imageCount: countMarkdownImages(content),
+        imageCount: effectiveImageCount,
       });
       return;
     }
 
-    const generated = await this.generateWithBfl(ctx, content);
+    const generated = await this.generateWithBfl(ctx, workingContent);
 
-    if (countMarkdownImages(generated.content) < SWA_MIN_IMAGES && generated.images.length === 0) {
+    if (
+      countEffectiveMarkdownImages(generated.content) < SWA_MIN_IMAGES &&
+      generated.images.length === 0
+    ) {
       const errorMessage =
         generated.lastError ??
         'BFL 未生成足够配图，请查看服务端日志或检查网络/代理';
@@ -112,7 +153,7 @@ export class IllustrationService {
         traceId: ctx.traceId,
         jobId: ctx.jobId,
         action: 'illustration.insufficient_images',
-        imageCount: countMarkdownImages(generated.content),
+        imageCount: countEffectiveMarkdownImages(generated.content),
         error: errorMessage,
       });
       return;
@@ -156,6 +197,13 @@ export class IllustrationService {
     }
 
     const keptUploads = (draftData.articleImages ?? []).filter((image) => image.source === 'upload');
+    const removedBflAssetIds = (draftData.articleImages ?? [])
+      .filter((image) => image.source === 'bfl' && image.assetId)
+      .map((image) => image.assetId as string);
+
+    for (const assetId of removedBflAssetIds) {
+      await this.mediaService.unbindAsset(ctx.organizationId, ctx.projectId, assetId);
+    }
 
     let strippedContent = stripAllMarkdownImages(content);
     for (const image of keptUploads) {
@@ -192,7 +240,7 @@ export class IllustrationService {
       illustrationError?: string;
     };
     const bflCount = (afterDraft.articleImages ?? []).filter((i) => i.source === 'bfl').length;
-    const markdownCount = countMarkdownImages(afterDraft.content ?? '');
+    const markdownCount = countEffectiveMarkdownImages(afterDraft.content ?? '');
     if (bflCount === 0 && markdownCount < SWA_MIN_IMAGES) {
       throw new BusinessException(
         ErrorCodes.EXTERNAL_API_ERROR,
@@ -211,7 +259,7 @@ export class IllustrationService {
     ctx: IllustrationJobContext,
     content: string,
   ): Promise<{ content: string; images: ArticleImageRecord[]; lastError?: string }> {
-    const needed = Math.max(0, SWA_MIN_IMAGES - countMarkdownImages(content));
+    const needed = Math.max(0, SWA_MIN_IMAGES - countEffectiveMarkdownImages(content));
     if (needed === 0) {
       return { content, images: [] };
     }
@@ -231,17 +279,31 @@ export class IllustrationService {
       });
       try {
         const result = await this.imageProvider.generateImage(prompt);
+        const ingested = await this.mediaIngestService.ingestFromRemoteUrl({
+          organizationId: ctx.organizationId,
+          projectId: ctx.projectId,
+          remoteUrl: result.url,
+          source: MediaAssetSource.BFL,
+          sourceMeta: {
+            provider: 'bfl',
+            jobId: ctx.jobId,
+            prompt,
+            sectionHint,
+          },
+          bind: true,
+        });
         const alt = buildArticleImageAlt(ctx.targetKeyword, sectionHint);
         const insertAfterHeading = sectionHint?.trim() || undefined;
         nextContent = insertArticleImageMarkdown(
           nextContent,
           alt,
-          result.url,
+          ingested.url,
           insertAfterHeading,
         );
         images.push({
           alt,
-          url: result.url,
+          url: ingested.url,
+          assetId: ingested.assetId,
           source: 'bfl',
           insertAfterHeading,
         });
@@ -320,7 +382,9 @@ export class IllustrationService {
     images: ArticleImageRecord[],
   ): Promise<void> {
     const previousImages = Array.isArray(existingDraft.articleImages)
-      ? (existingDraft.articleImages as ArticleImageRecord[])
+      ? (existingDraft.articleImages as ArticleImageRecord[]).filter(
+          (image) => !isPlaceholderImageUrl(image.url),
+        )
       : [];
 
     await this.prisma.articleJob.update({

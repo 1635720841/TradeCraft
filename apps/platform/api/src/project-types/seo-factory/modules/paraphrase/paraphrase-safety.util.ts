@@ -69,6 +69,38 @@ function countHeadings(content: string, level: 2 | 3): number {
   return (content.match(new RegExp(`^${prefix} `, 'gm')) ?? []).length;
 }
 
+function extractHeadingTexts(content: string, level: 2 | 3): string[] {
+  const prefix = '#'.repeat(level);
+  const pattern = new RegExp(`^${prefix}\\s+(.+)$`, 'gm');
+  return [...content.matchAll(pattern)].map((match) => match[1].trim());
+}
+
+function normalizeHeadingText(text: string): string {
+  return text.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function checkHeadingTextsUnchanged(
+  original: string,
+  paraphrased: string,
+  level: 2 | 3,
+  label: string,
+): string[] {
+  const originalHeadings = extractHeadingTexts(original, level);
+  const paraphrasedHeadings = extractHeadingTexts(paraphrased, level);
+  const issues: string[] = [];
+
+  for (let index = 0; index < originalHeadings.length; index += 1) {
+    const originalText = originalHeadings[index];
+    const revisedText = paraphrasedHeadings[index];
+    if (!revisedText) continue;
+    if (normalizeHeadingText(originalText) !== normalizeHeadingText(revisedText)) {
+      issues.push(`${label} 标题文案发生变化：${originalText}`);
+    }
+  }
+
+  return issues;
+}
+
 function extractNumericSpecs(content: string): string[] {
   return (content.match(SPEC_PATTERN) ?? []).map((item) => item.replace(/\s+/g, ' ').trim().toLowerCase());
 }
@@ -167,9 +199,13 @@ export function checkParaphraseSafety(input: ParaphraseSafetyInput): ParaphraseS
 
   if (countHeadings(original, 2) !== countHeadings(paraphrased, 2)) {
     issues.push('H2 标题数量发生变化');
+  } else {
+    issues.push(...checkHeadingTextsUnchanged(original, paraphrased, 2, 'H2'));
   }
   if (countHeadings(original, 3) !== countHeadings(paraphrased, 3)) {
     issues.push('H3 标题数量发生变化');
+  } else {
+    issues.push(...checkHeadingTextsUnchanged(original, paraphrased, 3, 'H3'));
   }
 
   const originalSpecs = extractNumericSpecs(original);

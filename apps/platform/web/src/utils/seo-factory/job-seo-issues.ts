@@ -68,15 +68,10 @@ export function buildSeoVerdictDesc(input: {
   hasDraftContent: boolean;
 }): string {
   const { releaseReady, issueCount, suggestionCount, hasDraftContent } = input;
-  const suggestTail = suggestionCount > 0 ? ` · ${suggestionCount} 条优化建议` : "";
+  const suggestTail =
+    !releaseReady && suggestionCount > 0 ? ` · ${suggestionCount} 条优化建议` : "";
 
   if (releaseReady) {
-    if (issueCount > 0) {
-      return `另有 ${issueCount} 处可读性细节可精修（不影响发布）${suggestTail}`;
-    }
-    if (suggestionCount > 0) {
-      return `${suggestionCount} 条优化建议，可按需微调`;
-    }
     return "可导出或发布";
   }
 
@@ -97,7 +92,7 @@ export function fixesNavLabel(releaseReady: boolean): string {
 }
 
 export function fixesSectionTitle(releaseReady: boolean): string {
-  return releaseReady ? "可读性细节与建议" : "待修复与建议";
+  return releaseReady ? "可读性细节" : "待修复与建议";
 }
 
 export function fixesSectionHint(releaseReady: boolean, count: number): string | null {
@@ -126,9 +121,6 @@ export function buildOutcomeSummaryDesc(input: {
   const { releaseReady, issueCount, hasDraftContent } = input;
 
   if (releaseReady) {
-    if (issueCount > 0) {
-      return `已达到发布标准；另有 ${issueCount} 处可读性细节可精修，不影响发布。`;
-    }
     return "已完成竞品对标、SEO 评分、内容优化和发布物生成，适合直接交付给运营或推送到 CMS。";
   }
 

@@ -2,7 +2,7 @@
  * 企业管理员首次配置 Checklist：创建项目 → 开放 → 加入成员 → 进入工作台。
  */
 
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { listOrgProjects, type OrgProjectItem } from "@/api/org/projects";
 import { useUserStoreHook } from "@/store/modules/user";
@@ -11,18 +11,31 @@ import type { SetupChecklistItem } from "@/types/setup-checklist";
 const SNOOZE_KEY = "wm:org-admin-setup-snooze-until";
 const SNOOZE_DAYS = 7;
 
+export const ORG_ADMIN_SETUP_CHECKLIST_ID = "org-admin-setup-checklist";
+export const ORG_ADMIN_SETUP_FOCUS_QUERY = "setup";
+
+const loading = ref(false);
+const projects = ref<OrgProjectItem[]>([]);
+const dismissed = ref(isSnoozed());
+let watchStarted = false;
+
 function isSnoozed(): boolean {
   const until = localStorage.getItem(SNOOZE_KEY);
   if (!until) return false;
   return Date.now() < Number(until);
 }
 
+export function scrollToOrgAdminSetupChecklist() {
+  nextTick(() => {
+    document
+      .getElementById(ORG_ADMIN_SETUP_CHECKLIST_ID)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
 export function useOrgAdminSetupChecklist() {
   const router = useRouter();
   const userStore = useUserStoreHook();
-  const loading = ref(false);
-  const projects = ref<OrgProjectItem[]>([]);
-  const dismissed = ref(isSnoozed());
 
   const isOrgAdmin = computed(() => userStore.roles.includes("admin"));
 
@@ -44,7 +57,14 @@ export function useOrgAdminSetupChecklist() {
     }
   }
 
-  watch(isOrgAdmin, () => void refresh(), { immediate: true });
+  if (!watchStarted) {
+    watchStarted = true;
+    watch(
+      () => useUserStoreHook().roles,
+      () => void refresh(),
+      { immediate: true }
+    );
+  }
 
   const allDone = computed(() => {
     if (!isOrgAdmin.value || projects.value.length === 0) return false;

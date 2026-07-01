@@ -396,4 +396,24 @@ export class ProjectService {
       anyOf: ['seo:site:manage'],
     });
   }
+
+  /** 项目媒体库只读（跨项目类型） */
+  assertProjectMediaRead(
+    organizationId: string,
+    projectId: string,
+    actor: Pick<RequestContext, 'userId' | 'role'>,
+  ) {
+    return this.assertAccessible(organizationId, projectId, actor);
+  }
+
+  /** 项目媒体库写入（跨项目类型，禁止纯只读成员） */
+  async assertProjectMediaWrite(
+    organizationId: string,
+    projectId: string,
+    actor: Pick<RequestContext, 'userId' | 'role'>,
+  ) {
+    const project = await this.assertAccessible(organizationId, projectId, actor);
+    await this.projectAccessService.assertMemberCanMutateProject(actor, project);
+    return project;
+  }
 }

@@ -234,6 +234,7 @@ import {
   isSeoReleaseReady
 } from "@/utils/seo-factory/job-seo-issues";
 import { resolveJobReleaseReadiness } from "@/utils/seo-factory/release-readiness";
+import { resolveParaphraseOutcomeDisplay, PARAPHRASE_FEATURE_SHORT } from "@/utils/seo-factory/paraphrase-outcome";
 import { message } from "@/utils/message";
 
 defineOptions({ name: "ArticleJobOutcomeSummaryCard" });
@@ -339,6 +340,13 @@ const reviewLabel = computed(() => {
   return "待审核";
 });
 
+const paraphraseOutcome = computed(() =>
+  resolveParaphraseOutcomeDisplay(
+    props.job.seoCheckData?.quillbot,
+    props.job.draftData?.paraphraseApplied
+  )
+);
+
 const proofItems = computed<ProofItem[]>(() => [
   {
     label: "竞品对标",
@@ -363,10 +371,10 @@ const proofItems = computed<ProofItem[]>(() => [
     tone: props.job.outputUrl ? "pass" : "info"
   },
   {
-    label: "原创表达",
-    value: props.job.draftData?.paraphraseApplied ? "已优化" : "待优化",
+    label: PARAPHRASE_FEATURE_SHORT,
+    value: paraphraseOutcome.value.label,
     icon: "ri:fingerprint-line",
-    tone: props.job.draftData?.paraphraseApplied ? "pass" : "info"
+    tone: paraphraseOutcome.value.tone === "warn" ? "warn" : paraphraseOutcome.value.tone
   },
   {
     label: "内容审查",

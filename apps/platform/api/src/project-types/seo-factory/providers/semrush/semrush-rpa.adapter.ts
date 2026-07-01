@@ -48,6 +48,12 @@ import {
   type ParsedSemrushRecommendations,
 } from './semrush-recommendations.parser';
 import { SemrushSessionManager } from './semrush-session.manager';
+import { semrushAbortContext } from './semrush-work-abort.context';
+import { SemrushWorkAbortService } from './semrush-work-abort.service';
+import {
+  createSemrushAbortedException,
+  toSemrushAbortedIfNeeded,
+} from './semrush-work-abort.util';
 import { SEMRUSH_SWA_SELECTORS } from './semrush.selectors';
 import {
   isSemrushSpecificKeyword,
@@ -73,6 +79,7 @@ const SECTION_LABELS: Record<keyof SemrushSuggestionDetails, string> = {
 export class SemrushRpaAdapter implements ISeoCheckerProvider {
   constructor(
     private readonly sessionManager: SemrushSessionManager,
+    private readonly abortService: SemrushWorkAbortService,
     private readonly logger: LoggerService,
   ) {}
 
@@ -85,11 +92,46 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
       };
     }
 
+    const articleJobId = input.articleJobId?.trim() || undefined;
+    const execute = () => this.executeCheckScore(input, articleJobId);
+    if (!articleJobId) {
+      return execute();
+    }
+
+    return semrushAbortContext.run(
+      {
+        articleJobId,
+        shouldAbort: () => this.abortService.shouldAbort(articleJobId),
+      },
+      execute,
+    );
+  }
+
+  private async executeCheckScore(
+    input: SeoCheckInput,
+    articleJobId: string | undefined,
+  ): Promise<SeoScore> {
+    const abortState = { context: null as import('playwright').BrowserContext | null, aborted: false };
+
+    if (articleJobId) {
+      this.abortService.register(articleJobId, {
+        abort: async () => {
+          abortState.aborted = true;
+          await abortState.context?.close().catch(() => undefined);
+        },
+      });
+    }
+
     const startedAt = Date.now();
     let phase = 'init';
 
     try {
       return await this.sessionManager.withBrowser(async (context) => {
+        abortState.context = context;
+        if (abortState.aborted) {
+          throw createSemrushAbortedException('任务已暂停，Semrush 检测已取消');
+        }
+
         const session = await this.sessionManager.openSemrushEditor(context, {
           preferredNodeKey: input.preferredNodeKey,
         });
@@ -208,6 +250,18 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
         }
       });
     } catch (error) {
+      const aborted = toSemrushAbortedIfNeeded(error, '任务已暂停，Semrush 检测已取消');
+      if (aborted) {
+        this.logger.info('Semrush RPA aborted', {
+          action: 'semrush.check_score_aborted',
+          keyword: input.keyword,
+          articleJobId,
+          durationMs: Date.now() - startedAt,
+          reason: aborted.message,
+        });
+        throw aborted;
+      }
+
       const message = error instanceof Error ? error.message : '未知错误';
       const stack = error instanceof Error ? error.stack : undefined;
       this.logger.error('Semrush RPA failed', {
@@ -222,6 +276,10 @@ export class SemrushRpaAdapter implements ISeoCheckerProvider {
         ErrorCodes.EXTERNAL_API_ERROR,
         `Semrush RPA 查分失败（${phase}）：${message}`,
       );
+    } finally {
+      if (articleJobId) {
+        this.abortService.unregister(articleJobId);
+      }
     }
   }
 

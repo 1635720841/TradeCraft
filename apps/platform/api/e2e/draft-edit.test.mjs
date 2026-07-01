@@ -181,36 +181,32 @@ describe('E2E draft manual edit', () => {
     }
   });
 
-  it('uploads draft image and returns signed url', async (t) => {
+  it('uploads media asset and returns signed url', async (t) => {
     const session = requireCtx(t);
     if (!session) return;
     const { accessToken } = session;
-    if (!targetJobId) {
-      t.skip('无目标任务');
-      return;
-    }
 
     const formData = new FormData();
     formData.append(
       'file',
       new Blob([E2E_PNG_1X1], { type: 'image/png' }),
-      'e2e-draft-image.png',
+      'e2e-media-asset.png',
     );
 
     const uploaded = await apiMultipartRequest(
       'POST',
-      `/api/v1/projects/${E2E_PROJECT_ID}/article-jobs/${targetJobId}/draft/images`,
+      `/api/v1/projects/${E2E_PROJECT_ID}/media`,
       { token: accessToken, formData },
     );
 
     assert.ok(uploaded.data?.url, '应返回图片 URL');
     assert.match(
       uploaded.data.url,
-      /^\/api\/v1\/projects\/.+\/article-jobs\/.+\/draft\/images\/.+\?exp=\d+&sig=[a-f0-9]+$/,
+      /^\/api\/v1\/projects\/.+\/media\/[0-9a-f-]{36}\/file\?exp=\d+&sig=[a-f0-9]+$/,
     );
     assert.equal(uploaded.data?.contentType, 'image/png');
-    assert.ok(uploaded.data?.filename);
-    assert.ok(uploaded.data?.size > 0);
+    assert.ok(uploaded.data?.id);
+    assert.ok(uploaded.data?.sizeBytes > 0);
   });
 
   it('rollbacks to pre-edit snapshot', async (t) => {

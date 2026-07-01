@@ -2,6 +2,8 @@
  * 文章产线工作流步骤（前后端共用）。
  */
 
+import { PARAPHRASE_WORKFLOW_STEP_LABEL } from './paraphrase-copy';
+
 export const WORKFLOW_STEPS = [
   'serp',
   'brief',
@@ -22,7 +24,7 @@ export const WORKFLOW_STEP_LABELS: Record<WorkflowStep, string> = {
   linking: '植入站内链接',
   images: '生成配图',
   optimizing: 'SEO 评分优化',
-  paraphrasing: '原创度优化',
+  paraphrasing: PARAPHRASE_WORKFLOW_STEP_LABEL,
   ymyl: '内容安全审查',
 };
 

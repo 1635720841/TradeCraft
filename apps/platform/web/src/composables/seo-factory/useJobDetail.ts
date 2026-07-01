@@ -188,6 +188,7 @@ export function useJobDetail(options?: {
     if (!job.value || options?.serpRefreshing?.value) return false;
     if (job.value.status === "QUEUED" || job.value.status === "RESEARCHING")
       return false;
+    if (job.value.status === "PAUSED") return false;
     return true;
   });
 
@@ -228,6 +229,7 @@ export function useJobDetail(options?: {
   });
 
   const rewriteBlockedReason = computed(() => {
+    if (job.value?.status === "PAUSED") return "任务已暂停，请先继续执行";
     if (rewriteCandidate.value) return "请先采纳或放弃当前 AI 候选版本";
     if (isSemrushChecking.value) return "Semrush 检测进行中，请稍后再试";
     return "";
@@ -236,6 +238,7 @@ export function useJobDetail(options?: {
   const canTriggerRewrite = computed(
     () =>
       hasDraftContent.value &&
+      job.value?.status !== "PAUSED" &&
       !rewriteCandidate.value &&
       !isRewriting.value &&
       !isSemrushChecking.value
@@ -246,6 +249,24 @@ export function useJobDetail(options?: {
       canWriteJob.value &&
       job.value?.status === "FAILED" &&
       !options?.retrying?.value
+  );
+
+  const canPause = computed(() => {
+    if (!canWriteJob.value || !job.value) return false;
+    if (options?.retrying?.value) return false;
+    return (
+      job.value.status === "QUEUED" ||
+      job.value.status === "RESEARCHING" ||
+      job.value.status === "DRAFTING" ||
+      job.value.status === "LINKING" ||
+      job.value.status === "ILLUSTRATING" ||
+      job.value.status === "OPTIMIZING" ||
+      job.value.status === "REVIEWING"
+    );
+  });
+
+  const canResume = computed(
+    () => canWriteJob.value && job.value?.status === "PAUSED"
   );
 
   const briefPending = computed(() =>
@@ -367,6 +388,8 @@ export function useJobDetail(options?: {
     rewriteBlockedReason,
     canTriggerRewrite,
     canRetry,
+    canPause,
+    canResume,
     briefPending,
     calloutIcon,
     goBack,

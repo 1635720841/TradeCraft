@@ -88,6 +88,7 @@
 
     <SetupChecklistPanel
       v-if="orgSetupVisible"
+      :id="ORG_ADMIN_SETUP_CHECKLIST_ID"
       v-loading="orgSetupLoading"
       class="mw-home__setup-checklist"
       title="管理员首次配置"
@@ -354,8 +355,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
-import { useRouter } from "vue-router";
+import { computed, onMounted, reactive, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import type { FormInstance, FormRules } from "element-plus";
 import {
   getOrganizationProfile,
@@ -383,13 +384,19 @@ import { message } from "@/utils/message";
 import HomeIcon from "./components/home/HomeIcon.vue";
 import SetupChecklistPanel from "@/components/SetupChecklistPanel.vue";
 import QuotaSummaryCard from "@/components/org/QuotaSummaryCard.vue";
-import { useOrgAdminSetupChecklist } from "@/composables/useOrgAdminSetupChecklist";
+import {
+  ORG_ADMIN_SETUP_CHECKLIST_ID,
+  ORG_ADMIN_SETUP_FOCUS_QUERY,
+  scrollToOrgAdminSetupChecklist,
+  useOrgAdminSetupChecklist
+} from "@/composables/useOrgAdminSetupChecklist";
 import heroIllustration from "@/assets/img/0982809c-735d-484a-9681-f6e39a0140da.png";
 import "./styles/merwise-home.css";
 
 defineOptions({ name: "ProjectHomeView" });
 
 const router = useRouter();
+const route = useRoute();
 const userStore = useUserStoreHook();
 
 const loading = ref(false);
@@ -423,6 +430,16 @@ const {
   items: orgSetupItems,
   dismiss: orgSetupDismiss
 } = useOrgAdminSetupChecklist();
+
+watch(
+  () => route.query.focus,
+  focus => {
+    if (focus === ORG_ADMIN_SETUP_FOCUS_QUERY && orgSetupVisible.value) {
+      scrollToOrgAdminSetupChecklist();
+    }
+  },
+  { immediate: true }
+);
 
 const orgName = computed(() => profile.value?.name || "我的企业");
 

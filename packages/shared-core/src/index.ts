@@ -19,6 +19,7 @@ export * from './seo/competitor-page.util';
 export * from './seo/content-language';
 export * from './seo/pre-publish-checklist';
 export * from './seo/workflow-steps';
+export * from './seo/paraphrase-copy';
 export * from './seo/release-readiness.util';
 export * from './seo/markdown-table-parse.util';
 export * from './seo/markdown-inline.util';

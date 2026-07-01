@@ -21,17 +21,11 @@ import {
   Post,
   Query,
   Res,
-  UploadedFile,
-  UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import type { RequestContext } from '@wm/shared-core';
 import { ReqCtx } from '../../../../core/decorators/request-context.decorator';
 import { parsePageLimit } from '../../../../core/utils/parse-page-limit.util';
-import { Public } from '../../../../core/decorators/public.decorator';
-import { UnauthorizedException } from '../../../../core/exceptions/auth.exception';
-import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { ProjectService } from '../../../../modules/project/project.service';
 import { AcceptRewriteArticleJobDto, RewriteArticleJobDto } from './dto/rewrite-article-job.dto';
 import { CreateBatchArticleJobsDto } from './dto/create-batch-article-jobs.dto';
@@ -39,9 +33,6 @@ import { CreateArticleJobDto } from './dto/create-article-job.dto';
 import { ReviewArticleJobDto } from './dto/review-article-job.dto';
 import { ArticleJobRewriteService } from './article-job-rewrite.service';
 import { ArticleJobDraftEditService } from './article-job-draft-edit.service';
-import { ArticleJobDraftImageService } from './article-job-draft-image.service';
-import { verifyDraftImageSignedQuery } from './draft-image.util';
-import { DRAFT_IMAGE_MAX_BYTES } from '../../constants/draft-image';
 import { ArticleJobReviewService } from './article-job-review.service';
 import { PatchArticleDraftDto, RollbackArticleDraftDto } from './dto/patch-article-draft.dto';
 import { ResolveDraftStaleDto } from './dto/resolve-draft-stale.dto';
@@ -69,6 +60,7 @@ import { RerunArticleOptimizationDto } from './dto/rerun-article-optimization.dt
 import { RefreshArticleJobSerpDto } from './dto/refresh-article-job-serp.dto';
 import { BatchExportArticleJobsDto } from './dto/batch-export-article-jobs.dto';
 import { ExportService } from '../export/export.service';
+import { PauseArticleJobDto } from './dto/pause-article-job.dto';
 
 @Controller(seoFactoryRoutes('article-jobs'))
 export class ArticleJobController {
@@ -77,7 +69,6 @@ export class ArticleJobController {
     private readonly articleJobStatsService: ArticleJobStatsService,
     private readonly articleJobRewriteService: ArticleJobRewriteService,
     private readonly articleJobDraftEditService: ArticleJobDraftEditService,
-    private readonly articleJobDraftImageService: ArticleJobDraftImageService,
     private readonly articleJobReviewService: ArticleJobReviewService,
     private readonly articleJobBriefService: ArticleJobBriefService,
     private readonly articleJobInternalLinksService: ArticleJobInternalLinksService,
@@ -322,6 +313,36 @@ export class ArticleJobController {
     return { data: job, meta: { traceId: job.traceId } };
   }
 
+  @Post(':id/pause')
+  async pause(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+    @Body() dto: PauseArticleJobDto,
+  ) {
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
+    const job = await this.articleJobService.pause(
+      ctx.organizationId,
+      projectId,
+      id,
+      ctx.userId,
+      dto.reason,
+    );
+    return { data: job, meta: { traceId: job.traceId } };
+  }
+
+  @Post(':id/resume')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async resume(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+  ) {
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
+    const job = await this.articleJobService.resume(ctx.organizationId, projectId, id);
+    return { data: job, meta: { traceId: job.traceId } };
+  }
+
   @Post(':id/semrush-check')
   @HttpCode(HttpStatus.ACCEPTED)
   async semrushCheck(
@@ -510,55 +531,6 @@ export class ArticleJobController {
       dto,
     );
     return { data: job, meta: { traceId: job.traceId } };
-  }
-
-  @Post(':id/draft/images')
-  @HttpCode(HttpStatus.CREATED)
-  @UseInterceptors(
-    FileInterceptor('file', {
-      limits: { fileSize: DRAFT_IMAGE_MAX_BYTES },
-    }),
-  )
-  async uploadDraftImage(
-    @ReqCtx() ctx: RequestContext,
-    @Param('projectId') projectId: string,
-    @Param('id') id: string,
-    @UploadedFile() file: Express.Multer.File | undefined,
-  ) {
-    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
-    const data = await this.articleJobDraftImageService.uploadDraftImage(
-      ctx.organizationId,
-      projectId,
-      id,
-      file,
-    );
-    return { data, meta: { traceId: ctx.traceId } };
-  }
-
-  @Public()
-  @Get(':id/draft/images/:filename')
-  @Header('Cache-Control', 'private, max-age=3600')
-  async getDraftImage(
-    @Param('projectId') projectId: string,
-    @Param('id') id: string,
-    @Param('filename') filename: string,
-    @Query('exp') exp: string | undefined,
-    @Query('sig') sig: string | undefined,
-    @Res() res: Response,
-  ): Promise<void> {
-    if (!verifyDraftImageSignedQuery(projectId, id, filename, exp, sig)) {
-      throw new UnauthorizedException(ErrorCodes.UNAUTHORIZED, '图片链接无效或已过期');
-    }
-
-    const job = await this.articleJobService.findOneForImageAccess(projectId, id);
-    const file = await this.articleJobDraftImageService.getDraftImage(
-      job.organizationId,
-      projectId,
-      id,
-      filename,
-    );
-    res.setHeader('Content-Type', file.contentType);
-    res.send(file.body);
   }
 
   @Post(':id/review/approve')

@@ -27,6 +27,7 @@ import { PromptLoaderService } from './prompt-loader.service';
 import { SemrushRpaAdapter } from './semrush/semrush-rpa.adapter';
 import { SemrushBrowserPool } from './semrush/semrush-browser-pool';
 import { SemrushSessionManager } from './semrush/semrush-session.manager';
+import { SemrushWorkAbortService } from './semrush/semrush-work-abort.service';
 import { SemrushStubAdapter } from './semrush/semrush.stub.adapter';
 import { SerperAdapter } from './serper/serper.adapter';
 
@@ -39,6 +40,7 @@ import { SerperAdapter } from './serper/serper.adapter';
     BflImageAdapter,
     SemrushSessionManager,
     SemrushBrowserPool,
+    SemrushWorkAbortService,
     SemrushStubAdapter,
     SemrushRpaAdapter,
     SemrushApiKeywordMetricsAdapter,
@@ -69,6 +71,7 @@ import { SerperAdapter } from './serper/serper.adapter';
     KEYWORD_METRICS_PROVIDER,
     PARAPHRASE_PROVIDER,
     PromptLoaderService,
+    SemrushWorkAbortService,
   ],
 })
 export class SeoFactoryProvidersModule {}

@@ -11,7 +11,11 @@
         :job="job"
         :polling="polling"
         :can-retry="canRetry"
+        :can-pause="canPause"
+        :can-resume="canResume"
         :can-write-job="canWriteJob"
+        :pausing="pausing"
+        :resuming="resuming"
         :retrying="retrying"
         :export-stale="exportStale"
         :export-downloading="exportDownloading"
@@ -22,6 +26,8 @@
         :cms-publish-button-label="cmsPublishButtonLabel"
         :deleting="deleting"
         @back="goBack"
+        @pause="handlePause"
+        @resume="handleResume"
         @retry="handleRetry"
         @download-export="handleDownloadExport"
         @publish-cms="handlePublishToCms"
@@ -316,9 +322,11 @@ import {
   cancelSemrushCheck,
   discardArticleRewrite,
   deleteArticleJob,
+  pauseArticleJob,
   refreshArticleJobSerp,
   rerunArticleOptimization,
   rerunArticleParaphrase,
+  resumeArticleJob,
   retryArticleJob,
   triggerArticleRewrite,
   triggerSemrushCheck
@@ -339,6 +347,7 @@ import { useJobDetail } from "@/composables/seo-factory/useJobDetail";
 import { useJobDraftActions } from "@/composables/seo-factory/useJobDraftActions";
 import { WORDPRESS_CMS_UI_ENABLED } from "@/constants/feature-flags";
 import { message } from "@/utils/message";
+import { PARAPHRASE_RERUN_FAILED, PARAPHRASE_RERUN_QUEUED } from "@wm/shared-core";
 import type { DiagnoseSection } from "@/utils/seo-factory/job-detail-summary";
 import ArticleJobDetailSidebar from "./components/ArticleJobDetailSidebar.vue";
 import ArticleJobBriefPanel from "./components/ArticleJobBriefPanel.vue";
@@ -364,6 +373,8 @@ defineOptions({ name: "JobDetailView" });
 const cmsUiEnabled = WORDPRESS_CMS_UI_ENABLED;
 const creationReportOpen = ref(false);
 const retrying = ref(false);
+const pausing = ref(false);
+const resuming = ref(false);
 const deleting = ref(false);
 const rerunningOptimization = ref(false);
 const rerunningParaphrase = ref(false);
@@ -411,6 +422,8 @@ const {
   rewriteBlockedReason,
   canTriggerRewrite,
   canRetry,
+  canPause,
+  canResume,
   briefPending,
   calloutIcon,
   goBack,
@@ -546,6 +559,39 @@ async function handleRetry() {
   }
 }
 
+async function handlePause() {
+  if (!job.value || !canPause.value || pausing.value) return;
+
+  pausing.value = true;
+  try {
+    await pauseArticleJob(projectId.value, jobId.value);
+    message("任务已暂停，可随时继续执行", { type: "success" });
+    await fetchOnce();
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "暂停失败";
+    message(msg, { type: "error" });
+  } finally {
+    pausing.value = false;
+  }
+}
+
+async function handleResume() {
+  if (!canResume.value || resuming.value) return;
+
+  resuming.value = true;
+  try {
+    await resumeArticleJob(projectId.value, jobId.value);
+    message("任务已恢复，正在从断点继续执行…", { type: "success" });
+    startPolling();
+    await fetchOnce();
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "继续执行失败";
+    message(msg, { type: "error" });
+  } finally {
+    resuming.value = false;
+  }
+}
+
 async function handleDelete() {
   if (!job.value || deleting.value) return;
 
@@ -603,12 +649,12 @@ async function handleRerunParaphrase() {
   rerunningParaphrase.value = true;
   try {
     await rerunArticleParaphrase(projectId.value, jobId.value);
-    message("已重新入队原创表达优化，请稍候…", { type: "success" });
+    message(PARAPHRASE_RERUN_QUEUED, { type: "success" });
     goDetailTab("article");
     startPolling();
     await fetchOnce();
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "重新润色失败";
+    const msg = error instanceof Error ? error.message : PARAPHRASE_RERUN_FAILED;
     message(msg, { type: "error" });
   } finally {
     rerunningParaphrase.value = false;

@@ -2,6 +2,8 @@
  * seoCheckData JSON 安全访问（无 DB 迁移）。
  */
 
+import { PARAPHRASE_PROGRESS_DEFAULT } from './paraphrase-copy';
+
 export interface WorkflowProgressLike {
   phase?: string;
   round?: number;
@@ -82,7 +84,9 @@ export function enrichWorkflowProgressMessage(
     return `Semrush 优化 ${progress.round}/${progress.maxRounds} 轮`;
   }
   if (progress.phase === 'semrush-check') return 'Semrush 终检中';
-  if (progress.phase === 'paraphrasing') return progress.message ?? '原创表达优化中';
+  if (progress.phase === 'paraphrasing') {
+    return progress.message ?? PARAPHRASE_PROGRESS_DEFAULT;
+  }
   if (progress.phase === 'local-scoring') return '本地预检计分中';
   return null;
 }

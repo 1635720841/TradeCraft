@@ -12,7 +12,7 @@
       :closable="false"
       show-icon
       title="项目配置说明"
-      description="此处配置大纲确认、原创润色、自动配图与自动生产等运营开关。评分门槛与 SERP 高级参数由平台运营在「项目诊断」中配置。"
+      description="此处配置大纲确认、表达润色、自动配图与自动生产等运营开关。评分门槛与 SERP 高级参数由平台运营在「项目诊断」中配置。"
     />
 
     <el-card v-if="sites.length > 0 || sitesLoading" shadow="never" class="border-none! shadow-none!">
@@ -53,10 +53,10 @@
           </p>
         </el-form-item>
 
-        <el-form-item label="原创表达优化">
+        <el-form-item label="表达润色">
           <el-switch v-model="adminForm.enableParaphrase" />
           <p class="mt-1 text-xs text-gray-500">
-            Semrush 优化后自动去 AI 套话、轻量润色。术语敏感站点可关闭。
+            Semrush 优化后轻量优化模板化句式，保持关键词与结构。术语敏感站点可关闭。
           </p>
         </el-form-item>
 

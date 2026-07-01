@@ -16,7 +16,7 @@ export const PARAPHRASE_MIN_PROSE_CHARS = 350;
 export const PARAPHRASE_CHUNK_LENGTH_MIN = 0.92;
 export const PARAPHRASE_CHUNK_LENGTH_MAX = 1.08;
 
-/** 分块成功率低于此比例则整篇放弃润色（保留 Semrush 稿） */
+/** 分块 LLM 成功率低于此比例时记录警告（不再整篇回退） */
 export const PARAPHRASE_MIN_CHUNK_SUCCESS_RATIO = 0.25;
 
 /** 全文改动低于此比例且程序化门禁通过时，跳过 LLM 语义复检 */

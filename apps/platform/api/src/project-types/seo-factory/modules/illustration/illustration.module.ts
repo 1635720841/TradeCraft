@@ -6,11 +6,12 @@
  */
 
 import { Module } from '@nestjs/common';
+import { MediaModule } from '../../../../modules/media/media.module';
 import { SeoFactoryProvidersModule } from '../../providers/seo-factory-providers.module';
 import { IllustrationService } from './illustration.service';
 
 @Module({
-  imports: [SeoFactoryProvidersModule],
+  imports: [SeoFactoryProvidersModule, MediaModule],
   providers: [IllustrationService],
   exports: [IllustrationService],
 })

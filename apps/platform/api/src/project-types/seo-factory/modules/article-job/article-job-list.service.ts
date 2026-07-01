@@ -161,7 +161,18 @@ export class ArticleJobListService {
         equals: 'pending',
       };
     } else if (options.generating) {
-      where.status = { notIn: [JobStatus.COMPLETED, JobStatus.FAILED] };
+      // 用“忙碌状态白名单”而非 notIn，避免 DB enum 未迁移时 Prisma 校验 PAUSED 失败。
+      where.status = {
+        in: [
+          JobStatus.QUEUED,
+          JobStatus.RESEARCHING,
+          JobStatus.DRAFTING,
+          JobStatus.LINKING,
+          JobStatus.ILLUSTRATING,
+          JobStatus.OPTIMIZING,
+          JobStatus.REVIEWING,
+        ],
+      };
       andFilters.push({
         NOT: {
           AND: [
@@ -276,20 +287,6 @@ export class ArticleJobListService {
         : null,
       gscPerformance,
     };
-  }
-
-  /** 签名 URL 读取稿件插图时解析租户（无需登录态） */
-  async findOneForImageAccess(projectId: string, id: string) {
-    const job = await this.prisma.articleJob.findFirst({
-      where: { id, projectId },
-      select: { organizationId: true },
-    });
-
-    if (!job) {
-      throw new BusinessException(ErrorCodes.JOB_NOT_FOUND, '任务不存在');
-    }
-
-    return job;
   }
 
   private applyKeywordToAndFilters(

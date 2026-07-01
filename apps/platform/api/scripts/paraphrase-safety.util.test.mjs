@@ -3,14 +3,11 @@
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { loadDist } from './load-dist.mjs';
 
-const apiRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const utilPath = pathToFileURL(
-  resolve(apiRoot, 'dist/project-types/seo-factory/modules/paraphrase/paraphrase-safety.util.js'),
-).href;
-const { checkParaphraseSafety } = await import(utilPath);
+const { checkParaphraseSafety } = loadDist(
+  'project-types/seo-factory/modules/paraphrase/paraphrase-safety.util.js',
+);
 
 describe('checkParaphraseSafety', () => {
   it('passes when links and keyword are preserved', () => {
@@ -99,5 +96,20 @@ describe('checkParaphraseSafety', () => {
     });
 
     assert.equal(result.passed, true);
+  });
+
+  it('fails when H2 heading text changes', () => {
+    const original = '## Battery Management\n\nContent about BMS.';
+    const paraphrased = '## BMS Overview\n\nContent about BMS.';
+
+    const result = checkParaphraseSafety({
+      keyword: 'BMS',
+      originalContent: original,
+      paraphrasedContent: paraphrased,
+      skipKeywordHeadCheck: true,
+    });
+
+    assert.equal(result.passed, false);
+    assert.ok(result.issues.some((item) => item.includes('H2 标题文案发生变化')));
   });
 });

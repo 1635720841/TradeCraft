@@ -164,6 +164,7 @@ export interface ArticleJobInternalLink {
 export interface ArticleJobArticleImage {
   alt: string;
   url: string;
+  assetId?: string;
   source: "bfl" | "upload" | "url";
   insertAfterHeading?: string;
 }
@@ -283,13 +284,6 @@ export interface PatchArticleDraftResult {
   contentVersion: number;
 }
 
-export interface DraftImageUploadResult {
-  url: string;
-  filename: string;
-  contentType: string;
-  size: number;
-}
-
 export interface DraftEditHistoryResult {
   items: ManualEditHistoryEntry[];
   contentVersion: number;
@@ -324,6 +318,10 @@ export type ArticleJobWorkflowStep =
 
 export interface ArticleJobWorkflowMeta {
   failedStep?: ArticleJobWorkflowStep;
+  pausedStep?: ArticleJobWorkflowStep;
+  pausedAt?: string;
+  pausedBy?: string;
+  pauseReason?: string;
 }
 
 export interface ArticleJobSeoAnalysisSnapshot {
@@ -552,7 +550,7 @@ export interface ArticleJobQuillbotResult {
   skipped?: boolean;
   passed?: boolean;
   usedOriginal?: boolean;
-  /** 正文已达标，无需句式润色（成功态，非失败回退） */
+  /** 正文已达标，无需表达润色（成功态，非失败回退） */
   polishUnneeded?: boolean;
   completedAt?: string;
   promptVersion?: string;

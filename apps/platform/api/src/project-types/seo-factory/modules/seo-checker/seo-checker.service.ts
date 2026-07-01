@@ -13,6 +13,7 @@ import type { JobStatus } from '@prisma/client';
 import type { LlmJobContext } from '../llm/llm.service';
 import { SeoCheckerPipelineService } from './seo-checker-pipeline.service';
 import { SeoCheckerLifecycleService } from './seo-checker-lifecycle.service';
+import { SeoCheckerRpaService } from './seo-checker-rpa.service';
 import { isSemrushWorkAbortedError } from './seo-checker-lifecycle.service';
 
 @Injectable()
@@ -20,6 +21,7 @@ export class SeoCheckerService implements OnModuleInit {
   constructor(
     private readonly pipelineService: SeoCheckerPipelineService,
     private readonly lifecycleService: SeoCheckerLifecycleService,
+    private readonly rpaService: SeoCheckerRpaService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -56,5 +58,13 @@ export class SeoCheckerService implements OnModuleInit {
 
   async recoverOrphanOptimizingJob(ctx: LlmJobContext, reason: string): Promise<JobStatus> {
     return this.lifecycleService.recoverOrphanOptimizingJob(ctx, reason);
+  }
+
+  async abortInFlightSemrushWork(ctx: LlmJobContext): Promise<boolean> {
+    return this.rpaService.abortInFlightWork(ctx);
+  }
+
+  async clearSemrushAbortSignal(ctx: LlmJobContext): Promise<void> {
+    return this.rpaService.clearAbortSignal(ctx);
   }
 }

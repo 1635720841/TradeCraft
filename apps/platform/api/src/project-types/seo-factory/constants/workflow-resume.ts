@@ -1,12 +1,41 @@
 /** 工作流步骤：SERP → Brief → 初稿 → 内链 → 配图 → Semrush 优化 → QuillBot → YMYL 审查 */
+import type { JobStatus } from '@prisma/client';
 import { WORKFLOW_STEPS, type WorkflowStep } from '@wm/shared-core';
+import { countEffectiveMarkdownImages } from '../modules/illustration/article-image.util';
 import { SEMRUSH_PASS_THRESHOLD } from './seo-score';
+import { SWA_MIN_IMAGES } from './swa-content';
 
 export { WORKFLOW_STEPS };
 export type WorkflowResumeStep = WorkflowStep;
 
 export interface WorkflowMeta {
   failedStep?: WorkflowResumeStep;
+  pausedStep?: WorkflowResumeStep;
+  pausedAt?: string;
+  pausedBy?: string;
+  pauseReason?: string;
+}
+
+/** 从断点步骤映射任务状态（恢复续跑时避免长时间显示 QUEUED）。 */
+export function jobStatusForResumeStep(step: WorkflowResumeStep): JobStatus {
+  switch (step) {
+    case 'serp':
+      return 'QUEUED';
+    case 'brief':
+    case 'draft':
+      return 'DRAFTING';
+    case 'linking':
+      return 'LINKING';
+    case 'images':
+      return 'ILLUSTRATING';
+    case 'optimizing':
+    case 'paraphrasing':
+      return 'OPTIMIZING';
+    case 'ymyl':
+      return 'REVIEWING';
+    default:
+      return 'QUEUED';
+  }
 }
 
 export function getWorkflowMeta(seoCheckData: unknown): WorkflowMeta {
@@ -20,7 +49,13 @@ export function withWorkflowMeta(
   workflow: WorkflowMeta | null,
 ): Record<string, unknown> {
   const base = { ...((seoCheckData ?? {}) as Record<string, unknown>) };
-  if (!workflow?.failedStep) {
+  if (
+    !workflow?.failedStep &&
+    !workflow?.pausedStep &&
+    !workflow?.pausedAt &&
+    !workflow?.pausedBy &&
+    !workflow?.pauseReason
+  ) {
     delete base.workflow;
     return base;
   }
@@ -85,7 +120,8 @@ function inferResumeStepFromData(job: {
 
   if (draft?.content?.trim()) {
     if (!draft.internalLinksApplied) return 'linking';
-    if (!draft.imagesApplied) return 'images';
+    const imageCount = countEffectiveMarkdownImages(draft.content);
+    if (!draft.imagesApplied || imageCount < SWA_MIN_IMAGES) return 'images';
     if (isSemrushOptimizationIncomplete(job.seoCheckData, job.semrushScore)) return 'optimizing';
     if (!isParaphraseCompleted(job.draftData, job.seoCheckData)) return 'paraphrasing';
     if (!isYmylReviewCompleted(job.seoCheckData)) return 'ymyl';

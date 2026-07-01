@@ -1,5 +1,5 @@
 <!--
-  原创表达优化（M7）结果：变更摘要、警告与润色前后对比。
+  表达润色（M7）结果：变更摘要、警告与润色前后对比。
 
   边界：
   - 不负责：触发润色（ArticleJobService / 工作流）
@@ -7,9 +7,12 @@
 <template>
   <div v-if="visible" class="mt-4 rounded border border-gray-200 bg-gray-50/60 p-4">
     <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-      <div class="flex items-center gap-2">
-        <span class="font-medium">原创表达优化</span>
-        <el-tag :type="statusTagType" size="small">{{ statusLabel }}</el-tag>
+      <div class="flex flex-col gap-1">
+        <div class="flex items-center gap-2">
+          <span class="font-medium">{{ PARAPHRASE_FEATURE_NAME }}</span>
+          <el-tag :type="statusTagType" size="small">{{ statusLabel }}</el-tag>
+        </div>
+        <p class="text-xs text-gray-500">{{ PARAPHRASE_FEATURE_HINT }}</p>
       </div>
       <el-button
         v-if="canRerun"
@@ -17,7 +20,7 @@
         :loading="rerunning"
         @click="emit('rerun')"
       >
-        重新润色
+        {{ PARAPHRASE_BTN_RERUN }}
       </el-button>
     </div>
 
@@ -49,16 +52,16 @@
     </el-collapse>
 
     <el-collapse v-if="showCompare" class="mt-2">
-      <el-collapse-item title="查看润色前后对比" name="compare">
+      <el-collapse-item :title="PARAPHRASE_COMPARE_COLLAPSE" name="compare">
         <div class="grid gap-4 md:grid-cols-2">
           <div>
-            <div class="mb-2 text-sm font-medium text-gray-600">润色前（Semrush 优化稿）</div>
+            <div class="mb-2 text-sm font-medium text-gray-600">{{ PARAPHRASE_COMPARE_BEFORE }}</div>
             <div class="draft-preview rounded border bg-white p-3">
               <ArticleJobDraftHtmlBody :content="originalContent!" />
             </div>
           </div>
           <div>
-            <div class="mb-2 text-sm font-medium text-gray-600">润色后（当前正文）</div>
+            <div class="mb-2 text-sm font-medium text-gray-600">{{ PARAPHRASE_COMPARE_AFTER }}</div>
             <div class="draft-preview rounded border border-emerald-200 bg-emerald-50/40 p-3">
               <ArticleJobDraftHtmlBody :content="currentContent!" />
             </div>
@@ -72,6 +75,23 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { ArticleJobQuillbotResult } from "@/api/seo-factory/types";
+import {
+  PARAPHRASE_BTN_RERUN,
+  PARAPHRASE_COMPARE_AFTER,
+  PARAPHRASE_COMPARE_BEFORE,
+  PARAPHRASE_COMPARE_COLLAPSE,
+  PARAPHRASE_FEATURE_HINT,
+  PARAPHRASE_FEATURE_NAME,
+  PARAPHRASE_SKIPPED_DEFAULT,
+  PARAPHRASE_STATUS_DONE,
+  PARAPHRASE_STATUS_INCOMPLETE,
+  PARAPHRASE_STATUS_KEPT_ORIGINAL,
+  PARAPHRASE_STATUS_SKIPPED,
+  PARAPHRASE_STATUS_UNNEEDED,
+  PARAPHRASE_SUMMARY_DONE,
+  PARAPHRASE_SUMMARY_UNNEEDED,
+  formatParaphraseSummaryUnneededChunks
+} from "@wm/shared-core";
 import ArticleJobDraftHtmlBody from "./ArticleJobDraftHtmlBody.vue";
 
 defineOptions({ name: "ArticleJobQuillbotPanel" });
@@ -93,6 +113,7 @@ function isTechnicalWarning(line: string): boolean {
     line.includes("chunk_skipped:") ||
     line.includes("document_skipped:") ||
     line.includes("validate_skipped:") ||
+    line.includes("paraphrase_partial:") ||
     line.startsWith("format_repaired:") ||
     line === "readability_repaired_before_save"
   );
@@ -109,28 +130,25 @@ const statusTagType = computed(() => {
 });
 
 const statusLabel = computed(() => {
-  if (props.quillbot?.skipped) return "已跳过";
-  if (props.quillbot?.polishUnneeded) return "无需润色";
-  if (props.quillbot?.usedOriginal) return "已保留原稿";
-  if (props.quillbot?.passed) return "已完成";
-  return "未完成";
+  if (props.quillbot?.skipped) return PARAPHRASE_STATUS_SKIPPED;
+  if (props.quillbot?.polishUnneeded) return PARAPHRASE_STATUS_UNNEEDED;
+  if (props.quillbot?.usedOriginal) return PARAPHRASE_STATUS_KEPT_ORIGINAL;
+  if (props.quillbot?.passed) return PARAPHRASE_STATUS_DONE;
+  return PARAPHRASE_STATUS_INCOMPLETE;
 });
 
 const summaryText = computed(() => {
   const quillbot = props.quillbot;
   if (!quillbot) return "";
-  if (quillbot.skipped) return quillbot.warnings?.[0] ?? "已跳过原创表达优化";
+  if (quillbot.skipped) return quillbot.warnings?.[0] ?? PARAPHRASE_SKIPPED_DEFAULT;
   if (quillbot.polishUnneeded) {
     const chunkCount = quillbot.chunkCount ?? 0;
     if (chunkCount > 1) {
-      return `已检查 ${chunkCount} 个段落，未发现需处理的 AI 套话，正文保持 Semrush 优化稿不变。`;
+      return formatParaphraseSummaryUnneededChunks(chunkCount);
     }
-    return "未发现需处理的 AI 套话，正文保持 Semrush 优化稿不变。";
+    return PARAPHRASE_SUMMARY_UNNEEDED;
   }
   if (quillbot.usedOriginal) {
-    if (quillbot.warnings?.some((line) => line.includes("paraphrase_aborted:low_chunk_success_rate"))) {
-      return "分块润色成功率过低，已保留 Semrush 优化稿（正文已符合发布标准）。";
-    }
     return "复检未通过，已保留 Semrush 优化稿。可查看下方警告了解原因。";
   }
   const parts: string[] = [];
@@ -138,6 +156,9 @@ const summaryText = computed(() => {
     parts.push(
       `分 ${quillbot.chunkCount} 段润色，成功 ${quillbot.chunksPolished ?? 0} 段。`
     );
+  }
+  if (quillbot.warnings?.some((line) => line.includes("paraphrase_partial:"))) {
+    parts.push("部分段落润色未通过，已保留对应原段落。");
   }
   if (
     typeof quillbot.localScoreBefore === "number" &&
@@ -149,7 +170,7 @@ const summaryText = computed(() => {
     parts.push(`已保护 ${quillbot.protectedTermCount} 个术语/规格。`);
   }
   if (parts.length > 0) return parts.join(" ");
-  return "已完成句式润色，结构与 SEO 目标保持不变。";
+  return PARAPHRASE_SUMMARY_DONE;
 });
 
 const technicalWarnings = computed(() =>

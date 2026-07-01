@@ -5,6 +5,7 @@
 import { Module } from '@nestjs/common';
 import { AccessModule } from '../../../../modules/access/access.module';
 import { BillingModule } from '../../../../modules/billing/billing.module';
+import { MediaModule } from '../../../../modules/media/media.module';
 import { ProjectModule } from '../../../../modules/project/project.module';
 import { ArticleJobActivityModule } from '../article-job/article-job-activity.module';
 import { CmsPublishService } from './cms-publish.service';
@@ -13,7 +14,7 @@ import { ExportService } from './export.service';
 import { ShopifyFilesService } from './shopify-files.service';
 
 @Module({
-  imports: [ProjectModule, AccessModule, BillingModule, ArticleJobActivityModule],
+  imports: [ProjectModule, AccessModule, BillingModule, MediaModule, ArticleJobActivityModule],
   controllers: [ExportController],
   providers: [ExportService, CmsPublishService, ShopifyFilesService],
   exports: [ExportService, CmsPublishService],

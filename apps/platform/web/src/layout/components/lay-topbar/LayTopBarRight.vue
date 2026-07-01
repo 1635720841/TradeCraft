@@ -8,7 +8,11 @@ import LayNotice from "../lay-notice/index.vue";
 import { useNav } from "@/layout/hooks/useNav";
 import { useUserStoreHook } from "@/store/modules/user";
 import { getOrganizationProfile } from "@/api/org/organization";
-import { useOrgAdminSetupChecklist } from "@/composables/useOrgAdminSetupChecklist";
+import {
+  ORG_ADMIN_SETUP_FOCUS_QUERY,
+  scrollToOrgAdminSetupChecklist,
+  useOrgAdminSetupChecklist
+} from "@/composables/useOrgAdminSetupChecklist";
 import { memberRoleDict } from "@/constants/dicts/platform";
 import { dictLabel } from "@/utils/dict";
 import LogoutCircleRLine from "~icons/ri/logout-circle-r-line";
@@ -53,8 +57,15 @@ function goOrganization() {
   router.push("/org/profile");
 }
 
-function goSetupChecklist() {
-  router.push("/welcome");
+async function goSetupChecklist() {
+  if (router.currentRoute.value.path === "/welcome") {
+    scrollToOrgAdminSetupChecklist();
+    return;
+  }
+  await router.push({
+    path: "/welcome",
+    query: { focus: ORG_ADMIN_SETUP_FOCUS_QUERY }
+  });
 }
 </script>
 

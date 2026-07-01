@@ -50,7 +50,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { EditorContent, useEditor } from "@tiptap/vue-3";
 import ImageResize from "tiptap-extension-resize-image";
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { uploadArticleDraftImage } from "@/api/seo-factory/article-job";
+import { uploadMediaAsset } from "@/api/platform/media";
 import type { ArticleJobArticleImage } from "@/api/seo-factory/types";
 import { htmlToMarkdown, markdownToHtml } from "@/utils/seo-factory/draft-content";
 import { prepareHtmlForTipTap } from "@/utils/seo-factory/draft-tiptap-html";
@@ -202,7 +202,7 @@ async function handleImageFileChange(event: Event) {
 
   imageUploading.value = true;
   try {
-    const uploaded = await uploadArticleDraftImage(props.projectId, props.jobId, file);
+    const uploaded = await uploadMediaAsset(props.projectId, file);
     const alt = file.name.replace(/\.[^.]+$/, "");
     insertImage(uploaded.url, alt);
     message("图片已上传", { type: "success" });

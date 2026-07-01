@@ -9,12 +9,13 @@ export const jobStatusDict: DictItem[] = [
   { value: "ILLUSTRATING", label: "配图处理", type: "primary" },
   { value: "OPTIMIZING", label: "优化中", type: "warning" },
   { value: "REVIEWING", label: "内容审查", type: "warning" },
+  { value: "PAUSED", label: "已暂停", type: "warning" },
   { value: "COMPLETED", label: "已完成", type: "success" },
   { value: "FAILED", label: "失败", type: "danger" }
 ];
 
 /** 轮询可停止的终态 */
-export const JOB_TERMINAL_STATUSES = ["COMPLETED", "FAILED"] as const;
+export const JOB_TERMINAL_STATUSES = ["COMPLETED", "FAILED", "PAUSED"] as const;
 
 /** 内容输出语言（与后端 Site.contentLanguage / ArticleJob.contentLanguage 一致） */
 export const CONTENT_LANGUAGE_OPTIONS = [

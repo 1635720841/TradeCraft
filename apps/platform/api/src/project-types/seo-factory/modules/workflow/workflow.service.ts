@@ -92,6 +92,16 @@ export class WorkflowService {
       this.logger.warn('Workflow job not found', { traceId, jobId, organizationId, projectId });
       return;
     }
+    if (String(job.status) === 'PAUSED') {
+      this.logger.info('Workflow skipped because job is paused', {
+        traceId,
+        organizationId,
+        projectId,
+        jobId,
+        action: 'workflow.paused_skip',
+      });
+      return;
+    }
 
     const ctx = {
       jobId,
@@ -189,6 +199,18 @@ export class WorkflowService {
     };
 
     for (let i = startIdx; i < WORKFLOW_STEPS.length; i++) {
+      const shouldStop = await this.shouldStopForPaused(jobId);
+      if (shouldStop) {
+        this.logger.info('Workflow interrupted by manual pause', {
+          traceId,
+          organizationId,
+          projectId,
+          jobId,
+          action: 'workflow.paused_interrupt',
+        });
+        return;
+      }
+
       const step = WORKFLOW_STEPS[i];
       await steps[step]();
 
@@ -263,6 +285,22 @@ export class WorkflowService {
     projectId: string,
     errorMessage: string,
   ): Promise<void> {
+    const pausedRow = await this.prisma.articleJob.findFirst({
+      where: { id: jobId, organizationId, projectId },
+      select: { status: true },
+    });
+    if (String(pausedRow?.status ?? '') === 'PAUSED') {
+      this.logger.info('Workflow failure suppressed because job is paused', {
+        traceId,
+        organizationId,
+        projectId,
+        jobId,
+        action: 'workflow.failed_suppressed_paused',
+        errorMessage,
+      });
+      return;
+    }
+
     const job = await this.prisma.articleJob.findFirst({
       where: { id: jobId, organizationId, projectId },
       select: {
@@ -276,13 +314,18 @@ export class WorkflowService {
     });
 
     const failedStep = job ? resolveFailedStep(job) : 'serp';
+    const prevCheck = (job?.seoCheckData ?? {}) as Record<string, unknown>;
+    const suppressFailureNotification = prevCheck.suppressFailureNotification === true;
 
     await this.prisma.articleJob.updateMany({
       where: { id: jobId, organizationId, projectId },
       data: {
         status: 'FAILED',
         errorMessage,
-        seoCheckData: withWorkflowMeta(job?.seoCheckData, { failedStep }) as object,
+        seoCheckData: {
+          ...withWorkflowMeta(prevCheck, { failedStep }),
+          suppressFailureNotification: false,
+        } as object,
       },
     });
 
@@ -294,17 +337,20 @@ export class WorkflowService {
       action: 'workflow.failed',
       errorMessage,
       failedStep,
+      notified: !suppressFailureNotification,
     });
 
-    const failedPayload: ArticleFailedPayload = {
-      traceId,
-      organizationId,
-      projectId,
-      jobId,
-      targetKeyword: job?.targetKeyword ?? '',
-      errorMessage,
-    };
-    this.eventEmitter.emit(ARTICLE_FAILED_EVENT, failedPayload);
+    if (!suppressFailureNotification) {
+      const failedPayload: ArticleFailedPayload = {
+        traceId,
+        organizationId,
+        projectId,
+        jobId,
+        targetKeyword: job?.targetKeyword ?? '',
+        errorMessage,
+      };
+      this.eventEmitter.emit(ARTICLE_FAILED_EVENT, failedPayload);
+    }
   }
 
   private async shouldPauseForBriefApproval(jobId: string): Promise<boolean> {
@@ -315,9 +361,21 @@ export class WorkflowService {
     return isBriefApprovalPending(job?.briefData);
   }
 
-  private async updateStatus(jobId: string, status: JobStatus | 'REVIEWING'): Promise<void> {
-    await this.prisma.articleJob.update({
+  private async shouldStopForPaused(jobId: string): Promise<boolean> {
+    const row = await this.prisma.articleJob.findFirst({
       where: { id: jobId },
+      select: { status: true },
+    });
+    return String(row?.status ?? '') === 'PAUSED';
+  }
+
+  private async updateStatus(jobId: string, status: JobStatus | 'REVIEWING'): Promise<void> {
+    // 若任务被手动暂停，不应再被工作流步骤覆盖状态。
+    await this.prisma.articleJob.updateMany({
+      where: {
+        id: jobId,
+        status: { not: 'PAUSED' as JobStatus },
+      },
       data: { status: status as JobStatus },
     });
   }

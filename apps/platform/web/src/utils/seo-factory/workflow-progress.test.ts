@@ -40,7 +40,8 @@ describe("inferCurrentWorkflowStep", () => {
   const base = {
     status: "OPTIMIZING",
     draftData: {
-      content: "# Title\n\nBody",
+      content:
+        "# Title\n\n![hero](https://cdn.example.com/a.jpg)\n\n![detail](https://cdn.example.com/b.jpg)\n\nBody",
       internalLinksApplied: true,
       imagesApplied: true
     },
@@ -54,7 +55,7 @@ describe("inferCurrentWorkflowStep", () => {
         seoCheckData: {
           workflowProgress: {
             phase: "paraphrasing",
-            message: "原创表达优化中",
+            message: "表达润色中",
             updatedAt: new Date().toISOString()
           }
         }
@@ -69,6 +70,20 @@ describe("inferCurrentWorkflowStep", () => {
         seoCheckData: { semrush: { passed: true } }
       })
     ).toBe("paraphrasing");
+  });
+
+  it("keeps images step current when metadata says applied but content has too few images", () => {
+    expect(
+      inferCurrentWorkflowStep({
+        ...base,
+        draftData: {
+          ...base.draftData,
+          imagesApplied: true,
+          articleImages: [],
+          content: "# Title\n\nBody without images"
+        }
+      })
+    ).toBe("images");
   });
 });
 

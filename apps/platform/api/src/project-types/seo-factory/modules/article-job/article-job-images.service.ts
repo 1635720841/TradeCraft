@@ -6,10 +6,13 @@
  */
 
 import { Injectable } from '@nestjs/common';
+import { MediaAssetSource } from '@prisma/client';
 import { BusinessException } from '../../../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { PrismaService } from '../../../../core/database/prisma.service';
 import { LoggerService } from '../../../../core/logger/logger.service';
+import { MediaIngestService } from '../../../../modules/media/media-ingest.service';
+import { MediaService } from '../../../../modules/media/media.service';
 import type { DraftStaleness, DraftStalenessAffected } from '../../constants/draft-edit';
 import {
   buildArticleImageAlt,
@@ -41,6 +44,8 @@ export class ArticleJobImagesService {
     private readonly prisma: PrismaService,
     private readonly logger: LoggerService,
     private readonly illustrationService: IllustrationService,
+    private readonly mediaIngestService: MediaIngestService,
+    private readonly mediaService: MediaService,
   ) {}
 
   async patchArticleImages(
@@ -69,6 +74,13 @@ export class ArticleJobImagesService {
       draftData.content,
       previousImages,
       dto.articleImages,
+    );
+
+    await this.mediaService.syncAssetBindings(
+      organizationId,
+      projectId,
+      collectAssetIds(previousImages),
+      collectAssetIds(images),
     );
 
     await this.persistDraftImages(jobId, job.draftData, {
@@ -126,6 +138,25 @@ export class ArticleJobImagesService {
       });
 
     const generated = await this.illustrationService.generateImageFromPrompt(prompt);
+    const ingested = await this.mediaIngestService.ingestFromRemoteUrl({
+      organizationId,
+      projectId,
+      remoteUrl: generated.url,
+      source: MediaAssetSource.BFL,
+      sourceMeta: {
+        provider: 'bfl',
+        jobId,
+        prompt,
+        index,
+      },
+      createdBy: userId,
+      bind: true,
+    });
+
+    if (current.assetId) {
+      await this.mediaService.unbindAsset(organizationId, projectId, current.assetId);
+    }
+
     const alt =
       current.alt?.trim() ||
       buildArticleImageAlt(job.targetKeyword, current.insertAfterHeading);
@@ -134,13 +165,14 @@ export class ArticleJobImagesService {
     content = insertArticleImageMarkdown(
       content,
       alt,
-      generated.url,
+      ingested.url,
       current.insertAfterHeading,
     );
 
     images[index] = {
       alt,
-      url: generated.url,
+      url: ingested.url,
+      assetId: ingested.assetId,
       source: 'bfl',
       insertAfterHeading: current.insertAfterHeading,
     };
@@ -186,13 +218,27 @@ export class ArticleJobImagesService {
 
     const prompt = dto.prompt.trim();
     const generated = await this.illustrationService.generateImageFromPrompt(prompt);
+    const ingested = await this.mediaIngestService.ingestFromRemoteUrl({
+      organizationId,
+      projectId,
+      remoteUrl: generated.url,
+      source: MediaAssetSource.BFL,
+      sourceMeta: {
+        provider: 'bfl',
+        jobId,
+        prompt,
+      },
+      createdBy: userId,
+      bind: true,
+    });
     const alt =
       dto.alt?.trim() ||
       buildArticleImageAlt(job.targetKeyword, dto.insertAfterHeading);
     const images = [...(draftData.articleImages ?? [])];
     const nextImage: ArticleImageRecord = {
       alt,
-      url: generated.url,
+      url: ingested.url,
+      assetId: ingested.assetId,
       source: 'bfl',
       insertAfterHeading: dto.insertAfterHeading?.trim() || undefined,
     };
@@ -201,7 +247,7 @@ export class ArticleJobImagesService {
     const content = insertArticleImageMarkdown(
       draftData.content,
       alt,
-      generated.url,
+      ingested.url,
       nextImage.insertAfterHeading,
     );
 
@@ -347,4 +393,10 @@ export class ArticleJobImagesService {
       updatedAt: job.updatedAt,
     };
   }
+}
+
+function collectAssetIds(images: ArticleImageRecord[]): string[] {
+  return images
+    .map((image) => image.assetId)
+    .filter((assetId): assetId is string => Boolean(assetId));
 }

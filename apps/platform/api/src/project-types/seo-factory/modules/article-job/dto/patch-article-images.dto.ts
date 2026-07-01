@@ -20,6 +20,11 @@ class ArticleImageEditItemDto {
   url!: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(36)
+  assetId?: string;
+
+  @IsOptional()
   @IsIn(['bfl', 'upload', 'url'])
   source?: 'bfl' | 'upload' | 'url';
 

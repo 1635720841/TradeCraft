@@ -14,6 +14,8 @@ import {
 } from '../../utils/seo-analysis-snapshot.util';
 import type { LlmJobContext } from '../llm/llm.service';
 import type { ArticleImageRecord } from '../illustration/article-image.util';
+import { reconcileArticleImagesFromContent, countEffectiveMarkdownImages, isPlaceholderImageUrl, stripPlaceholderMarkdownImages } from '../illustration/article-image.util';
+import { SWA_MIN_IMAGES } from '../../constants/swa-content';
 import {
   countMissingEnrichments,
   mergeDraftEnrichments,
@@ -129,7 +131,16 @@ export class SeoCheckerProgressService {
       where: { id: ctx.jobId, organizationId: ctx.organizationId, projectId: ctx.projectId },
       select: { draftData: true, seoCheckData: true },
     });
-    const draft = (job?.draftData ?? {}) as { optimizeHistory?: unknown[] };
+    const draft = (job?.draftData ?? {}) as {
+      optimizeHistory?: unknown[];
+      articleImages?: ArticleImageRecord[];
+      imagesApplied?: boolean;
+    };
+    const reconciledImages = reconcileArticleImagesFromContent(
+      input.content,
+      draft.articleImages,
+    ).filter((image) => !isPlaceholderImageUrl(image.url));
+    const cleanedContent = stripPlaceholderMarkdownImages(input.content);
     const prevCheck = (job?.seoCheckData ?? input.existingSeoCheck ?? {}) as Record<string, unknown>;
 
     const seoCheckBase = {
@@ -167,7 +178,14 @@ export class SeoCheckerProgressService {
       where: { id: ctx.jobId },
       data: {
         localSeoScore: input.localResult.score,
-        draftData: { ...draft, content: input.content } as object,
+        draftData: {
+          ...draft,
+          content: cleanedContent,
+          articleImages: reconciledImages,
+          imagesApplied:
+            countEffectiveMarkdownImages(cleanedContent) >= SWA_MIN_IMAGES &&
+            draft.imagesApplied === true,
+        } as object,
         seoCheckData: seoCheckData as object,
       },
     });
@@ -203,7 +221,16 @@ export class SeoCheckerProgressService {
       where: { id: ctx.jobId, organizationId: ctx.organizationId, projectId: ctx.projectId },
       select: { draftData: true, seoCheckData: true },
     });
-    const draft = (job?.draftData ?? {}) as { optimizeHistory?: unknown[] };
+    const draft = (job?.draftData ?? {}) as {
+      optimizeHistory?: unknown[];
+      articleImages?: ArticleImageRecord[];
+      imagesApplied?: boolean;
+    };
+    const reconciledImages = reconcileArticleImagesFromContent(
+      input.content,
+      draft.articleImages,
+    ).filter((image) => !isPlaceholderImageUrl(image.url));
+    const cleanedContent = stripPlaceholderMarkdownImages(input.content);
     const prevCheck = (job?.seoCheckData ?? input.existingSeoCheck ?? {}) as Record<string, unknown>;
     const prevSemrush = (prevCheck.semrush ?? {}) as Record<string, unknown>;
     const frozenLocal = input.frozenLocalResult
@@ -287,7 +314,14 @@ export class SeoCheckerProgressService {
       data: {
         localSeoScore: frozenLocal.score,
         semrushScore: input.semrushResult.skipped ? null : input.semrushResult.overall,
-        draftData: { ...draft, content: input.content } as object,
+        draftData: {
+          ...draft,
+          content: cleanedContent,
+          articleImages: reconciledImages,
+          imagesApplied:
+            countEffectiveMarkdownImages(cleanedContent) >= SWA_MIN_IMAGES &&
+            draft.imagesApplied === true,
+        } as object,
         seoCheckData: seoCheckData as object,
       },
     });
@@ -369,11 +403,15 @@ export class SeoCheckerProgressService {
       internalLinks?: InternalLinkRecord[];
       articleImages?: ArticleImageRecord[];
     };
+    const reconciledImages = reconcileArticleImagesFromContent(
+      content,
+      draft.articleImages,
+    );
 
     const merged = mergeDraftEnrichments({
       content,
       internalLinks: draft.internalLinks,
-      articleImages: draft.articleImages,
+      articleImages: reconciledImages,
     });
 
     if (merged === content.trim()) {
@@ -383,7 +421,7 @@ export class SeoCheckerProgressService {
     const missing = countMissingEnrichments({
       content,
       internalLinks: draft.internalLinks,
-      articleImages: draft.articleImages,
+      articleImages: reconciledImages,
     });
 
     await this.llmService.revertDraftContent(ctx, merged);

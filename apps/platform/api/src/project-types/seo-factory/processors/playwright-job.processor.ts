@@ -17,6 +17,8 @@ import {
   type SeoScore,
 } from '@wm/provider-interfaces';
 import { PLAYWRIGHT_QUEUE } from '../../../core/queue/queue.constants';
+import { BusinessException } from '../../../core/exceptions/business.exception';
+import { ErrorCodes } from '../../../core/exceptions/error-codes';
 import { PrismaService } from '../../../core/database/prisma.service';
 import { LoggerService } from '../../../core/logger/logger.service';
 import { readPlaywrightQueueOptions } from '../../../core/queue/playwright-queue.config';
@@ -39,7 +41,17 @@ export class PlaywrightJobProcessor extends WorkerHost {
   }
 
   async process(job: Job<PlaywrightJobPayload>): Promise<SeoScore> {
-    const result = await this.semrushChecker.checkScore(job.data.input);
+    const paused = await this.isArticleJobPaused(job.data.jobId);
+    if (paused) {
+      throw new BusinessException(ErrorCodes.VALIDATION_ERROR, '任务已暂停，Semrush 检测已取消', {
+        semrushAborted: true,
+      });
+    }
+
+    const result = await this.semrushChecker.checkScore({
+      ...job.data.input,
+      articleJobId: job.data.jobId,
+    });
     await persistSemrushQueueCheckpoint(
       this.prisma,
       job.data.jobId,
@@ -57,5 +69,13 @@ export class PlaywrightJobProcessor extends WorkerHost {
       });
     });
     return result;
+  }
+
+  private async isArticleJobPaused(articleJobId: string): Promise<boolean> {
+    const row = await this.prisma.articleJob.findFirst({
+      where: { id: articleJobId },
+      select: { status: true },
+    });
+    return String(row?.status ?? '') === 'PAUSED';
   }
 }
