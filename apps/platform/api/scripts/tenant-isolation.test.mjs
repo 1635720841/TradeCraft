@@ -116,16 +116,19 @@ function createArticleJobService(prisma) {
     removeQueueJobsForArticleJob: async () => {},
   };
   const batchService = {};
+  const lifecycleService = {};
+  const createService = {};
   return new ArticleJobService(
     prisma,
     noopLogger(),
     noop,
     noop,
     noop,
-    noop,
     listService,
     queueService,
     batchService,
+    lifecycleService,
+    createService,
   );
 }
 

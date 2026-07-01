@@ -11,6 +11,11 @@ export interface SemrushCheckPending {
   previousStatus: string;
 }
 
+export function getSemrushPending(seoCheckData: unknown): SemrushCheckPending | null {
+  const data = (seoCheckData ?? {}) as { semrush?: { pending?: SemrushCheckPending } };
+  return data.semrush?.pending ?? null;
+}
+
 export interface SemrushRpaInFlight {
   startedAt: string;
   rpaKind?: string;

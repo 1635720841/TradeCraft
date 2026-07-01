@@ -13,6 +13,12 @@ const resumePath = pathToFileURL(
 ).href;
 const { WORKFLOW_STEPS, resolveResumeStep, resolveFailedStep } = await import(resumePath);
 
+const DRAFT_WITH_MIN_IMAGES = `# Draft
+
+![hero](/media/00000000-0000-4000-8000-000000000501/file)
+![inline](/media/00000000-0000-4000-8000-000000000502/file)
+`;
+
 describe('WORKFLOW_STEPS', () => {
   it('runs QuillBot after Semrush and before YMYL', () => {
     assert.deepEqual(WORKFLOW_STEPS, [
@@ -61,7 +67,7 @@ describe('resolveResumeStep', () => {
         serpData: {},
         briefData: { outline: [] },
         draftData: {
-          content: '# Draft',
+          content: DRAFT_WITH_MIN_IMAGES,
           internalLinksApplied: true,
           imagesApplied: true,
         },
@@ -78,7 +84,7 @@ describe('resolveResumeStep', () => {
         serpData: {},
         briefData: { outline: [] },
         draftData: {
-          content: '# Draft',
+          content: DRAFT_WITH_MIN_IMAGES,
           internalLinksApplied: true,
           imagesApplied: true,
         },
@@ -97,7 +103,7 @@ describe('resolveResumeStep', () => {
         serpData: {},
         briefData: { outline: [] },
         draftData: {
-          content: '# Draft',
+          content: DRAFT_WITH_MIN_IMAGES,
           internalLinksApplied: true,
           imagesApplied: true,
         },
@@ -116,7 +122,7 @@ describe('resolveResumeStep', () => {
         serpData: {},
         briefData: { outline: [] },
         draftData: {
-          content: '# Draft',
+          content: DRAFT_WITH_MIN_IMAGES,
           internalLinksApplied: true,
           imagesApplied: true,
           paraphraseApplied: true,
@@ -150,7 +156,7 @@ describe('resolveFailedStep', () => {
         status: 'OPTIMIZING',
         briefData: {},
         draftData: {
-          content: '# Draft',
+          content: DRAFT_WITH_MIN_IMAGES,
           internalLinksApplied: true,
           imagesApplied: true,
         },

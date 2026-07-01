@@ -18,7 +18,9 @@ import {
   buildArticleImageAlt,
   buildArticleImagePrompt,
 } from '../illustration/article-image-prompt.util';
+import { isImageMutationBlocked } from '../../constants/article-job-status';
 import type { ArticleImageRecord } from '../illustration/article-image.util';
+import { collectArticleImageAssetIds } from '../illustration/article-image.util';
 import { IllustrationService } from '../illustration/illustration.service';
 import {
   applyArticleImageEditsToContent,
@@ -28,15 +30,6 @@ import {
 import type { GenerateArticleImageDto } from './dto/regenerate-article-image.dto';
 import type { PatchArticleImagesDto } from './dto/patch-article-images.dto';
 import type { RegenerateArticleImageDto } from './dto/regenerate-article-image.dto';
-
-const IMAGE_MUTATION_BLOCKED_STATUSES = new Set([
-  'QUEUED',
-  'RESEARCHING',
-  'DRAFTING',
-  'LINKING',
-  'ILLUSTRATING',
-  'OPTIMIZING',
-]);
 
 @Injectable()
 export class ArticleJobImagesService {
@@ -79,8 +72,8 @@ export class ArticleJobImagesService {
     await this.mediaService.syncAssetBindings(
       organizationId,
       projectId,
-      collectAssetIds(previousImages),
-      collectAssetIds(images),
+      collectArticleImageAssetIds(previousImages),
+      collectArticleImageAssetIds(images),
     );
 
     await this.persistDraftImages(jobId, job.draftData, {
@@ -291,7 +284,7 @@ export class ArticleJobImagesService {
   }
 
   private assertImageMutationAllowed(status: string) {
-    if (IMAGE_MUTATION_BLOCKED_STATUSES.has(status)) {
+    if (isImageMutationBlocked(status)) {
       throw new BusinessException(
         ErrorCodes.VALIDATION_ERROR,
         '任务进行中，请稍后再编辑配图',
@@ -393,10 +386,4 @@ export class ArticleJobImagesService {
       updatedAt: job.updatedAt,
     };
   }
-}
-
-function collectAssetIds(images: ArticleImageRecord[]): string[] {
-  return images
-    .map((image) => image.assetId)
-    .filter((assetId): assetId is string => Boolean(assetId));
 }

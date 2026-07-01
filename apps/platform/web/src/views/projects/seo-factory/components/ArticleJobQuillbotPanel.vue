@@ -92,12 +92,14 @@ import {
   PARAPHRASE_SUMMARY_UNNEEDED,
   formatParaphraseSummaryUnneededChunks
 } from "@wm/shared-core";
+import { resolveParaphraseOutcomeDisplay } from "@/utils/seo-factory/paraphrase-outcome";
 import ArticleJobDraftHtmlBody from "./ArticleJobDraftHtmlBody.vue";
 
 defineOptions({ name: "ArticleJobQuillbotPanel" });
 
 const props = defineProps<{
   quillbot?: ArticleJobQuillbotResult | null;
+  paraphraseApplied?: boolean;
   originalContent?: string | null;
   currentContent?: string | null;
   canRerun?: boolean;
@@ -121,20 +123,22 @@ function isTechnicalWarning(line: string): boolean {
 
 const visible = computed(() => Boolean(props.quillbot?.completedAt || props.quillbot?.skipped));
 
+const outcomeDisplay = computed(() =>
+  resolveParaphraseOutcomeDisplay(props.quillbot, props.paraphraseApplied)
+);
+
 const statusTagType = computed(() => {
-  if (props.quillbot?.skipped) return "info";
-  if (props.quillbot?.polishUnneeded) return "success";
-  if (props.quillbot?.usedOriginal) return "warning";
-  if (props.quillbot?.passed) return "success";
+  const tone = outcomeDisplay.value.tone;
+  if (tone === "pass") return "success";
+  if (tone === "warn") return "warning";
   return "info";
 });
 
 const statusLabel = computed(() => {
-  if (props.quillbot?.skipped) return PARAPHRASE_STATUS_SKIPPED;
-  if (props.quillbot?.polishUnneeded) return PARAPHRASE_STATUS_UNNEEDED;
-  if (props.quillbot?.usedOriginal) return PARAPHRASE_STATUS_KEPT_ORIGINAL;
-  if (props.quillbot?.passed) return PARAPHRASE_STATUS_DONE;
-  return PARAPHRASE_STATUS_INCOMPLETE;
+  if (!props.quillbot?.completedAt && !props.quillbot?.skipped && !props.paraphraseApplied) {
+    return PARAPHRASE_STATUS_INCOMPLETE;
+  }
+  return outcomeDisplay.value.label;
 });
 
 const summaryText = computed(() => {

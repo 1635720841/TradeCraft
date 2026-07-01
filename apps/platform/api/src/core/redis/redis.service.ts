@@ -26,6 +26,11 @@ export class RedisService implements OnModuleDestroy {
     return this.client;
   }
 
+  /** Pub/Sub 等场景使用独立连接，避免阻塞主 client */
+  duplicateClient(): Redis {
+    return this.client.duplicate();
+  }
+
   async get(key: string): Promise<string | null> {
     return this.client.get(key);
   }

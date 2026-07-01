@@ -18,7 +18,10 @@ import {
   retryArticleJob
 } from "@/api/seo-factory/article-job";
 import type { ArticleJobItem } from "@/api/seo-factory/types";
-import { JOB_TERMINAL_STATUSES } from "@/constants/dicts/seo-factory";
+import {
+  confirmDeleteArticleJob,
+  isArticleJobInProgress
+} from "@/utils/seo-factory/job-delete-confirm";
 import { message } from "@/utils/message";
 import { canPublishJobToCms } from "@/utils/seo-factory/cms-publish-status";
 import { isBriefPending } from "@/utils/seo-factory/job-progress";
@@ -227,32 +230,12 @@ export function useJobListBatchActions(options: {
     }
   }
 
-  function buildDeleteConfirmMessage(keyword: string, inProgress: boolean): string {
-    const base = `确定删除任务「${keyword}」？删除后不可恢复，将一并清理队列任务、导出文件与稿件插图。`;
-    return inProgress ? `${base}\n\n该任务仍在进行中，删除后后台可能短暂报错，可忽略。` : base;
-  }
-
-  async function confirmDelete(keyword: string, inProgress: boolean): Promise<boolean> {
-    try {
-      await ElMessageBox.confirm(buildDeleteConfirmMessage(keyword, inProgress), "删除任务", {
-        type: "warning",
-        confirmButtonText: "删除",
-        cancelButtonText: "取消",
-        confirmButtonClass: "el-button--danger"
-      });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  function isJobInProgress(status: string): boolean {
-    return !JOB_TERMINAL_STATUSES.includes(status as (typeof JOB_TERMINAL_STATUSES)[number]);
-  }
-
   async function handleDelete(jobId: string, targetKeyword: string) {
     const row = jobs.value.find((item) => item.id === jobId);
-    const confirmed = await confirmDelete(targetKeyword, row ? isJobInProgress(row.status) : false);
+    const confirmed = await confirmDeleteArticleJob(
+      targetKeyword,
+      row ? isArticleJobInProgress(row.status) : false
+    );
     if (!confirmed) return;
 
     deletingId.value = jobId;
@@ -268,7 +251,9 @@ export function useJobListBatchActions(options: {
   async function handleBatchDelete() {
     if (selectedJobs.value.length === 0) return;
 
-    const inProgressCount = selectedJobs.value.filter((job) => isJobInProgress(job.status)).length;
+    const inProgressCount = selectedJobs.value.filter((job) =>
+      isArticleJobInProgress(job.status)
+    ).length;
     const keywordPreview = selectedJobs.value
       .slice(0, 3)
       .map((job) => job.targetKeyword)

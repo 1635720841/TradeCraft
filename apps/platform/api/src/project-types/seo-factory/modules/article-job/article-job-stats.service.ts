@@ -3,12 +3,13 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import { JobStatus, KeywordStatus } from '@prisma/client';
+import { KeywordStatus } from '@prisma/client';
 import { isPendingHumanReview } from '@wm/shared-core';
 import { PrismaService } from '../../../../core/database/prisma.service';
 import { ProjectAccessService } from '../../../../modules/project/project-access.service';
 import { canReviewInSeoProject } from '../../../../modules/project/project-notification.util';
 import { siteHasWritingProfile } from '../../constants/site-settings';
+import { ACTIVE_JOB_STATUSES } from '../../constants/article-job-status';
 import { GscService } from '../gsc/gsc.service';
 import { isArticleDraftStale, isCmsPublishFailed } from './article-job-stage.util';
 
@@ -33,18 +34,8 @@ export class ArticleJobStatsService {
       projectId,
       ...(siteId ? { OR: [{ siteId }, { siteId: null }] } : {}),
     };
-    // 用“忙碌状态白名单”而非 notIn，避免 DB enum 未迁移时 Prisma 校验 PAUSED 失败。
-    // 迁移完成后，PAUSED 自然不会被计入 activeJobs / myAssignedCount。
-    const activeStatusFilter: { in: JobStatus[] } = {
-      in: [
-        JobStatus.QUEUED,
-        JobStatus.RESEARCHING,
-        JobStatus.DRAFTING,
-        JobStatus.LINKING,
-        JobStatus.ILLUSTRATING,
-        JobStatus.OPTIMIZING,
-        JobStatus.REVIEWING,
-      ],
+    const activeStatusFilter = {
+      in: [...ACTIVE_JOB_STATUSES],
     };
 
     const [totalJobs, completedJobs, failedJobs, activeJobs, queuedJobs, optimizingJobs, ymylCandidates, pendingBriefJobs, publishCandidates, staleDraftCandidates, siteRows, keywordTotalCount, keywordQueueableCount, keywordUnclusteredCount] =

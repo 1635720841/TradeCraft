@@ -40,6 +40,16 @@
       </div>
       <div class="job-detail-top__actions">
         <el-button
+          v-if="canCancel && canWriteJob"
+          type="info"
+          size="small"
+          plain
+          :loading="cancelling"
+          @click="emit('cancel')"
+        >
+          取消任务
+        </el-button>
+        <el-button
           v-if="canPause && canWriteJob"
           type="warning"
           size="small"
@@ -127,9 +137,11 @@ const props = defineProps<{
   polling: boolean;
   canRetry: boolean;
   canPause: boolean;
+  canCancel: boolean;
   canResume: boolean;
   canWriteJob: boolean;
   pausing: boolean;
+  cancelling: boolean;
   resuming: boolean;
   retrying: boolean;
   exportStale: boolean;
@@ -147,6 +159,7 @@ const displayStatus = computed(() => resolveJobDisplayStatus(props.job));
 const emit = defineEmits<{
   (e: "back"): void;
   (e: "pause"): void;
+  (e: "cancel"): void;
   (e: "resume"): void;
   (e: "retry"): void;
   (e: "download-export", format: "html"): void;

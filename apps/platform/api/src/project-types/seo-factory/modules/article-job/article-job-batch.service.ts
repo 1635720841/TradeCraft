@@ -8,7 +8,7 @@
  * - ArticleJobBatchService
  */
 
-import { Inject, Injectable, forwardRef } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { isSeoArticleUrl, keywordFromArticleUrl } from '@wm/shared-core';
 import { BusinessException } from '../../../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
@@ -22,7 +22,10 @@ import { MAX_BATCH_ACTION_LIMIT } from '../../constants/batch-actions';
 import { BillingService } from '../../../../modules/billing/billing.service';
 import { SiteArticleCrawlerService } from '../site/site-article-crawler.service';
 import type { CreateBatchArticleJobsDto } from './dto/create-batch-article-jobs.dto';
-import { ArticleJobService } from './article-job.service';
+import { ArticleJobCreateService } from './article-job-create.service';
+import { ArticleJobLifecycleService } from './article-job-lifecycle.service';
+import { buildArticleJobScraperOptionsFromDto } from './article-job-scraper.util';
+import { resolveArticleJobErrorMessage } from './article-job-error.util';
 
 @Injectable()
 export class ArticleJobBatchService {
@@ -31,8 +34,8 @@ export class ArticleJobBatchService {
     private readonly logger: LoggerService,
     private readonly billingService: BillingService,
     private readonly siteArticleCrawler: SiteArticleCrawlerService,
-    @Inject(forwardRef(() => ArticleJobService))
-    private readonly articleJobService: ArticleJobService,
+    private readonly createService: ArticleJobCreateService,
+    private readonly lifecycleService: ArticleJobLifecycleService,
   ) {}
 
   async createBatch(organizationId: string, projectId: string, dto: CreateBatchArticleJobsDto) {
@@ -47,7 +50,7 @@ export class ArticleJobBatchService {
 
     const limit = Math.min(Math.max(dto.limit ?? DEFAULT_BATCH_JOB_LIMIT, 1), MAX_BATCH_JOB_LIMIT);
     const seoArticlesOnly = dto.seoArticlesOnly !== false;
-    const scraperOptions = this.articleJobService.buildScraperOptions(dto) ?? {};
+    const scraperOptions = buildArticleJobScraperOptionsFromDto(dto) ?? {};
     const keywords = await this.resolveBatchKeywords(
       organizationId,
       projectId,
@@ -71,7 +74,7 @@ export class ArticleJobBatchService {
     const createdJobIds: string[] = [];
     try {
       for (const targetKeyword of keywords) {
-        const job = await this.articleJobService.create(organizationId, projectId, {
+        const job = await this.createService.create(organizationId, projectId, {
           siteId: dto.siteId,
           targetKeyword,
           contentLanguage: dto.contentLanguage,
@@ -127,7 +130,7 @@ export class ArticleJobBatchService {
 
     for (const jobId of jobIds) {
       try {
-        const data = await this.articleJobService.retry(organizationId, projectId, jobId);
+        const data = await this.createService.retry(organizationId, projectId, jobId);
         results.push({ jobId, ok: true, data });
       } catch (error) {
         const message =
@@ -164,13 +167,13 @@ export class ArticleJobBatchService {
 
     for (const jobId of jobIds) {
       try {
-        const data = await this.articleJobService.remove(organizationId, projectId, jobId, traceId);
+        const data = await this.lifecycleService.remove(organizationId, projectId, jobId, traceId);
         results.push({ jobId, ok: true, data });
       } catch (error) {
         results.push({
           jobId,
           ok: false,
-          error: this.articleJobService.resolveErrorMessage(error, '删除失败'),
+          error: resolveArticleJobErrorMessage(error, '删除失败'),
         });
       }
     }

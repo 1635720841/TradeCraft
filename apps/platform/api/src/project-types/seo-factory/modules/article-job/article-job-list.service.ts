@@ -11,6 +11,7 @@
 import { Injectable } from '@nestjs/common';
 import { JobStatus, Prisma } from '@prisma/client';
 import { evaluateReleaseReadiness } from '@wm/shared-core';
+import { ACTIVE_JOB_STATUSES } from '../../constants/article-job-status';
 import { BusinessException } from '../../../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { PrismaService } from '../../../../core/database/prisma.service';
@@ -161,17 +162,8 @@ export class ArticleJobListService {
         equals: 'pending',
       };
     } else if (options.generating) {
-      // 用“忙碌状态白名单”而非 notIn，避免 DB enum 未迁移时 Prisma 校验 PAUSED 失败。
       where.status = {
-        in: [
-          JobStatus.QUEUED,
-          JobStatus.RESEARCHING,
-          JobStatus.DRAFTING,
-          JobStatus.LINKING,
-          JobStatus.ILLUSTRATING,
-          JobStatus.OPTIMIZING,
-          JobStatus.REVIEWING,
-        ],
+        in: [...ACTIVE_JOB_STATUSES],
       };
       andFilters.push({
         NOT: {

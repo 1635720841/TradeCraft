@@ -47,7 +47,7 @@ describe('E2E console GSC smoke', () => {
     });
 
     assert.ok(result.data !== undefined, '应返回 GSC 平台状态');
-    assert.ok(typeof result.data.connected === 'boolean');
+    assert.ok(typeof result.data.platformConnected === 'boolean');
   });
 
   it('platform operator can list GSC sites with pagination meta', async (t) => {

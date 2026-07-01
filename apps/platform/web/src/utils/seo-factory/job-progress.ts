@@ -3,10 +3,9 @@
  */
 import type { ArticleJobItem, ArticleJobWorkflowStep } from "@/api/seo-factory/types";
 import { WORKFLOW_STEP_ESTIMATES, WORKFLOW_STEPS } from "@wm/shared-core";
+import { SWA_MIN_IMAGES } from "@/constants/seo-factory";
 import { formatWorkflowProgressShort, workflowStepLabel } from "./workflow-progress";
 import { countArticleImagesForDisplay } from "./article-images-display";
-
-const SWA_MIN_IMAGES = 2;
 
 export interface JobProgressStep {
   key: ArticleJobWorkflowStep;

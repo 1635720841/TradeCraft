@@ -102,12 +102,14 @@ import {
 import { sitePageTypeDict } from "@/constants/dicts/seo-factory";
 import { dictLabel, dictTagType } from "@/utils/dict";
 import { message } from "@/utils/message";
+import { isArticleJobContentEditable } from "@/utils/seo-factory/article-job-editable";
 
 defineOptions({ name: "ArticleJobInternalLinksPanel" });
 
 const props = defineProps<{
   projectId?: string;
   jobId?: string;
+  jobStatus?: string;
   internalLinks?: ArticleJobInternalLink[] | null;
   internalLinksApplied?: boolean;
 }>();
@@ -118,7 +120,11 @@ const emit = defineEmits<{
 
 const applied = computed(() => props.internalLinksApplied === true);
 const links = computed(() => props.internalLinks ?? []);
-const editable = computed(() => Boolean(props.projectId && props.jobId && applied.value));
+const editable = computed(
+  () =>
+    Boolean(props.projectId && props.jobId && applied.value) &&
+    (!props.jobStatus || isArticleJobContentEditable({ status: props.jobStatus }))
+);
 
 const editing = ref(false);
 const saving = ref(false);

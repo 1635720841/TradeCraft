@@ -12,9 +12,11 @@
         :polling="polling"
         :can-retry="canRetry"
         :can-pause="canPause"
+        :can-cancel="canCancel"
         :can-resume="canResume"
         :can-write-job="canWriteJob"
         :pausing="pausing"
+        :cancelling="cancelling"
         :resuming="resuming"
         :retrying="retrying"
         :export-stale="exportStale"
@@ -27,6 +29,7 @@
         :deleting="deleting"
         @back="goBack"
         @pause="handlePause"
+        @cancel="handleCancel"
         @resume="handleResume"
         @retry="handleRetry"
         @download-export="handleDownloadExport"
@@ -37,42 +40,25 @@
         @print-report="creationReportOpen = true"
       />
 
-      <section
+      <JobDetailCallout
         v-if="nextStep"
-        class="job-detail-callout job-detail-callout--compact"
-        :class="`job-detail-callout--${nextStep.alertType}`"
-      >
-        <IconifyIconOnline
-          :icon="calloutIcon(nextStep.alertType)"
-          class="job-detail-callout__icon"
-        />
-        <div class="job-detail-callout__body">
-          <strong>{{ nextStep.title }}</strong>
-          <span v-if="nextStep.description">{{ nextStep.description }}</span>
-        </div>
-        <el-button
-          v-if="canWriteJob"
-          size="small"
-          :type="nextStep.buttonType"
-          @click="nextStep.handler"
-        >
-          {{ nextStep.label }}
-        </el-button>
-      </section>
+        :type="nextStep.alertType"
+        :icon="calloutIcon(nextStep.alertType)"
+        :title="nextStep.title"
+        :description="nextStep.description"
+        :action-label="canWriteJob ? nextStep.label : undefined"
+        :button-type="nextStep.buttonType"
+        @action="nextStep.handler"
+      />
 
-      <section
+      <JobDetailCallout
         v-if="gscUnderperformHint"
-        class="job-detail-callout job-detail-callout--compact job-detail-callout--warning"
+        type="warning"
+        icon="ri:line-chart-line"
+        title="搜索表现偏弱"
+        description="展示多但点击或排名不佳，可改稿或重新优化评分。"
       >
-        <IconifyIconOnline
-          icon="ri:line-chart-line"
-          class="job-detail-callout__icon"
-        />
-        <div class="job-detail-callout__body">
-          <strong>搜索表现偏弱</strong>
-          <span>展示多但点击或排名不佳，可改稿或重新优化评分。</span>
-        </div>
-        <div class="job-detail-callout__actions">
+        <template #actions>
           <el-button
             type="primary"
             size="small"
@@ -82,30 +68,20 @@
           >
             重新优化
           </el-button>
-          <el-button size="small" @click="goDetailTab('article')"
-            >改稿</el-button
-          >
-        </div>
-      </section>
+          <el-button size="small" @click="goDetailTab('article')">改稿</el-button>
+        </template>
+      </JobDetailCallout>
 
-      <section
+      <JobDetailCallout
         v-if="optimizingProgressMessage || isOptimizingStale"
-        class="job-detail-callout job-detail-callout--compact job-detail-callout--info"
-      >
-        <IconifyIconOnline
-          icon="ri:loader-4-line"
-          class="job-detail-callout__icon"
-        />
-        <div class="job-detail-callout__body">
-          <strong>进行中</strong>
-          <span>
-            {{ optimizingProgressMessage }}
-            <template v-if="isOptimizingStale">
-              · 超时无进展，请到 SEO 评分取消或重试
-            </template>
-          </span>
-        </div>
-      </section>
+        type="info"
+        icon="ri:loader-4-line"
+        title="进行中"
+        :description="
+          optimizingProgressMessage +
+          (isOptimizingStale ? ' · 超时无进展，请到 SEO 评分取消或重试' : '')
+        "
+      />
 
       <div class="job-detail-layout">
         <ArticleJobDetailSidebar
@@ -213,6 +189,7 @@
 
                 <ArticleJobQuillbotPanel
                   :quillbot="job.seoCheckData?.quillbot"
+                  :paraphrase-applied="job.draftData?.paraphraseApplied"
                   :original-content="job.draftData?.paraphraseOriginalContent"
                   :current-content="job.draftData?.content"
                   :can-rerun="canRerunParaphrase"
@@ -224,6 +201,7 @@
                 <ArticleJobDiagnosePanel
                   ref="diagnosePanelRef"
                   :job="job"
+                  :job-summary="jobSummary"
                   :project-id="projectId"
                   :job-id="jobId"
                   :local-seo-score="effectiveLocalSeoScore"
@@ -321,13 +299,6 @@ import {
   acceptArticleRewrite,
   cancelSemrushCheck,
   discardArticleRewrite,
-  deleteArticleJob,
-  pauseArticleJob,
-  refreshArticleJobSerp,
-  rerunArticleOptimization,
-  rerunArticleParaphrase,
-  resumeArticleJob,
-  retryArticleJob,
   triggerArticleRewrite,
   triggerSemrushCheck
 } from "@/api/seo-factory/article-job";
@@ -340,14 +311,13 @@ import {
   prePublishChecklistAllDone,
   type PublishChecklistAction
 } from "@/utils/seo-factory/draft-edit-preview";
-import { ElMessageBox } from "element-plus";
 import { useJobNextStep } from "@/composables/seo-factory/useJobNextStep";
 import { useJobExportActions } from "@/composables/seo-factory/useJobExportActions";
 import { useJobDetail } from "@/composables/seo-factory/useJobDetail";
 import { useJobDraftActions } from "@/composables/seo-factory/useJobDraftActions";
+import { useJobWorkflowActions } from "@/composables/seo-factory/useJobWorkflowActions";
 import { WORDPRESS_CMS_UI_ENABLED } from "@/constants/feature-flags";
 import { message } from "@/utils/message";
-import { PARAPHRASE_RERUN_FAILED, PARAPHRASE_RERUN_QUEUED } from "@wm/shared-core";
 import type { DiagnoseSection } from "@/utils/seo-factory/job-detail-summary";
 import ArticleJobDetailSidebar from "./components/ArticleJobDetailSidebar.vue";
 import ArticleJobBriefPanel from "./components/ArticleJobBriefPanel.vue";
@@ -364,6 +334,7 @@ import ArticleJobDraftSaveDialog from "./components/ArticleJobDraftSaveDialog.vu
 import ArticleJobDraftStalenessBanner from "./components/ArticleJobDraftStalenessBanner.vue";
 import ArticleJobDraftVersionConflictDialog from "./components/ArticleJobDraftVersionConflictDialog.vue";
 import JobDetailHeader from "./components/JobDetailHeader.vue";
+import JobDetailCallout from "./components/JobDetailCallout.vue";
 import ArticleJobRewriteDrawer from "./components/ArticleJobRewriteDrawer.vue";
 import ArticleJobRewriteResult from "./components/ArticleJobRewriteResult.vue";
 import ArticleJobQuillbotPanel from "./components/ArticleJobQuillbotPanel.vue";
@@ -372,17 +343,18 @@ defineOptions({ name: "JobDetailView" });
 
 const cmsUiEnabled = WORDPRESS_CMS_UI_ENABLED;
 const creationReportOpen = ref(false);
+const rewriteDrawerOpen = ref(false);
+const rewriteSubmitting = ref(false);
+const rewriteAccepting = ref(false);
+const rewriteDiscarding = ref(false);
 const retrying = ref(false);
 const pausing = ref(false);
+const cancelling = ref(false);
 const resuming = ref(false);
 const deleting = ref(false);
 const rerunningOptimization = ref(false);
 const rerunningParaphrase = ref(false);
 const serpRefreshing = ref(false);
-const rewriteDrawerOpen = ref(false);
-const rewriteSubmitting = ref(false);
-const rewriteAccepting = ref(false);
-const rewriteDiscarding = ref(false);
 
 const {
   route,
@@ -423,18 +395,54 @@ const {
   canTriggerRewrite,
   canRetry,
   canPause,
+  canCancel,
   canResume,
   briefPending,
+  jobSummary,
   calloutIcon,
   goBack,
   goSiteManage,
   handleChecklistGoTab
 } = useJobDetail({
   isRewriting: rewriteSubmitting,
+  retrying,
   rerunningOptimization,
   rerunningParaphrase,
-  serpRefreshing,
-  retrying
+  serpRefreshing
+});
+
+const {
+  handleRetry,
+  handlePause,
+  handleCancel,
+  handleResume,
+  handleDelete,
+  handleRerunOptimization,
+  handleRerunParaphrase,
+  handleRefreshSerp
+} = useJobWorkflowActions({
+  projectId,
+  jobId,
+  job,
+  canPause,
+  canCancel,
+  canResume,
+  canRetry,
+  canRerunOptimization,
+  canRerunParaphrase,
+  canRefreshSerp,
+  fetchOnce,
+  startPolling,
+  goBack,
+  goDetailTab,
+  retrying,
+  pausing,
+  cancelling,
+  resuming,
+  deleting,
+  rerunningOptimization,
+  rerunningParaphrase,
+  serpRefreshing
 });
 
 const {
@@ -540,148 +548,6 @@ const nextStep = useJobNextStep({
 async function handleBriefUpdated() {
   startPolling();
   await fetchOnce();
-}
-
-async function handleRetry() {
-  if (!canRetry.value) return;
-
-  retrying.value = true;
-  try {
-    await retryArticleJob(projectId.value, jobId.value);
-    message("已从失败步骤重新入队，正在重新生成…", { type: "success" });
-    startPolling();
-    await fetchOnce();
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : "重试失败";
-    message(msg, { type: "error" });
-  } finally {
-    retrying.value = false;
-  }
-}
-
-async function handlePause() {
-  if (!job.value || !canPause.value || pausing.value) return;
-
-  pausing.value = true;
-  try {
-    await pauseArticleJob(projectId.value, jobId.value);
-    message("任务已暂停，可随时继续执行", { type: "success" });
-    await fetchOnce();
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : "暂停失败";
-    message(msg, { type: "error" });
-  } finally {
-    pausing.value = false;
-  }
-}
-
-async function handleResume() {
-  if (!canResume.value || resuming.value) return;
-
-  resuming.value = true;
-  try {
-    await resumeArticleJob(projectId.value, jobId.value);
-    message("任务已恢复，正在从断点继续执行…", { type: "success" });
-    startPolling();
-    await fetchOnce();
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : "继续执行失败";
-    message(msg, { type: "error" });
-  } finally {
-    resuming.value = false;
-  }
-}
-
-async function handleDelete() {
-  if (!job.value || deleting.value) return;
-
-  const inProgress =
-    job.value.status !== "FAILED" && job.value.status !== "COMPLETED";
-  let confirmText = `确定删除任务「${job.value.targetKeyword}」？删除后不可恢复，将一并清理队列、导出文件与稿件插图。`;
-  if (inProgress) {
-    confirmText += "\n\n该任务仍在进行中，删除后后台可能短暂报错，可忽略。";
-  }
-
-  try {
-    await ElMessageBox.confirm(confirmText, "删除任务", {
-      type: "warning",
-      confirmButtonText: "删除",
-      cancelButtonText: "取消",
-      confirmButtonClass: "el-button--danger"
-    });
-  } catch {
-    return;
-  }
-
-  deleting.value = true;
-  try {
-    await deleteArticleJob(projectId.value, jobId.value);
-    message("任务已删除", { type: "success" });
-    goBack();
-  } finally {
-    deleting.value = false;
-  }
-}
-
-async function handleRerunOptimization(
-  reason: "gsc_underperform" | "manual" = "manual"
-) {
-  if (!canRerunOptimization.value) return;
-
-  rerunningOptimization.value = true;
-  try {
-    await rerunArticleOptimization(projectId.value, jobId.value, { reason });
-    message("已重新入队优化评分，请稍候…", { type: "success" });
-    goDetailTab("diagnose", "seo");
-    startPolling();
-    await fetchOnce();
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : "重新优化失败";
-    message(msg, { type: "error" });
-  } finally {
-    rerunningOptimization.value = false;
-  }
-}
-
-async function handleRerunParaphrase() {
-  if (!canRerunParaphrase.value) return;
-
-  rerunningParaphrase.value = true;
-  try {
-    await rerunArticleParaphrase(projectId.value, jobId.value);
-    message(PARAPHRASE_RERUN_QUEUED, { type: "success" });
-    goDetailTab("article");
-    startPolling();
-    await fetchOnce();
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : PARAPHRASE_RERUN_FAILED;
-    message(msg, { type: "error" });
-  } finally {
-    rerunningParaphrase.value = false;
-  }
-}
-
-async function handleRefreshSerp(payload?: { serpArticlesOnly?: boolean }) {
-  if (!canRefreshSerp.value) return;
-
-  serpRefreshing.value = true;
-  try {
-    await refreshArticleJobSerp(projectId.value, jobId.value, payload);
-    message(
-      payload?.serpArticlesOnly === false
-        ? "已放宽筛选并更新搜索结果"
-        : "搜索结果已更新",
-      {
-        type: "success"
-      }
-    );
-    await fetchOnce();
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : "重新分析失败";
-    message(msg, { type: "error" });
-  } finally {
-    serpRefreshing.value = false;
-  }
 }
 
 async function handleSemrushCheck() {

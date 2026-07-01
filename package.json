@@ -16,6 +16,7 @@
     "db:migrate": "pnpm --filter @wm/platform-api db:migrate",
     "db:deploy": "pnpm --filter @wm/platform-api db:deploy",
     "test:seo": "pnpm --filter @wm/platform-api test:local-seo",
+    "test:all": "pnpm --filter @wm/platform-api test:all && pnpm --filter @wm/platform-web test",
     "test:e2e": "pnpm --filter @wm/platform-api test:e2e"
   },
   "engines": {

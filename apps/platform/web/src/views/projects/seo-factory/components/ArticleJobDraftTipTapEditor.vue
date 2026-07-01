@@ -35,6 +35,7 @@
     <ArticleJobDraftImageUrlDialog v-model="imageUrlDialogOpen" @confirm="insertImageUrl" />
     <ArticleJobDraftImagePickDialog
       v-model="imagePickDialogOpen"
+      :project-id="projectId"
       :images="articleImages"
       @pick="handleImagePick"
     />
@@ -50,7 +51,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { EditorContent, useEditor } from "@tiptap/vue-3";
 import ImageResize from "tiptap-extension-resize-image";
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { uploadMediaAsset } from "@/api/platform/media";
+import { useMediaAssetUpload } from "@/composables/platform/useMediaAssetUpload";
 import type { ArticleJobArticleImage } from "@/api/seo-factory/types";
 import { htmlToMarkdown, markdownToHtml } from "@/utils/seo-factory/draft-content";
 import { prepareHtmlForTipTap } from "@/utils/seo-factory/draft-tiptap-html";
@@ -76,9 +77,9 @@ const emit = defineEmits<{
 }>();
 
 const imageInputRef = ref<HTMLInputElement | null>(null);
-const imageUploading = ref(false);
 const imageUrlDialogOpen = ref(false);
 const imagePickDialogOpen = ref(false);
+const { uploading: imageUploading, uploadWithToast } = useMediaAssetUpload(() => props.projectId);
 let lastEmittedMarkdown = props.markdown;
 let isSyncingExternal = false;
 
@@ -200,14 +201,13 @@ async function handleImageFileChange(event: Event) {
   input.value = "";
   if (!file || props.disabled) return;
 
-  imageUploading.value = true;
   try {
-    const uploaded = await uploadMediaAsset(props.projectId, file);
+    const uploaded = await uploadWithToast(file);
     const alt = file.name.replace(/\.[^.]+$/, "");
     insertImage(uploaded.url, alt);
     message("图片已上传", { type: "success" });
-  } finally {
-    imageUploading.value = false;
+  } catch {
+    // uploadWithToast 已提示错误
   }
 }
 </script>

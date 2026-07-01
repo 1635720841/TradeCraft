@@ -6,7 +6,7 @@
  */
 
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import Redis from 'ioredis';
+import type Redis from 'ioredis';
 import { PrismaService } from '../../../../core/database/prisma.service';
 import { RedisService } from '../../../../core/redis/redis.service';
 import { LoggerService } from '../../../../core/logger/logger.service';
@@ -34,8 +34,7 @@ export class SemrushWorkAbortService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    const url = process.env.REDIS_URL ?? 'redis://localhost:6379';
-    this.subscriber = new Redis(url, { maxRetriesPerRequest: null });
+    this.subscriber = this.redis.duplicateClient();
     await this.subscriber.subscribe(SEMRUSH_ABORT_REDIS_CHANNEL);
     this.subscriber.on('message', (_channel, articleJobId) => {
       const id = articleJobId?.trim();

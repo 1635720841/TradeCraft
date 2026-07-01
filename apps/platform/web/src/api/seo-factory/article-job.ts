@@ -176,6 +176,20 @@ export async function pauseArticleJob(
   return res.data;
 }
 
+/** 取消任务（终止流水线，保留记录，不可恢复） */
+export async function cancelArticleJob(
+  projectId: string,
+  jobId: string,
+  payload?: { reason?: string }
+): Promise<Pick<ArticleJobItem, "id" | "traceId" | "status" | "targetKeyword">> {
+  const res = await http.request<
+    WmApiResponse<Pick<ArticleJobItem, "id" | "traceId" | "status" | "targetKeyword">>
+  >("post", `${projectBase(projectId)}/${jobId}/cancel`, {
+    data: payload ?? {}
+  });
+  return res.data;
+}
+
 /** 继续执行已暂停任务（从断点续跑） */
 export async function resumeArticleJob(
   projectId: string,

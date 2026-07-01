@@ -388,6 +388,7 @@ model MediaAsset {
 
   @@index([organizationId, projectId, createdAt])
   @@index([organizationId, projectId, source])
+  @@index([organizationId, projectId, contentHash])
 }
 
 model Project {

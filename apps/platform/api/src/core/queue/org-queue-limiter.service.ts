@@ -3,11 +3,23 @@
  */
 
 import { Injectable } from '@nestjs/common';
+import { JobStatus } from '@prisma/client';
 import { BusinessException } from '../exceptions/business.exception';
 import { ErrorCodes } from '../exceptions/error-codes';
 import { PrismaService } from '../database/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { maxConcurrentJobsForPlan } from '../../modules/billing/plan-entitlements.constants';
+import { reconcileOrgQueueActiveCount } from './org-queue-limiter.util';
+
+/** Worker 已接管、占用并发槽位的状态（不含 QUEUED） */
+const WORKER_HELD_JOB_STATUSES: JobStatus[] = [
+  JobStatus.RESEARCHING,
+  JobStatus.DRAFTING,
+  JobStatus.LINKING,
+  JobStatus.ILLUSTRATING,
+  JobStatus.OPTIMIZING,
+  JobStatus.REVIEWING,
+];
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   const n = Number(value);
@@ -39,7 +51,10 @@ export class OrgQueueLimiterService {
     });
     const maxConcurrent = maxConcurrentJobsForPlan(org?.planName ?? 'trial');
 
-    const active = Number((await client.get(concurrentKey)) ?? 0);
+    let active = Number((await client.get(concurrentKey)) ?? 0);
+    if (active >= maxConcurrent) {
+      active = await this.reconcileActiveCount(organizationId, concurrentKey, active);
+    }
     if (active >= maxConcurrent) {
       throw new BusinessException(
         ErrorCodes.RATE_LIMIT_EXCEEDED,
@@ -84,5 +99,35 @@ export class OrgQueueLimiterService {
     if (next <= 0) {
       await client.del(key);
     }
+  }
+
+  /**
+   * Worker 异常退出时 Redis 计数可能偏高；以 DB 中「已接管」任务数回落。
+   */
+  private async reconcileActiveCount(
+    organizationId: string,
+    concurrentKey: string,
+    redisActive: number,
+  ): Promise<number> {
+    const dbHeld = await this.prisma.articleJob.count({
+      where: {
+        organizationId,
+        status: { in: WORKER_HELD_JOB_STATUSES },
+      },
+    });
+
+    if (redisActive <= dbHeld) {
+      return redisActive;
+    }
+
+    const reconciled = reconcileOrgQueueActiveCount(redisActive, dbHeld);
+    const client = this.redis.getClient();
+    if (reconciled <= 0) {
+      await client.del(concurrentKey);
+      return 0;
+    }
+
+    await client.set(concurrentKey, String(reconciled), 'EX', 3600);
+    return reconciled;
   }
 }

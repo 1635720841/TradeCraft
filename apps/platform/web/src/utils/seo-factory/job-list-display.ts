@@ -2,7 +2,7 @@
  * 任务列表列展示：时间、分数、生成进度副文案。
  */
 import type { ArticleJobItem } from "@/api/seo-factory/types";
-import { JOB_TERMINAL_STATUSES } from "@/constants/dicts/seo-factory";
+import { formatJobProgressHeadline } from "@/utils/seo-factory/job-progress";
 import { resolveEffectiveLocalSeoScore } from "@/utils/seo-factory/local-seo-display";
 import { formatWorkflowProgressShort } from "@/utils/seo-factory/workflow-progress";
 
@@ -36,8 +36,12 @@ export function formatJobListSeoScores(job: ArticleJobItem): string {
 }
 
 export function jobListProgressHint(job: ArticleJobItem): string | null {
-  if (JOB_TERMINAL_STATUSES.includes(job.status as (typeof JOB_TERMINAL_STATUSES)[number])) {
-    return null;
+  if (job.status === "COMPLETED" || job.status === "FAILED") return null;
+  if (job.status === "PAUSED" || job.status === "QUEUED") {
+    return formatJobProgressHeadline(job);
   }
-  return formatWorkflowProgressShort(job.seoCheckData?.workflowProgress);
+  return (
+    formatWorkflowProgressShort(job.seoCheckData?.workflowProgress) ??
+    formatJobProgressHeadline(job)
+  );
 }

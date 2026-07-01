@@ -9,7 +9,7 @@ export const MEDIA_ASSET_ALLOWED_MIME = new Set([
   'image/gif',
 ]);
 
-/** 签名 URL 有效期（365 天） */
+/** 签名 URL 有效期（365 天）。威胁模型：须同时持有 assetId + HMAC；列表接口会刷新签名。 */
 export const MEDIA_ASSET_SIG_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 
 /** 远程图片下载超时（BFL 等临时 URL 需尽快拉取） */

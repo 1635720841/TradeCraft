@@ -31,3 +31,6 @@ export const SEMRUSH_MANUAL_CHECK_STALE_MS = 15 * 60 * 1000;
 
 /** 工作流 OPTIMIZING 无心跳超过此时长视为僵死（与后端一致） */
 export const SEMRUSH_OPTIMIZING_ORPHAN_STALE_MS = 8 * 60 * 1000;
+
+/** Semrush SWA 正文配图下限（与后端 swa-content.ts 一致） */
+export const SWA_MIN_IMAGES = 2;

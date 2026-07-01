@@ -9,6 +9,7 @@
  *
  * | 模型 | 原因 |
  * |------|------|
+ * | `MediaAsset` | 媒体库按 projectId 查询；Service 必须显式带 organizationId + projectId |
  * | `SiteGscConnection` | 以 `siteId` 为业务主键（@unique），跨租户关联通过 Site 级联；Console 代运营需按 site 批量操作 |
  * | `SitePage` | 页面库按 site 维度索引，内链匹配走 siteId；扩展若只注入 orgId 无法覆盖 Console 无 org 上下文的任务 |
  * | `PlatformGscCredential` | 平台级单例（id=`default`），无 organizationId 字段，仅 super_admin / platform_operator 可访问 |

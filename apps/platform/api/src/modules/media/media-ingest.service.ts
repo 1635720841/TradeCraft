@@ -110,23 +110,82 @@ export class MediaIngestService {
     const contentHash = createHash('sha256').update(body).digest('hex');
     const referenceCount = input.bind ? 1 : 0;
 
-    await this.storage.putObject(storageKey, body, contentType);
-
-    await this.prisma.mediaAsset.create({
-      data: {
-        id: assetId,
+    const existing = await this.prisma.mediaAsset.findFirst({
+      where: {
         organizationId: input.organizationId,
         projectId: input.projectId,
-        storageKey,
-        contentType,
-        sizeBytes: body.length,
-        source: input.source,
-        sourceMeta: input.sourceMeta as object | undefined,
         contentHash,
-        referenceCount,
-        createdBy: input.createdBy,
       },
     });
+
+    if (existing) {
+      try {
+        await this.storage.deleteByPrefix(storageKey);
+      } catch (cleanupError) {
+        this.logger.warn('Media dedup orphan cleanup failed', {
+          action: 'media.dedup_orphan_cleanup_failed',
+          storageKey,
+          error: cleanupError instanceof Error ? cleanupError.message : 'unknown',
+        });
+      }
+
+      if (input.bind) {
+        await this.prisma.mediaAsset.update({
+          where: { id: existing.id },
+          data: { referenceCount: { increment: 1 } },
+        });
+      }
+
+      const url = buildMediaAssetPublicUrl(input.projectId, existing.id);
+
+      this.logger.info('Media asset deduped by contentHash', {
+        action: 'media.dedup',
+        assetId: existing.id,
+        organizationId: input.organizationId,
+        projectId: input.projectId,
+        contentHash,
+        bind: input.bind === true,
+      });
+
+      return {
+        assetId: existing.id,
+        url,
+        storageKey: existing.storageKey,
+        contentType: existing.contentType,
+        sizeBytes: existing.sizeBytes,
+      };
+    }
+
+    await this.storage.putObject(storageKey, body, contentType);
+
+    try {
+      await this.prisma.mediaAsset.create({
+        data: {
+          id: assetId,
+          organizationId: input.organizationId,
+          projectId: input.projectId,
+          storageKey,
+          contentType,
+          sizeBytes: body.length,
+          source: input.source,
+          sourceMeta: input.sourceMeta as object | undefined,
+          contentHash,
+          referenceCount,
+          createdBy: input.createdBy,
+        },
+      });
+    } catch (error) {
+      try {
+        await this.storage.deleteByPrefix(storageKey);
+      } catch (cleanupError) {
+        this.logger.warn('Media ingest rollback failed', {
+          action: 'media.ingest_rollback_failed',
+          storageKey,
+          error: cleanupError instanceof Error ? cleanupError.message : 'unknown',
+        });
+      }
+      throw error;
+    }
 
     const url = buildMediaAssetPublicUrl(input.projectId, assetId);
 

@@ -143,10 +143,27 @@ export class MediaService {
     const toUnbind = [...prev].filter((id) => !next.has(id));
     const toBind = [...next].filter((id) => !prev.has(id));
 
-    await Promise.all([
-      ...toUnbind.map((assetId) => this.unbindAsset(organizationId, projectId, assetId)),
-      ...toBind.map((assetId) => this.bindAsset(organizationId, projectId, assetId)),
-    ]);
+    await this.prisma.$transaction(async (tx) => {
+      for (const assetId of toUnbind) {
+        const row = await tx.mediaAsset.findFirst({
+          where: { id: assetId, organizationId, projectId },
+        });
+        if (!row || row.referenceCount <= 0) continue;
+        await tx.mediaAsset.update({
+          where: { id: assetId },
+          data: { referenceCount: { decrement: 1 } },
+        });
+      }
+      for (const assetId of toBind) {
+        const updated = await tx.mediaAsset.updateMany({
+          where: { id: assetId, organizationId, projectId },
+          data: { referenceCount: { increment: 1 } },
+        });
+        if (updated.count === 0) {
+          throw new BusinessException(ErrorCodes.MEDIA_ASSET_NOT_FOUND, '媒体资产不存在');
+        }
+      }
+    });
   }
 
   async deleteAsset(

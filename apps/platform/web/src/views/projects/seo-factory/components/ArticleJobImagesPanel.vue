@@ -133,7 +133,9 @@ import {
   reapplyArticleImages,
   regenerateArticleImage
 } from "@/api/seo-factory/article-job";
-import { uploadMediaAsset } from "@/api/platform/media";
+import { SWA_MIN_IMAGES } from "@/constants/seo-factory";
+import { useMediaAssetUpload } from "@/composables/platform/useMediaAssetUpload";
+import { isArticleJobContentEditable } from "@/utils/seo-factory/article-job-editable";
 import { resolveArticleImagesForDisplay } from "@/utils/seo-factory/article-images-display";
 import { ElMessageBox } from "element-plus";
 import { message } from "@/utils/message";
@@ -141,17 +143,6 @@ import { extractHttpErrorMessage } from "@/utils/http-error";
 import ArticleJobImagePromptDialog from "./ArticleJobImagePromptDialog.vue";
 
 defineOptions({ name: "ArticleJobImagesPanel" });
-
-const SWA_MIN_IMAGES = 2;
-
-const IMAGE_MUTATION_BLOCKED_STATUSES = new Set([
-  "QUEUED",
-  "RESEARCHING",
-  "DRAFTING",
-  "LINKING",
-  "ILLUSTRATING",
-  "OPTIMIZING"
-]);
 
 const props = defineProps<{
   projectId?: string;
@@ -177,9 +168,11 @@ const needsAutoIllustration = computed(() => !meetsSwa.value);
 const hasDraftContent = computed(() => Boolean(props.draftContent?.trim()));
 const editable = computed(() => {
   if (!props.projectId || !props.jobId || !hasDraftContent.value) return false;
-  if (props.jobStatus && IMAGE_MUTATION_BLOCKED_STATUSES.has(props.jobStatus)) return false;
+  if (props.jobStatus && !isArticleJobContentEditable({ status: props.jobStatus })) return false;
   return true;
 });
+
+const { uploadWithToast } = useMediaAssetUpload(() => props.projectId);
 
 const headingOptions = computed(() => {
   const content = props.draftContent ?? "";
@@ -296,7 +289,7 @@ async function handleFileChange(event: Event) {
   if (!file || !props.projectId || !props.jobId) return;
 
   try {
-    const uploaded = await uploadMediaAsset(props.projectId, file);
+    const uploaded = await uploadWithToast(file);
     const alt = file.name.replace(/\.[^.]+$/, "");
     const next = [...images.value];
 

@@ -117,6 +117,12 @@ export function reconcileArticleImagesFromContent(
   return fromMarkdown.map((image) => byUrl.get(image.url) ?? image);
 }
 
+export function collectArticleImageAssetIds(images: ArticleImageRecord[]): string[] {
+  return images
+    .map((image) => image.assetId)
+    .filter((assetId): assetId is string => Boolean(assetId));
+}
+
 export function countMarkdownImages(content: string): number {
   return (content.match(MARKDOWN_IMAGE_RE) ?? []).length;
 }

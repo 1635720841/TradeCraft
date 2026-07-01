@@ -85,293 +85,65 @@
       />
     </el-card>
 
-    <el-dialog
-      v-model="formDialogVisible"
-      :title="editingId ? '编辑关键词' : '添加关键词'"
-      width="560px"
-      destroy-on-close
-    >
-      <el-form ref="formRef" :model="form" :rules="formRules" label-width="100px">
-        <el-form-item label="关键词" prop="keyword">
-          <el-input v-model="form.keyword" :disabled="Boolean(editingId)" maxlength="200" />
-        </el-form-item>
-        <el-form-item label="搜索意图" prop="intent">
-          <el-select v-model="form.intent" class="w-full">
-            <el-option
-              v-for="item in keywordIntentDict"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="所属专题">
-          <el-select v-model="form.clusterId" class="w-full" clearable placeholder="未分组">
-            <el-option
-              v-for="item in clusters"
-              :key="item.id"
-              :label="item.name"
-              :value="item.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="商业价值">
-          <el-slider v-model="form.businessValueScore" :min="0" :max="1" :step="0.05" show-input />
-        </el-form-item>
-        <el-form-item label="内容匹配">
-          <el-slider v-model="form.contentFitScore" :min="0" :max="1" :step="0.05" show-input />
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="form.notes" type="textarea" :rows="3" maxlength="2000" show-word-limit />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="formDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="submitForm">保存</el-button>
-      </template>
-    </el-dialog>
+    <KeywordFormDialog
+      ref="formDialogRef"
+      v-model:visible="formDialogVisible"
+      :editing-id="editingId"
+      :form="form"
+      :clusters="clusters"
+      :saving="saving"
+      :form-rules="formRules"
+      @save="submitForm"
+    />
 
-    <el-dialog
-      v-model="seedDialogVisible"
-      :title="seedStep === 'config' ? 'AI 生成种子词' : '挑选要加入的关键词'"
-      width="820px"
-      destroy-on-close
-      class="keyword-seed-dialog"
-      :class="{ 'is-preview': seedStep === 'preview' }"
+    <KeywordSeedDialog
+      ref="seedDialogUiRef"
+      v-model:visible="seedDialogVisible"
+      :step="seedStep"
+      :from-gsc="seedFromGsc"
+      :sites="seedSites"
+      :sites-loading="seedSitesLoading"
+      :form="seedForm"
+      :candidates="seedCandidates"
+      :generating="generatingSeeds"
+      :confirming="confirmingSeeds"
+      :selected-count="selectedSeedCandidates.length"
       @closed="resetSeedDialog"
-    >
-      <template v-if="seedStep === 'config'">
-        <el-alert
-          v-if="seedFromGsc"
-          class="mb-4"
-          type="success"
-          :closable="false"
-          show-icon
-          title="已带入本站 Google 搜索词"
-          description="AI 将围绕该站点真实搜索词扩展相关长尾选题；预览后勾选加入词库。"
-        />
-        <el-collapse class="mb-4">
-          <el-collapse-item title="这个功能是做什么的？" name="principle">
-            <div class="space-y-2 text-sm leading-relaxed text-gray-600">
-              <p>
-                <strong>种子词</strong>是内容规划的起点：AI 根据站点域名、品牌语气、目标市场和你填的「主题聚焦」，模拟 SEO 研究员头脑风暴，生成一批<strong>候选搜索词</strong>。
-              </p>
-              <p>
-                每个候选词会附带<strong>搜索意图</strong>、<strong>商业价值</strong>与<strong>内容匹配度</strong>评估，用于后续「建议优先级」排序——并不是直接写文章。
-              </p>
-              <p>
-                生成后你会在下一步<strong>勾选想要的词</strong>，确认后才写入关键词池；不合适的可以去掉，不会自动全部入库。
-              </p>
-              <p class="text-gray-500">
-                推荐路径：生成并挑选 → 加入专题 → 按主题创建任务。
-              </p>
-            </div>
-          </el-collapse-item>
-        </el-collapse>
-        <el-form label-width="100px">
-          <el-form-item label="目标站点">
-            <el-select v-model="seedForm.siteId" class="w-full" placeholder="默认首个站点" clearable :loading="sitesLoading">
-              <el-option v-for="site in sites" :key="site.id" :label="site.domain" :value="site.id" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="生成数量">
-            <el-input-number v-model="seedForm.count" :min="5" :max="30" class="w-full" />
-          </el-form-item>
-          <el-form-item :label="seedFromGsc ? '搜索锚点' : '主题聚焦'">
-            <el-input
-              v-model="seedForm.topicHint"
-              type="textarea"
-              :rows="3"
-              maxlength="500"
-              show-word-limit
-              :placeholder="
-                seedFromGsc
-                  ? '来自本站 Google 搜索数据，可微调后生成'
-                  : '可选，如：工业阀门、B2B 采购决策'
-              "
-            />
-          </el-form-item>
-        </el-form>
-      </template>
+      @preview="submitPreviewSeeds"
+      @confirm="submitConfirmSeeds"
+      @back="goBackSeedDialog"
+      @selection-change="handleSeedSelectionChange"
+    />
 
-      <div v-else class="keyword-seed-preview">
-        <el-alert
-          class="mb-4"
-          type="info"
-          :closable="false"
-          show-icon
-          title="请勾选要加入关键词池的词"
-          description="已存在于池中的词会标记为「已有」，无法重复加入。确认后仅写入你勾选的项。"
-        />
-        <el-table
-          ref="seedPreviewTableRef"
-          class="keyword-seed-preview__table"
-          :data="seedCandidates"
-          :max-height="380"
-          stripe
-          @selection-change="handleSeedSelectionChange"
-        >
-          <el-table-column type="selection" width="48" :selectable="isSeedRowSelectable" />
-          <el-table-column prop="keyword" label="关键词" min-width="220" show-overflow-tooltip />
-          <el-table-column label="建议优先级" width="108">
-            <template #default="{ row }">
-              <el-tag :type="priorityTierTagType(seedPriorityScore(row))" size="small">
-                {{ priorityTierLabel(seedPriorityScore(row)) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="intent" label="意图" width="110">
-            <template #default="{ row }">
-              <el-tag size="small" :type="dictTagType(keywordIntentDict, row.intent)">
-                {{ dictLabel(keywordIntentDict, row.intent) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="rationale" label="推荐理由" min-width="280" show-overflow-tooltip />
-          <el-table-column label="状态" width="72">
-            <template #default="{ row }">
-              <el-tag v-if="row.alreadyExists" size="small" type="info">已有</el-tag>
-              <span v-else class="text-gray-400">—</span>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
+    <KeywordBatchJobDialog
+      v-model:visible="batchJobDialogVisible"
+      v-model:site-id="batchJobForm.siteId"
+      :selected-count="selectedKeywords.length"
+      :sites="sites"
+      :sites-loading="sitesLoading"
+      :quota-preview-text="batchQuotaPreviewText"
+      :quota-can-consume="batchQuotaCanConsume"
+      :creating="batchCreating"
+      @submit="submitBatchCreateJobs"
+    />
 
-      <template #footer>
-        <template v-if="seedStep === 'config'">
-          <el-button @click="seedDialogVisible = false">取消</el-button>
-          <el-button type="primary" :loading="generatingSeeds" @click="submitPreviewSeeds">生成预览</el-button>
-        </template>
-        <template v-else>
-          <el-button @click="seedStep = 'config'">返回修改</el-button>
-          <el-button @click="seedDialogVisible = false">取消</el-button>
-          <el-button
-            type="primary"
-            :loading="confirmingSeeds"
-            :disabled="selectedSeedCandidates.length === 0"
-            @click="submitConfirmSeeds"
-          >
-            加入关键词池{{ selectedSeedCandidates.length > 0 ? `（${selectedSeedCandidates.length}）` : "" }}
-          </el-button>
-        </template>
-      </template>
-    </el-dialog>
+    <KeywordImportDialog
+      v-model:visible="importDialogVisible"
+      v-model:text="importText"
+      :importing="importing"
+      @import="submitImport"
+    />
 
-    <el-dialog v-model="batchJobDialogVisible" title="批量创建文章任务" width="520px" destroy-on-close>
-      <el-alert
-        class="mb-4"
-        type="info"
-        :closable="false"
-        show-icon
-        title="说明"
-        description="将为所选关键词各创建一个生成任务；已归档关键词会被跳过。入队前会校验本月文章配额。"
-      />
-      <el-form label-width="100px">
-        <el-form-item label="已选关键词">
-          <span>{{ selectedKeywords.length }} 个</span>
-        </el-form-item>
-        <el-form-item label="目标站点">
-          <el-select
-            v-model="batchJobForm.siteId"
-            class="w-full"
-            placeholder="默认各关键词绑定站点或首个站点"
-            clearable
-            :loading="sitesLoading"
-          >
-            <el-option v-for="site in sites" :key="site.id" :label="site.domain" :value="site.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="配额">
-          <span>{{ quotaPreview.previewText(selectedKeywords.length) }}</span>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="batchJobDialogVisible = false">取消</el-button>
-        <el-button
-          type="primary"
-          :loading="batchCreating"
-          :disabled="!quotaPreview.canConsume(selectedKeywords.length)"
-          @click="submitBatchCreateJobs"
-        >
-          确认创建
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="importDialogVisible" title="批量导入关键词" width="560px" destroy-on-close>
-      <el-alert
-        class="mb-4"
-        type="info"
-        :closable="false"
-        show-icon
-        title="格式"
-        description="每行一个关键词；可选第二列：专题名称（逗号分隔）。"
-      />
-      <el-input
-        v-model="importText"
-        type="textarea"
-        :rows="10"
-        placeholder="industrial valve supplier&#10;stainless steel ball valve,工业阀门选型"
-      />
-      <template #footer>
-        <el-button @click="importDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="importing" @click="submitImport">导入</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog
-      v-model="gscImportDialogVisible"
-      title="加入本站 Google 搜索词"
-      width="640px"
-      destroy-on-close
-    >
-      <el-alert
-        class="mb-4"
-        type="info"
-        :closable="false"
-        show-icon
-        title="站点在 Google 已有搜索曝光，词库尚未收录"
-        description="以下为您站点在 Google 搜索控制台中的真实搜索词（已获得展示），尚未加入词库。可勾选加入选题，或用 AI 扩展相关长尾词。"
-      />
-      <el-table
-        v-loading="gscDiscoveredLoading"
-        :data="gscDiscoveredQueries"
-        size="small"
-        stripe
-        max-height="320"
-        @selection-change="handleGscDiscoveredSelection"
-      >
-        <el-table-column type="selection" width="48" />
-        <el-table-column prop="query" label="搜索词" min-width="160" show-overflow-tooltip />
-        <el-table-column prop="siteDomain" label="站点" width="120" show-overflow-tooltip />
-        <el-table-column prop="impressions" label="展示" width="72" />
-        <el-table-column prop="clicks" label="点击" width="72" />
-        <el-table-column label="排名" width="72">
-          <template #default="{ row }">{{ row.position.toFixed(1) }}</template>
-        </el-table-column>
-      </el-table>
-      <el-empty
-        v-if="!gscDiscoveredLoading && gscDiscoveredQueries.length === 0"
-        description="暂无新搜索词；请先在「站点详情 → 搜索表现」同步数据"
-      />
-      <template #footer>
-        <el-button @click="gscImportDialogVisible = false">取消</el-button>
-        <el-button
-          :disabled="selectedGscDiscovered.length === 0"
-          @click="expandGscSelectionToSeeds"
-        >
-          AI 扩展相关词
-        </el-button>
-        <el-button
-          type="primary"
-          :loading="importingGsc"
-          :disabled="selectedGscDiscovered.length === 0"
-          @click="submitGscImport"
-        >
-          加入词库{{ selectedGscDiscovered.length > 0 ? `（${selectedGscDiscovered.length}）` : "" }}
-        </el-button>
-      </template>
-    </el-dialog>
+    <KeywordGscImportDialog
+      v-model:visible="gscImportDialogVisible"
+      :loading="gscDiscoveredLoading"
+      :queries="gscDiscoveredQueries"
+      :importing="importingGsc"
+      :selected-count="selectedGscDiscovered.length"
+      @selection-change="handleGscDiscoveredSelection"
+      @import="submitGscImport"
+      @expand-seeds="expandGscSelectionToSeeds"
+    />
 
     <KeywordClusterAssignDialog
       v-model="assignClusterDialogVisible"
@@ -384,18 +156,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, nextTick, onMounted, reactive, ref, watch } from "vue";
+import { computed, inject, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import type { FormInstance, FormRules, TableInstance } from "element-plus";
+import type { FormRules } from "element-plus";
 import {
   createJobFromKeyword,
   createJobsFromKeywords,
   createKeyword,
   deleteKeyword,
   deleteKeywords,
-  confirmKeywordSeeds,
-  previewKeywordSeeds,
-  type KeywordSeedCandidate,
   importGscKeywords,
   importKeywords,
   listGscDiscoveredQueries,
@@ -408,26 +177,21 @@ import { listSites } from "@/api/seo-factory/site";
 import { getSiteKeywordConflicts } from "@/api/seo-factory/keyword-conflict";
 import type { SiteItem } from "@/api/seo-factory/types";
 import { ElMessageBox } from "element-plus";
-import {
-  keywordIntentDict
-} from "@/constants/dicts/seo-factory";
-import { dictLabel, dictTagType } from "@/utils/dict";
-import {
-  getKeywordPriorityTier,
-  getKeywordPriorityTierLabel,
-  getKeywordPriorityTierTagType
-} from "@/utils/seo-factory/keyword-display";
-import {
-  buildGscSeedTopicHint
-} from "@/utils/seo-factory/gsc-keyword-display";
+import { buildGscSeedTopicHint } from "@/utils/seo-factory/gsc-keyword-display";
 import { message } from "@/utils/message";
 import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
 import { useKeywordPoolData } from "@/composables/seo-factory/useKeywordPoolData";
+import { useKeywordSeedDialog } from "@/composables/seo-factory/useKeywordSeedDialog";
 import { useArticleQuotaPreview } from "@/composables/useArticleQuotaPreview";
 import { keywordSchedulingContextKey } from "@/composables/seo-factory/keyword-scheduling-context";
+import KeywordBatchJobDialog from "./components/KeywordBatchJobDialog.vue";
 import KeywordClusterAssignDialog from "./components/KeywordClusterAssignDialog.vue";
+import KeywordFormDialog from "./components/KeywordFormDialog.vue";
+import KeywordGscImportDialog from "./components/KeywordGscImportDialog.vue";
+import KeywordImportDialog from "./components/KeywordImportDialog.vue";
 import KeywordPoolFilters from "./components/KeywordPoolFilters.vue";
 import KeywordPoolTable from "./components/KeywordPoolTable.vue";
+import KeywordSeedDialog from "./components/KeywordSeedDialog.vue";
 
 defineOptions({ name: "KeywordPoolView" });
 
@@ -474,8 +238,6 @@ const {
 
 const saving = ref(false);
 const importing = ref(false);
-const generatingSeeds = ref(false);
-const confirmingSeeds = ref(false);
 const batchCreating = ref(false);
 const sitesLoading = ref(false);
 const sites = ref<SiteItem[]>([]);
@@ -494,17 +256,12 @@ const importingGsc = ref(false);
 const gscDiscoveredQueries = ref<GscDiscoveredQuery[]>([]);
 const selectedGscDiscovered = ref<GscDiscoveredQuery[]>([]);
 const batchJobDialogVisible = ref(false);
-const seedDialogVisible = ref(false);
-const seedFromGsc = ref(false);
-const seedStep = ref<"config" | "preview">("config");
-const seedCandidates = ref<KeywordSeedCandidate[]>([]);
-const selectedSeedCandidates = ref<KeywordSeedCandidate[]>([]);
-const seedPreviewSiteId = ref("");
-const seedPreviewTableRef = ref<TableInstance>();
 const assignClusterDialogVisible = ref(false);
 const editingId = ref("");
 const importText = ref("");
-const formRef = ref<FormInstance>();
+const formDialogRef = ref<InstanceType<typeof KeywordFormDialog>>();
+const batchQuotaPreviewText = computed(() => quotaPreview.previewText(selectedKeywords.value.length));
+const batchQuotaCanConsume = computed(() => quotaPreview.canConsume(selectedKeywords.value.length));
 
 const form = reactive({
   keyword: "",
@@ -523,15 +280,39 @@ const formRules: FormRules = {
   intent: [{ required: true, message: "请选择意图", trigger: "change" }]
 };
 
-const seedForm = reactive({
-  siteId: "",
-  count: 15,
-  topicHint: ""
-});
-
 const batchJobForm = reactive({
   siteId: ""
 });
+
+const seedDialogUiRef = ref<InstanceType<typeof KeywordSeedDialog>>();
+
+function notifySummaryRefresh() {
+  emit("refreshSummary");
+  void schedulingCtx?.refreshSummary();
+}
+
+const {
+  visible: seedDialogVisible,
+  fromGsc: seedFromGsc,
+  step: seedStep,
+  candidates: seedCandidates,
+  selectedCandidates: selectedSeedCandidates,
+  generating: generatingSeeds,
+  confirming: confirmingSeeds,
+  sitesLoading: seedSitesLoading,
+  sites: seedSites,
+  form: seedForm,
+  reset: resetSeedDialog,
+  open: openSeedDialog,
+  openFromGscQueries,
+  handleSelectionChange: handleSeedSelectionChange,
+  submitPreview: submitPreviewSeeds,
+  submitConfirm: submitConfirmSeeds,
+  goBackToConfig: goBackSeedDialog
+} = useKeywordSeedDialog(projectId, async () => {
+  await fetchKeywords();
+  notifySummaryRefresh();
+}, seedDialogUiRef);
 
 function clearSelection() {
   keywordTableRef.value?.clearSelection();
@@ -540,11 +321,6 @@ function clearSelection() {
 
 function handleSelectionChange(rows: KeywordEntryItem[]) {
   selectedKeywords.value = rows;
-}
-
-function notifySummaryRefresh() {
-  emit("refreshSummary");
-  void schedulingCtx?.refreshSummary();
 }
 
 async function openGscImportDialog() {
@@ -642,56 +418,8 @@ async function loadSites() {
   }
 }
 
-function seedPriorityScore(row: {
-  businessValueScore?: number;
-  contentFitScore?: number;
-}) {
-  const raw = (row.businessValueScore ?? 0.5) * 0.5 + (row.contentFitScore ?? 0.5) * 0.5;
-  return Math.round(raw * 1000) / 10;
-}
-
-function priorityTierLabel(score: number) {
-  return getKeywordPriorityTierLabel(getKeywordPriorityTier(score));
-}
-
-function priorityTierTagType(score: number) {
-  return getKeywordPriorityTierTagType(getKeywordPriorityTier(score));
-}
-
-function isSeedRowSelectable(row: KeywordSeedCandidate) {
-  return !row.alreadyExists;
-}
-
-function handleSeedSelectionChange(rows: KeywordSeedCandidate[]) {
-  selectedSeedCandidates.value = rows;
-}
-
-function resetSeedDialog() {
-  seedStep.value = "config";
-  seedCandidates.value = [];
-  selectedSeedCandidates.value = [];
-  seedPreviewSiteId.value = "";
-  seedFromGsc.value = false;
-}
-
-function openSeedDialog(options?: {
-  topicHint?: string;
-  siteId?: string;
-  fromGsc?: boolean;
-}) {
-  resetSeedDialog();
-  seedForm.siteId = options?.siteId ?? sites.value[0]?.id ?? "";
-  seedForm.count = 15;
-  seedForm.topicHint = options?.topicHint ?? "";
-  seedFromGsc.value = options?.fromGsc ?? false;
-  seedDialogVisible.value = true;
-  if (sites.value.length === 0) {
-    void loadSites();
-  }
-}
-
 function expandKeywordFromGsc(row: KeywordEntryItem) {
-  openSeedDialog({
+  void openSeedDialog({
     topicHint: buildGscSeedTopicHint([row.keyword]),
     siteId: row.siteId ?? undefined,
     fromGsc: true
@@ -703,74 +431,18 @@ function expandGscSelectionToSeeds() {
   const queries = selectedGscDiscovered.value.map((row) => row.query).slice(0, 3);
   const siteId = selectedGscDiscovered.value[0]?.siteId;
   gscImportDialogVisible.value = false;
-  openSeedDialog({
-    topicHint: buildGscSeedTopicHint(queries),
-    siteId: siteId || undefined,
-    fromGsc: true
-  });
+  void openFromGscQueries(queries, siteId || undefined);
 }
 
 function openSeedDialogFromRoute() {
   const seedTopic = route.query.seedTopic;
   if (typeof seedTopic !== "string" || !seedTopic.trim()) return;
   const seedSiteId = route.query.seedSiteId;
-  openSeedDialog({
+  void openSeedDialog({
     topicHint: buildGscSeedTopicHint([seedTopic.trim()]),
     siteId: typeof seedSiteId === "string" ? seedSiteId : undefined,
     fromGsc: true
   });
-}
-
-async function submitPreviewSeeds() {
-  generatingSeeds.value = true;
-  try {
-    const result = await previewKeywordSeeds(projectId, {
-      siteId: seedForm.siteId || undefined,
-      count: seedForm.count,
-      topicHint: seedForm.topicHint.trim() || undefined
-    });
-    seedCandidates.value = result.keywords;
-    seedPreviewSiteId.value = result.siteId;
-    seedStep.value = "preview";
-    await nextTick();
-    const selectable = seedCandidates.value.filter((row) => !row.alreadyExists);
-    selectedSeedCandidates.value = selectable;
-    selectable.forEach((row) => {
-      seedPreviewTableRef.value?.toggleRowSelection(row, true);
-    });
-    if (selectable.length === 0) {
-      message("生成的词均已在关键词池中", { type: "warning" });
-    }
-  } finally {
-    generatingSeeds.value = false;
-  }
-}
-
-async function submitConfirmSeeds() {
-  if (selectedSeedCandidates.value.length === 0) {
-    message("请至少勾选一个关键词", { type: "warning" });
-    return;
-  }
-  confirmingSeeds.value = true;
-  try {
-    const result = await confirmKeywordSeeds(projectId, {
-      siteId: seedPreviewSiteId.value || seedForm.siteId || undefined,
-      keywords: selectedSeedCandidates.value.map((row) => ({
-        keyword: row.keyword,
-        intent: row.intent,
-        businessValueScore: row.businessValueScore,
-        contentFitScore: row.contentFitScore,
-        rationale: row.rationale
-      }))
-    });
-    const skippedText = result.skipped > 0 ? `，跳过 ${result.skipped} 个重复` : "";
-    message(`已加入 ${result.created} 个关键词${skippedText}`, { type: "success" });
-    seedDialogVisible.value = false;
-    await fetchKeywords();
-    notifySummaryRefresh();
-  } finally {
-    confirmingSeeds.value = false;
-  }
 }
 
 function parseImportLines(text: string): CreateKeywordPayload[] {
@@ -788,41 +460,40 @@ function parseImportLines(text: string): CreateKeywordPayload[] {
 }
 
 async function submitForm() {
-  if (!formRef.value) return;
-  await formRef.value.validate(async (valid) => {
-    if (!valid) return;
-    saving.value = true;
-    try {
-      const payload: CreateKeywordPayload = {
-        keyword: form.keyword.trim(),
-        intent: form.intent,
-        businessValueScore: form.businessValueScore,
-        contentFitScore: form.contentFitScore,
-        notes: form.notes.trim() || undefined,
-        clusterId: form.clusterId || undefined
-      };
+  const valid = await formDialogRef.value?.validate();
+  if (!valid) return;
 
-      if (editingId.value) {
-        await updateKeyword(projectId, editingId.value, {
-          intent: payload.intent,
-          businessValueScore: payload.businessValueScore,
-          contentFitScore: payload.contentFitScore,
-          notes: payload.notes ?? null,
-          clusterId: form.clusterId || null
-        });
-        message("关键词已更新", { type: "success" });
-      } else {
-        await createKeyword(projectId, payload);
-        message("关键词已添加", { type: "success" });
-      }
+  saving.value = true;
+  try {
+    const payload: CreateKeywordPayload = {
+      keyword: form.keyword.trim(),
+      intent: form.intent,
+      businessValueScore: form.businessValueScore,
+      contentFitScore: form.contentFitScore,
+      notes: form.notes.trim() || undefined,
+      clusterId: form.clusterId || undefined
+    };
 
-      formDialogVisible.value = false;
-      await fetchKeywords();
-      notifySummaryRefresh();
-    } finally {
-      saving.value = false;
+    if (editingId.value) {
+      await updateKeyword(projectId, editingId.value, {
+        intent: payload.intent,
+        businessValueScore: payload.businessValueScore,
+        contentFitScore: payload.contentFitScore,
+        notes: payload.notes ?? null,
+        clusterId: form.clusterId || null
+      });
+      message("关键词已更新", { type: "success" });
+    } else {
+      await createKeyword(projectId, payload);
+      message("关键词已添加", { type: "success" });
     }
-  });
+
+    formDialogVisible.value = false;
+    await fetchKeywords();
+    notifySummaryRefresh();
+  } finally {
+    saving.value = false;
+  }
 }
 
 async function submitImport() {

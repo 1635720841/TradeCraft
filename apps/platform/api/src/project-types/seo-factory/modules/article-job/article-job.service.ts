@@ -8,47 +8,35 @@
  * - ArticleJobService
  */
 
-import { Inject, Injectable, forwardRef } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
-import { normalizeContentLanguage } from '@wm/shared-core';
-import { softDeleteTimestamp } from '../../../../core/prisma/prisma-soft-delete.extension';
 import { BusinessException } from '../../../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { PrismaService } from '../../../../core/database/prisma.service';
 import { LoggerService } from '../../../../core/logger/logger.service';
-import { StorageService } from '../../../../core/storage/storage.service';
-import type { ArticleJobScraperOptions } from '../../processors/article-job.processor';
-import { CALIBRATION_LAB_JOB_ID_PREFIX } from '../../utils/score-calibration-manual-samples.util';
-import { normalizeKeywordIntent, type KeywordIntentValue } from '../../constants/search-intent';
-import { normalizeArticleContentForm } from '../../constants/content-form';
 import type { CreateArticleJobDto } from './dto/create-article-job.dto';
 import type { CreateBatchArticleJobsDto } from './dto/create-batch-article-jobs.dto';
 import type { RefreshArticleJobSerpDto } from './dto/refresh-article-job-serp.dto';
-import { resolveSerpResearchOptions, normalizeSerpCountry } from '../../constants/serp-research-settings';
-import {
-  buildArticleJobScraperOptions,
-  getArticleJobConfig,
-  withArticleJobConfig,
-} from '../../constants/article-job-config';
+import { resolveSerpResearchOptions } from '../../constants/serp-research-settings';
+import { getArticleJobConfig } from '../../constants/article-job-config';
 import {
   isSemrushCheckStale,
   shouldRecoverOrphanOptimizing,
+  getSemrushPending,
   type SemrushCheckPending,
 } from '../../constants/semrush-check';
 import {
-  getWorkflowMeta,
-  jobStatusForResumeStep,
-  resolveResumeStep,
   withWorkflowMeta,
 } from '../../constants/workflow-resume';
 import { SeoCheckerService } from '../seo-checker/seo-checker.service';
 import { BillingService } from '../../../../modules/billing/billing.service';
 import { ScraperService } from '../scraper/scraper.service';
-import { findKeywordConflicts } from '../keyword-pool/keyword-cannibalization.util';
-import { buildExportStoragePrefix } from '../export/export-html.util';
 import { ArticleJobListService } from './article-job-list.service';
 import { ArticleJobBatchService } from './article-job-batch.service';
 import { ArticleJobQueueService } from './article-job-queue.service';
+import { ArticleJobLifecycleService } from './article-job-lifecycle.service';
+import { ArticleJobCreateService } from './article-job-create.service';
+import { resolveArticleJobErrorMessage } from './article-job-error.util';
 
 @Injectable()
 export class ArticleJobService {
@@ -58,98 +46,15 @@ export class ArticleJobService {
     private readonly seoCheckerService: SeoCheckerService,
     private readonly billingService: BillingService,
     private readonly scraperService: ScraperService,
-    private readonly storage: StorageService,
     private readonly listService: ArticleJobListService,
     private readonly queueService: ArticleJobQueueService,
-    @Inject(forwardRef(() => ArticleJobBatchService))
     private readonly batchService: ArticleJobBatchService,
+    private readonly lifecycleService: ArticleJobLifecycleService,
+    private readonly createService: ArticleJobCreateService,
   ) {}
 
   async create(organizationId: string, projectId: string, dto: CreateArticleJobDto) {
-    await this.billingService.assertArticleQuota(organizationId, 1);
-
-    const traceId = `tr_${uuidv4()}`;
-
-    const site = await this.prisma.site.findFirst({
-      where: { id: dto.siteId, organizationId, projectId },
-      select: { id: true, contentLanguage: true, targetMarket: true, settings: true },
-    });
-
-    if (!site) {
-      throw new BusinessException(ErrorCodes.SITE_NOT_FOUND, '站点不存在');
-    }
-
-    const contentLanguage = normalizeContentLanguage(
-      dto.contentLanguage ?? site.contentLanguage,
-    );
-
-    const searchIntent = await this.resolveSearchIntent(
-      organizationId,
-      projectId,
-      dto.targetKeyword,
-      dto.searchIntent,
-    );
-
-    const serpCountry = this.resolveJobSerpCountry(site, dto.serpCountry);
-
-    const job = await this.prisma.articleJob.create({
-      data: {
-        traceId,
-        organizationId,
-        projectId,
-        siteId: dto.siteId,
-        targetKeyword: dto.targetKeyword,
-        contentLanguage,
-        searchIntent,
-        contentForm: normalizeArticleContentForm(dto.contentForm),
-        status: 'QUEUED',
-        seoCheckData: withArticleJobConfig(null, { serpCountry }) as object,
-      },
-      select: {
-        id: true,
-        traceId: true,
-        status: true,
-        targetKeyword: true,
-        createdAt: true,
-      },
-    });
-
-    const scraperOptions = this.buildScraperOptions(dto, serpCountry);
-
-    try {
-      await this.queueService.enqueueArticleJob(
-        {
-          jobId: job.id,
-          traceId,
-          organizationId,
-          projectId,
-          scraperOptions,
-        },
-        traceId,
-      );
-    } catch (error) {
-      await this.compensateEnqueueFailure(job.id, '入队失败，请稍后重试');
-      throw error;
-    }
-
-    this.logger.info('Article job created and enqueued', {
-      traceId,
-      organizationId,
-      projectId,
-      jobId: job.id,
-      action: 'article_job.create',
-      scraperOptions,
-    });
-
-    const warnings = await this.buildKeywordCannibalizationWarnings(
-      organizationId,
-      projectId,
-      dto.siteId,
-      dto.targetKeyword,
-      job.id,
-    );
-
-    return { ...job, warnings };
+    return this.createService.create(organizationId, projectId, dto);
   }
 
   async createBatch(organizationId: string, projectId: string, dto: CreateBatchArticleJobsDto) {
@@ -201,7 +106,7 @@ export class ArticleJobService {
       targetKeyword: job.targetKeyword,
     };
 
-    let pending = this.getSemrushPending(job.seoCheckData);
+    let pending = getSemrushPending(job.seoCheckData);
     if (job.status === 'OPTIMIZING') {
       if (pending && isSemrushCheckStale(pending.startedAt)) {
         await this.seoCheckerService.cancelManualSemrushCheck(
@@ -250,7 +155,7 @@ export class ArticleJobService {
       if (this.seoCheckerService.isSemrushWorkAbortedError(error)) {
         return;
       }
-      const message = this.resolveErrorMessage(error, 'Semrush 检测失败');
+      const message = resolveArticleJobErrorMessage(error, 'Semrush 检测失败');
       await this.seoCheckerService.markManualSemrushFailed(ctx, message);
     });
 
@@ -539,91 +444,8 @@ export class ArticleJobService {
     };
   }
 
-  /** 失败任务重新入队，从失败步骤续跑（不重复已完成阶段） */
   async retry(organizationId: string, projectId: string, id: string) {
-    const job = await this.prisma.articleJob.findFirst({
-      where: { id, organizationId, projectId },
-      select: {
-        id: true,
-        traceId: true,
-        status: true,
-        targetKeyword: true,
-        serpData: true,
-        briefData: true,
-        draftData: true,
-        seoCheckData: true,
-        semrushScore: true,
-      },
-    });
-
-    if (!job) {
-      throw new BusinessException(ErrorCodes.JOB_NOT_FOUND, '任务不存在');
-    }
-
-    if (job.status !== 'FAILED') {
-      throw new BusinessException(ErrorCodes.VALIDATION_ERROR, '仅失败状态的任务可重试');
-    }
-
-    await this.billingService.assertArticleQuota(organizationId, 1);
-
-    const resumeFrom = resolveResumeStep(job);
-    const retryTraceId = `tr_${uuidv4()}`;
-    const retryScraperOptions = buildArticleJobScraperOptions(getArticleJobConfig(job.seoCheckData));
-
-    const baseCheck = withWorkflowMeta(job.seoCheckData, null);
-    const prevSemrush = baseCheck.semrush as Record<string, unknown> | undefined;
-    const retrySeoCheckData = {
-      ...(prevSemrush
-        ? (() => {
-            const { cancelled: _cancelled, ...semrushRest } = prevSemrush;
-            return { ...baseCheck, semrush: semrushRest };
-          })()
-        : baseCheck),
-      suppressFailureNotification: true,
-    };
-
-    await this.prisma.articleJob.update({
-      where: { id },
-      data: {
-        status: 'QUEUED',
-        errorMessage: null,
-        traceId: retryTraceId,
-        seoCheckData: retrySeoCheckData as object,
-      },
-    });
-
-    try {
-      await this.queueService.enqueueArticleJob(
-        {
-          jobId: job.id,
-          traceId: retryTraceId,
-          organizationId,
-          projectId,
-          resumeFrom,
-          scraperOptions: retryScraperOptions,
-        },
-        `retry_${job.id}_${Date.now()}`,
-      );
-    } catch (error) {
-      await this.compensateEnqueueFailure(job.id, '入队失败，请稍后重试');
-      throw error;
-    }
-
-    this.logger.info('Article job retry enqueued', {
-      traceId: retryTraceId,
-      organizationId,
-      projectId,
-      jobId: job.id,
-      resumeFrom,
-      action: 'article_job.retry',
-    });
-
-    return {
-      id: job.id,
-      traceId: retryTraceId,
-      status: 'QUEUED' as const,
-      targetKeyword: job.targetKeyword,
-    };
+    return this.createService.retry(organizationId, projectId, id);
   }
 
   /** 手动暂停进行中的任务（可从断点恢复）。 */
@@ -634,223 +456,12 @@ export class ArticleJobService {
     actorUserId: string,
     reason?: string,
   ) {
-    const job = await this.prisma.articleJob.findFirst({
-      where: { id, organizationId, projectId },
-      select: {
-        id: true,
-        traceId: true,
-        status: true,
-        targetKeyword: true,
-        serpData: true,
-        briefData: true,
-        draftData: true,
-        seoCheckData: true,
-        semrushScore: true,
-      },
-    });
-
-    if (!job) {
-      throw new BusinessException(ErrorCodes.JOB_NOT_FOUND, '任务不存在');
-    }
-
-    if (String(job.status) === 'PAUSED') {
-      return {
-        id: job.id,
-        traceId: job.traceId,
-        status: 'PAUSED' as const,
-        targetKeyword: job.targetKeyword,
-      };
-    }
-
-    if (!this.isBusyJobStatus(job.status)) {
-      throw new BusinessException(ErrorCodes.VALIDATION_ERROR, '仅进行中任务可暂停');
-    }
-
-    const semrushCtx = {
-      jobId: id,
-      traceId: job.traceId,
-      organizationId,
-      projectId,
-      targetKeyword: job.targetKeyword,
-    };
-    const pending = this.getSemrushPending(job.seoCheckData);
-    if (pending) {
-      await this.seoCheckerService.cancelManualSemrushCheck(
-        semrushCtx,
-        '任务已暂停，Semrush 检测已取消',
-      );
-    }
-
-    const resumeFrom = resolveResumeStep({
-      serpData: job.serpData,
-      briefData: job.briefData,
-      draftData: job.draftData,
-      seoCheckData: job.seoCheckData,
-      semrushScore: job.semrushScore,
-    });
-    const prevWorkflow = getWorkflowMeta(job.seoCheckData);
-    let seoCheckData = withWorkflowMeta(job.seoCheckData, {
-      ...prevWorkflow,
-      failedStep: undefined,
-      pausedStep: resumeFrom,
-      pausedAt: new Date().toISOString(),
-      pausedBy: actorUserId,
-      pauseReason: reason?.trim() || undefined,
-    });
-    if (job.status === 'OPTIMIZING' && !pending) {
-      const prevSemrush = (seoCheckData.semrush ?? {}) as Record<string, unknown>;
-      seoCheckData = {
-        ...seoCheckData,
-        semrush: {
-          ...prevSemrush,
-          cancelled: true,
-          pauseCancelledAt: new Date().toISOString(),
-        },
-      };
-    }
-
-    await this.prisma.articleJob.update({
-      where: { id: job.id },
-      data: {
-        status: 'PAUSED' as never,
-        seoCheckData: seoCheckData as object,
-      },
-    });
-
-    await this.seoCheckerService.abortInFlightSemrushWork(semrushCtx);
-    await this.queueService.removeQueueJobsForArticleJob(job, organizationId, projectId);
-
-    this.logger.info('Article job paused', {
-      traceId: job.traceId,
-      organizationId,
-      projectId,
-      jobId: job.id,
-      resumeFrom,
-      actorUserId,
-      action: 'article_job.pause',
-    });
-
-    return {
-      id: job.id,
-      traceId: job.traceId,
-      status: 'PAUSED' as const,
-      targetKeyword: job.targetKeyword,
-    };
+    return this.lifecycleService.pause(organizationId, projectId, id, actorUserId, reason);
   }
 
   /** 恢复已暂停任务，从 pause 记录的步骤续跑。 */
   async resume(organizationId: string, projectId: string, id: string) {
-    const job = await this.prisma.articleJob.findFirst({
-      where: { id, organizationId, projectId },
-      select: {
-        id: true,
-        traceId: true,
-        status: true,
-        targetKeyword: true,
-        serpData: true,
-        briefData: true,
-        draftData: true,
-        seoCheckData: true,
-        semrushScore: true,
-      },
-    });
-
-    if (!job) {
-      throw new BusinessException(ErrorCodes.JOB_NOT_FOUND, '任务不存在');
-    }
-
-    if (String(job.status) !== 'PAUSED') {
-      if (this.isBusyJobStatus(job.status)) {
-        // 处理“刚暂停又点继续”的竞态：若任务已继续运行，resume 幂等返回当前态。
-        return {
-          id: job.id,
-          traceId: job.traceId,
-          status: job.status,
-          targetKeyword: job.targetKeyword,
-        };
-      }
-      throw new BusinessException(ErrorCodes.VALIDATION_ERROR, '仅暂停任务可继续执行');
-    }
-
-    const workflowMeta = getWorkflowMeta(job.seoCheckData);
-    const resumeFrom =
-      workflowMeta.pausedStep ??
-      resolveResumeStep({
-        serpData: job.serpData,
-        briefData: job.briefData,
-        draftData: job.draftData,
-        seoCheckData: job.seoCheckData,
-        semrushScore: job.semrushScore,
-      });
-    const resumeTraceId = `tr_${uuidv4()}`;
-    const resumeStatus = jobStatusForResumeStep(resumeFrom);
-    let resumeSeoCheckData = withWorkflowMeta(job.seoCheckData, {
-      failedStep: workflowMeta.failedStep,
-      pausedStep: resumeFrom,
-    });
-    if (resumeFrom === 'optimizing' || resumeFrom === 'paraphrasing') {
-      const prevSemrush = (resumeSeoCheckData.semrush ?? {}) as Record<string, unknown>;
-      const { cancelled: _cancelled, pauseCancelledAt: _pauseCancelledAt, ...semrushRest } =
-        prevSemrush;
-      resumeSeoCheckData = { ...resumeSeoCheckData, semrush: semrushRest };
-    }
-
-    await this.prisma.articleJob.update({
-      where: { id: job.id },
-      data: {
-        status: resumeStatus,
-        traceId: resumeTraceId,
-        errorMessage: null,
-        seoCheckData: resumeSeoCheckData as object,
-      },
-    });
-
-    await this.seoCheckerService.clearSemrushAbortSignal({
-      jobId: job.id,
-      traceId: resumeTraceId,
-      organizationId,
-      projectId,
-      targetKeyword: job.targetKeyword,
-    });
-
-    await this.queueService.removeQueueJobsForArticleJob(
-      { id: job.id, traceId: job.traceId },
-      organizationId,
-      projectId,
-    );
-
-    try {
-      await this.queueService.enqueueArticleJob(
-        {
-          jobId: job.id,
-          traceId: resumeTraceId,
-          organizationId,
-          projectId,
-          resumeFrom,
-          scraperOptions: buildArticleJobScraperOptions(getArticleJobConfig(job.seoCheckData)),
-        },
-        `resume_${job.id}_${Date.now()}`,
-      );
-    } catch (error) {
-      await this.compensateEnqueueFailure(job.id, '恢复入队失败，请稍后重试');
-      throw error;
-    }
-
-    this.logger.info('Article job resumed', {
-      traceId: resumeTraceId,
-      organizationId,
-      projectId,
-      jobId: job.id,
-      resumeFrom,
-      action: 'article_job.resume',
-    });
-
-    return {
-      id: job.id,
-      traceId: resumeTraceId,
-      status: resumeStatus,
-      targetKeyword: job.targetKeyword,
-    };
+    return this.lifecycleService.resume(organizationId, projectId, id);
   }
 
   async batchRetry(organizationId: string, projectId: string, jobIds: string[]) {
@@ -859,283 +470,25 @@ export class ArticleJobService {
 
   /** 删除任务及队列、稿件插图等关联数据 */
   async remove(organizationId: string, projectId: string, id: string, traceId: string) {
-    const job = await this.prisma.articleJob.findFirst({
-      where: { id, organizationId, projectId },
-      select: {
-        id: true,
-        traceId: true,
-        targetKeyword: true,
-        status: true,
-        seoCheckData: true,
-      },
-    });
-
-    if (!job) {
-      throw new BusinessException(ErrorCodes.JOB_NOT_FOUND, '任务不存在');
-    }
-
-    if (job.id.startsWith(CALIBRATION_LAB_JOB_ID_PREFIX)) {
-      throw new BusinessException(ErrorCodes.VALIDATION_ERROR, '校准实验室样本请在校准页删除');
-    }
-
-    await this.cleanupBeforeDelete(organizationId, projectId, job);
-
-    const deletedAt = softDeleteTimestamp();
-    await this.prisma.articleJob.update({
-      where: { id: job.id },
-      data: { deletedAt },
-    });
-
-    this.logger.info('Article job deleted', {
-      traceId,
-      organizationId,
-      projectId,
-      jobId: job.id,
-      targetKeyword: job.targetKeyword,
-      action: 'article_job.delete',
-    });
-
-    return {
-      id: job.id,
-      targetKeyword: job.targetKeyword,
-      deleted: true as const,
-    };
+    return this.lifecycleService.remove(organizationId, projectId, id, traceId);
   }
 
   async batchRemove(organizationId: string, projectId: string, jobIds: string[], traceId: string) {
     return this.batchService.batchRemove(organizationId, projectId, jobIds, traceId);
   }
 
-  async cancelSemrushCheck(organizationId: string, projectId: string, id: string) {
-    const job = await this.prisma.articleJob.findFirst({
-      where: { id, organizationId, projectId },
-      select: {
-        id: true,
-        traceId: true,
-        status: true,
-        targetKeyword: true,
-        seoCheckData: true,
-        updatedAt: true,
-      },
-    });
-
-    if (!job) {
-      throw new BusinessException(ErrorCodes.JOB_NOT_FOUND, '任务不存在');
-    }
-
-    const pending = this.getSemrushPending(job.seoCheckData);
-    const ctx = {
-      jobId: id,
-      traceId: job.traceId,
-      organizationId,
-      projectId,
-      targetKeyword: job.targetKeyword,
-    };
-
-    if (!pending) {
-      if (job.status === 'OPTIMIZING') {
-        if (shouldRecoverOrphanOptimizing(job)) {
-          const restoreStatus = await this.seoCheckerService.recoverOrphanOptimizingJob(
-            ctx,
-            'Semrush 检测已手动取消（僵死优化状态）',
-          );
-          return {
-            id: job.id,
-            traceId: job.traceId,
-            status: restoreStatus,
-            targetKeyword: job.targetKeyword,
-          };
-        }
-        throw new BusinessException(
-          ErrorCodes.VALIDATION_ERROR,
-          '任务优化或 Semrush 终检进行中，请稍候；若长时间无响应可等待约 8 分钟后重试',
-        );
-      }
-      throw new BusinessException(ErrorCodes.VALIDATION_ERROR, '当前没有进行中的 Semrush 检测');
-    }
-
-    await this.seoCheckerService.cancelManualSemrushCheck(ctx, 'Semrush 检测已手动取消');
-
-    return {
-      id: job.id,
-      traceId: job.traceId,
-      status: pending.previousStatus,
-      targetKeyword: job.targetKeyword,
-    };
-  }
-
-  buildScraperOptions(
-    dto: Pick<CreateArticleJobDto, 'serpArticleLimit' | 'serpArticlesOnly' | 'serpCountry'>,
-    resolvedSerpCountry?: string,
-  ): ArticleJobScraperOptions | undefined {
-    const serpCountry = normalizeSerpCountry(dto.serpCountry) ?? resolvedSerpCountry;
-    if (
-      dto.serpArticleLimit === undefined &&
-      dto.serpArticlesOnly === undefined &&
-      !serpCountry
-    ) {
-      return undefined;
-    }
-
-    return {
-      serpArticleLimit: dto.serpArticleLimit,
-      serpArticlesOnly: dto.serpArticlesOnly,
-      serpCountry,
-    };
-  }
-
-  resolveErrorMessage(error: unknown, fallback: string): string {
-    if (error instanceof BusinessException) {
-      const body = error.getResponse();
-      if (typeof body === 'object' && body !== null && 'message' in body) {
-        return String((body as { message: string }).message);
-      }
-    }
-    if (error instanceof Error) {
-      return error.message;
-    }
-    return fallback;
-  }
-
-  private async buildKeywordCannibalizationWarnings(
+  async cancel(
     organizationId: string,
     projectId: string,
-    siteId: string,
-    keyword: string,
-    excludeJobId?: string,
+    id: string,
+    actorUserId: string,
+    reason?: string,
   ) {
-    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
-    const rows = await this.prisma.articleJob.findMany({
-      where: {
-        organizationId,
-        projectId,
-        siteId,
-        status: { not: 'FAILED' },
-        ...(excludeJobId ? { id: { not: excludeJobId } } : {}),
-      },
-      select: {
-        id: true,
-        targetKeyword: true,
-        status: true,
-        updatedAt: true,
-        seoCheckData: true,
-      },
-      orderBy: { updatedAt: 'desc' },
-      take: 200,
-    });
-
-    const candidates = rows
-      .filter((row) => {
-        if (row.status !== 'COMPLETED') return true;
-        if (row.updatedAt < ninetyDaysAgo) return false;
-        const postUrl = (
-          (row.seoCheckData as { cmsPublish?: { postUrl?: string | null } } | null)?.cmsPublish
-            ?.postUrl ?? ''
-        ).trim();
-        return Boolean(postUrl);
-      })
-      .map((row) => ({
-        jobId: row.id,
-        keyword: row.targetKeyword,
-        status: row.status,
-      }));
-
-    const conflicts = findKeywordConflicts(keyword, candidates);
-    if (conflicts.length === 0) return [];
-
-    return conflicts.map((conflict) => ({
-      code: 'KEYWORD_CANNIBALIZATION' as const,
-      message: `与已有任务「${conflict.keyword}」过于相似（${conflict.reason}）`,
-      jobId: conflict.jobId,
-      keyword: conflict.keyword,
-      status: conflict.status,
-      reason: conflict.reason,
-    }));
+    return this.lifecycleService.cancel(organizationId, projectId, id, actorUserId, reason);
   }
 
-  private async cleanupBeforeDelete(
-    organizationId: string,
-    projectId: string,
-    job: {
-      id: string;
-      traceId: string;
-      targetKeyword: string;
-      seoCheckData: unknown;
-    },
-  ): Promise<void> {
-    const ctx = {
-      jobId: job.id,
-      traceId: job.traceId,
-      organizationId,
-      projectId,
-      targetKeyword: job.targetKeyword,
-    };
-
-    const pending = this.getSemrushPending(job.seoCheckData);
-    if (pending) {
-      try {
-        await this.seoCheckerService.cancelManualSemrushCheck(ctx, '任务已删除，Semrush 检测已取消');
-      } catch (error) {
-        this.logger.warn('Cancel Semrush check before delete failed', {
-          traceId: job.traceId,
-          organizationId,
-          projectId,
-          jobId: job.id,
-          action: 'article_job.delete_cancel_semrush_failed',
-          error: error instanceof Error ? error.message : 'unknown',
-        });
-      }
-    }
-
-    await this.queueService.removeQueueJobsForArticleJob(job, organizationId, projectId);
-    await this.storage.deleteByPrefix(`${buildExportStoragePrefix(organizationId, projectId, job.id)}/`);
-  }
-
-  private resolveJobSerpCountry(
-    site: { targetMarket: string | null; settings: unknown },
-    override?: string,
-  ): string {
-    return resolveSerpResearchOptions(
-      site.settings,
-      { serpCountry: override },
-      { targetMarket: site.targetMarket },
-    ).serpCountry;
-  }
-
-  private async resolveSearchIntent(
-    organizationId: string,
-    projectId: string,
-    targetKeyword: string,
-    explicit?: string,
-  ): Promise<KeywordIntentValue> {
-    if (explicit) {
-      return normalizeKeywordIntent(explicit);
-    }
-
-    const entry = await this.prisma.keywordEntry.findFirst({
-      where: { organizationId, projectId, keyword: targetKeyword },
-      orderBy: { updatedAt: 'desc' },
-      select: { intent: true },
-    });
-
-    return normalizeKeywordIntent(entry?.intent);
-  }
-
-  private getSemrushPending(seoCheckData: unknown): SemrushCheckPending | null {
-    const data = (seoCheckData ?? {}) as { semrush?: { pending?: SemrushCheckPending } };
-    return data.semrush?.pending ?? null;
-  }
-
-  private isBusyJobStatus(status: string): boolean {
-    return (
-      status === 'QUEUED' ||
-      status === 'RESEARCHING' ||
-      status === 'DRAFTING' ||
-      status === 'LINKING' ||
-      status === 'ILLUSTRATING' ||
-      status === 'OPTIMIZING' ||
-      status === 'REVIEWING'
-    );
+  async cancelSemrushCheck(organizationId: string, projectId: string, id: string) {
+    return this.lifecycleService.cancelSemrushCheck(organizationId, projectId, id);
   }
 
   private async compensateEnqueueFailure(jobId: string, errorMessage: string): Promise<void> {

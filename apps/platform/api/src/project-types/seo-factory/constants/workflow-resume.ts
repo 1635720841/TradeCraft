@@ -14,6 +14,9 @@ export interface WorkflowMeta {
   pausedAt?: string;
   pausedBy?: string;
   pauseReason?: string;
+  cancelledAt?: string;
+  cancelledBy?: string;
+  cancelReason?: string;
 }
 
 /** 从断点步骤映射任务状态（恢复续跑时避免长时间显示 QUEUED）。 */

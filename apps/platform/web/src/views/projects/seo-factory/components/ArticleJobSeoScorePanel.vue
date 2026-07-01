@@ -320,7 +320,7 @@
                   <el-tag v-if="item.rolledBack" type="warning" size="small" effect="plain">
                     已回滚
                   </el-tag>
-                  <span class="text-xs text-gray-400">{{ formatTime(item.optimizedAt) }}</span>
+                  <span class="text-xs text-gray-400">{{ formatSeoScoreTime(item.optimizedAt) }}</span>
                 </div>
               </template>
 
@@ -376,6 +376,12 @@ import {
   SCORE_CALIBRATION_HIGH_LOCAL_SOFT_PASS_MARGIN
 } from "@/constants/seo-factory";
 import { workflowStepLabel } from "@/utils/seo-factory/workflow-progress";
+import {
+  formatDelta,
+  formatPredictedSemrush,
+  formatRoundScore,
+  formatSeoScoreTime
+} from "@/utils/seo-factory/seo-score-display";
 import {
   emptyIssuesHint,
   fixesEmptyDescription,
@@ -676,7 +682,7 @@ const semrushCheckRecordLabel = computed(() => {
   if (rec.nodeKey) parts.push(`节点:${rec.nodeKey}`);
   if (rec.domScore != null) parts.push(`DOM:${rec.domScore}`);
   if (rec.apiScore != null) parts.push(`API:${rec.apiScore}`);
-  if (rec.checkedAt) parts.push(formatTime(rec.checkedAt));
+  if (rec.checkedAt) parts.push(formatSeoScoreTime(rec.checkedAt));
   return parts.join(" · ");
 });
 const breakdown = computed(() => local.value?.breakdown);
@@ -1346,19 +1352,6 @@ function phaseTagType(phase: ArticleJobOptimizeRound["phase"]) {
   return phase === "local" ? "primary" : "success";
 }
 
-function formatRoundScore(
-  score: number | null | undefined,
-  phase: ArticleJobOptimizeRound["phase"]
-) {
-  if (score == null) return "-";
-  return phase === "local" ? `${score} / 100` : `${score} / 10`;
-}
-
-function formatPredictedSemrush(score: number | null | undefined): string {
-  if (score == null) return "-";
-  return `${Math.round(score * 100) / 100} / 10`;
-}
-
 function formatRowPredictedScore(row: unknown, which: "before" | "after"): string {
   const item = asOptimizeRow(row);
   if (item.phase !== "local") return "-";
@@ -1447,12 +1440,6 @@ function formatRollbackDetail(item: ArticleJobOptimizeRound): string {
   return `Semrush 候选 ${candidate} 未超过保留稿 ${kept}（本地 ${candidateLocal}），已回滚。`;
 }
 
-function formatDelta(delta: number) {
-  if (delta > 0) return `+${delta}`;
-  if (delta < 0) return `${delta}`;
-  return "0";
-}
-
 function asOptimizeRow(row: unknown): ArticleJobOptimizeRound {
   return row as ArticleJobOptimizeRound;
 }
@@ -1480,7 +1467,7 @@ function formatRowLocalScore(row: unknown) {
 }
 
 function formatRowTime(row: unknown) {
-  return formatTime(asOptimizeRow(row).optimizedAt);
+  return formatSeoScoreTime(asOptimizeRow(row).optimizedAt);
 }
 
 function getRowDelta(row: unknown): number | null {
@@ -1494,12 +1481,6 @@ function scoreDeltaClass(delta: number | null) {
   if (delta > 0) return "text-green-600 font-medium";
   if (delta < 0) return "text-red-600 font-medium";
   return "text-gray-500";
-}
-
-function formatTime(iso: string) {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString("zh-CN");
 }
 
 function readabilityMetricClass(value: number, maxAllowed: number) {

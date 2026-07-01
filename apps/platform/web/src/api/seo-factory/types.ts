@@ -572,10 +572,14 @@ export interface ArticleJobGscPerformance {
   syncedAt: string;
 }
 
+import { jobStatusDict } from "@/constants/dicts/seo-factory";
+
+export type ArticleJobStatus = (typeof jobStatusDict)[number]["value"];
+
 export interface ArticleJobItem {
   id: string;
   traceId: string;
-  status: string;
+  status: ArticleJobStatus;
   targetKeyword: string;
   searchIntent?: string | null;
   semrushScore?: number | null;

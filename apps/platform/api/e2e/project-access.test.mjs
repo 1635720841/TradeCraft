@@ -55,7 +55,7 @@ describe('E2E project access', () => {
       `/api/v1/projects/${E2E_PROJECT_ID}/article-jobs?page=1&limit=5`,
       { token: session.accessToken },
     );
-    assert.ok(Array.isArray(result.data?.items), '成员应能读取任务列表');
+    assert.ok(Array.isArray(result.data), '成员应能读取任务列表');
   });
 
   it('non-member is forbidden on SEO article jobs API', async (t) => {

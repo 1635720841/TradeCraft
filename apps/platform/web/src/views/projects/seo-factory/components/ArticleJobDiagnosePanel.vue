@@ -102,6 +102,7 @@
             :job-id="jobId"
             :internal-links="job.draftData?.internalLinks"
             :internal-links-applied="job.draftData?.internalLinksApplied"
+            :job-status="job.status"
             @updated="emit('updated')"
           />
           <ArticleJobImagesPanel
@@ -134,7 +135,7 @@ import type {
   ArticleJobRewriteCandidate,
   ArticleJobYmylReview
 } from "@/api/seo-factory/types";
-import { buildJobDetailSummary } from "@/utils/seo-factory/job-detail-summary";
+import { buildJobDetailSummary, type JobDetailSummary } from "@/utils/seo-factory/job-detail-summary";
 import {
   countSeoIssueItems,
   fixesSectionHint,
@@ -156,6 +157,7 @@ defineOptions({ name: "ArticleJobDiagnosePanel" });
 
 const props = defineProps<{
   job: ArticleJobItem;
+  jobSummary?: JobDetailSummary | null;
   projectId: string;
   jobId: string;
   localSeoScore?: number | null;
@@ -201,7 +203,9 @@ const pipelineOptions = [
   { label: "内容审查", value: "ymyl" }
 ];
 
-const summary = computed(() => buildJobDetailSummary(props.job));
+const summary = computed(
+  () => props.jobSummary ?? buildJobDetailSummary(props.job)
+);
 const issueCount = computed(() => countSeoIssueItems(props.job.seoCheckData));
 const releaseReady = computed(() =>
   isSeoReleaseReady(summary.value.localPassed, summary.value.semrushPassed)

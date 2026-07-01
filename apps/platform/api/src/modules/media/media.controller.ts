@@ -13,7 +13,6 @@ import {
   Post,
   Query,
   Res,
-  UnauthorizedException,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -22,6 +21,7 @@ import type { Response } from 'express';
 import type { RequestContext } from '@wm/shared-core';
 import { Public } from '../../core/decorators/public.decorator';
 import { ReqCtx } from '../../core/decorators/request-context.decorator';
+import { UnauthorizedException } from '../../core/exceptions/auth.exception';
 import { BusinessException } from '../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../core/exceptions/error-codes';
 import { ProjectService } from '../project/project.service';

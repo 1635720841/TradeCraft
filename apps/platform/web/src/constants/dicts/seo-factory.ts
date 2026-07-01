@@ -10,6 +10,7 @@ export const jobStatusDict: DictItem[] = [
   { value: "OPTIMIZING", label: "优化中", type: "warning" },
   { value: "REVIEWING", label: "内容审查", type: "warning" },
   { value: "PAUSED", label: "已暂停", type: "warning" },
+  { value: "CANCELLED", label: "已取消", type: "info" },
   { value: "COMPLETED", label: "已完成", type: "success" },
   { value: "FAILED", label: "失败", type: "danger" }
 ];

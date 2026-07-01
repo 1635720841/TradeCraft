@@ -7,13 +7,19 @@
 
 import { HttpException, HttpStatus } from '@nestjs/common';
 import type { ErrorCode } from './error-codes';
+import { ErrorCodes } from './error-codes';
+
+function defaultStatusForCode(code: ErrorCode): HttpStatus {
+  if (code === ErrorCodes.FORBIDDEN) return HttpStatus.FORBIDDEN;
+  return HttpStatus.BAD_REQUEST;
+}
 
 export class BusinessException extends HttpException {
   constructor(
     public readonly code: ErrorCode,
     message: string,
     public readonly context?: Record<string, unknown>,
-    status: HttpStatus = HttpStatus.BAD_REQUEST,
+    status: HttpStatus = defaultStatusForCode(code),
   ) {
     super({ code, message }, status);
   }

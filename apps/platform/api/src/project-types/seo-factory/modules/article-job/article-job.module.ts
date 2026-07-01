@@ -19,8 +19,14 @@ import { ArticleJobReviewService } from './article-job-review.service';
 import { ArticleJobStatsService } from './article-job-stats.service';
 import { ArticleJobBriefService } from './article-job-brief.service';
 import { ArticleJobController } from './article-job.controller';
+import { ArticleJobBatchController } from './article-job-batch.controller';
+import { ArticleJobLifecycleController } from './article-job-lifecycle.controller';
+import { ArticleJobWorkflowController } from './article-job-workflow.controller';
+import { ArticleJobEditorController } from './article-job-editor.controller';
 import { ArticleJobCollabController } from './article-job-collab.controller';
 import { ArticleJobCollabService } from './article-job-collab.service';
+import { ArticleJobCreateService } from './article-job-create.service';
+import { ArticleJobLifecycleService } from './article-job-lifecycle.service';
 import { ArticleJobService } from './article-job.service';
 import { ArticleJobListService } from './article-job-list.service';
 import { ArticleJobBatchService } from './article-job-batch.service';
@@ -37,9 +43,18 @@ import { ArticleJobActivityModule } from './article-job-activity.module';
 
 @Module({
   imports: [ProjectModule, AccessModule, MediaModule, ArticleJobActivityModule, BillingModule, SeoFactoryQueueModule, SeoCheckerModule, LlmModule, SiteModule, ExportModule, LinkingModule, IllustrationModule, GscModule, ScraperModule],
-  controllers: [ArticleJobController, ArticleJobCollabController],
+  controllers: [
+    ArticleJobController,
+    ArticleJobBatchController,
+    ArticleJobLifecycleController,
+    ArticleJobWorkflowController,
+    ArticleJobEditorController,
+    ArticleJobCollabController,
+  ],
   providers: [
     ArticleJobService,
+    ArticleJobCreateService,
+    ArticleJobLifecycleService,
     ArticleJobListService,
     ArticleJobBatchService,
     ArticleJobQueueService,

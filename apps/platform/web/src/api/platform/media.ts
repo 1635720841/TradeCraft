@@ -2,6 +2,7 @@
  * 项目媒体资产库 API。
  */
 
+import { platformApiPath } from "@/api/platform/paths";
 import { http } from "@/utils/http";
 import type { WmApiResponse } from "@/api/platform/types";
 
@@ -20,7 +21,7 @@ export interface MediaAsset {
 }
 
 function projectMediaBase(projectId: string) {
-  return `/api/v1/projects/${projectId}/media`;
+  return platformApiPath(projectId, "media");
 }
 
 export async function listMediaAssets(

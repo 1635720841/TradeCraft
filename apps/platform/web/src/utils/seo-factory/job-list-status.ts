@@ -10,9 +10,8 @@ import {
   resolveCmsPublishStatus
 } from "@/utils/seo-factory/cms-publish-status";
 import { draftEditStatusLabel } from "@/utils/seo-factory/draft-edit-preview";
-import { isBriefPending, isReviewPending } from "@/utils/seo-factory/job-progress";
+import { isBriefPending, isReviewPending, inferCurrentWorkflowStep } from "@/utils/seo-factory/job-progress";
 import { WORDPRESS_CMS_UI_ENABLED } from "@/constants/feature-flags";
-import type { ArticleJobWorkflowStep } from "@/api/seo-factory/types";
 
 export interface JobListPrimaryTag {
   label: string;
@@ -21,8 +20,9 @@ export interface JobListPrimaryTag {
 
 /** 列表/详情展示用状态：从暂停恢复后若仍为 QUEUED，按断点步骤显示对应阶段。 */
 export function resolveJobDisplayStatus(job: ArticleJobItem): string {
+  if (job.status === "PAUSED") return job.status;
   if (job.status !== "QUEUED") return job.status;
-  const paused = job.seoCheckData?.workflow?.pausedStep as ArticleJobWorkflowStep | undefined;
+  const paused = inferCurrentWorkflowStep(job);
   if (!paused || paused === "serp") return job.status;
   switch (paused) {
     case "brief":

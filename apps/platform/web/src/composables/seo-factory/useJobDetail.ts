@@ -15,6 +15,7 @@ import {
 } from "@/constants/seo-factory";
 import { isBriefPending } from "@/utils/seo-factory/job-progress";
 import type { DiagnoseSection } from "@/utils/seo-factory/job-detail-summary";
+import { buildJobDetailSummary } from "@/utils/seo-factory/job-detail-summary";
 import { resolveEffectiveLocalSeoScore } from "@/utils/seo-factory/local-seo-display";
 import { formatWorkflowProgressShort } from "@/utils/seo-factory/workflow-progress";
 import type ArticleJobDiagnosePanel from "@/views/projects/seo-factory/components/ArticleJobDiagnosePanel.vue";
@@ -22,10 +23,10 @@ import type ArticleJobDiagnosePanel from "@/views/projects/seo-factory/component
 export function useJobDetail(options?: {
   isRewriting?: Ref<boolean>;
   isSemrushChecking?: Ref<boolean>;
+  retrying?: Ref<boolean>;
   rerunningOptimization?: Ref<boolean>;
   rerunningParaphrase?: Ref<boolean>;
   serpRefreshing?: Ref<boolean>;
-  retrying?: Ref<boolean>;
 }) {
   const route = useRoute();
   const router = useRouter();
@@ -119,12 +120,11 @@ export function useJobDetail(options?: {
     [...(job.value?.draftData?.manualEditHistory ?? [])].reverse()
   );
 
-  const isSemrushChecking = computed(
-    () =>
-      semrushChecking.value ||
-      Boolean(semrushPending.value) ||
-      job.value?.status === "OPTIMIZING"
-  );
+  const isSemrushChecking = computed(() => {
+    if (semrushChecking.value || Boolean(semrushPending.value)) return true;
+    const phase = workflowProgress.value?.phase;
+    return phase === "semrush" || phase === "semrush-check";
+  });
 
   const isRewriting = computed(
     () =>
@@ -265,12 +265,32 @@ export function useJobDetail(options?: {
     );
   });
 
+  const canCancel = computed(() => {
+    if (!canWriteJob.value || !job.value) return false;
+    if (options?.retrying?.value) return false;
+    const status = job.value.status;
+    return (
+      status === "QUEUED" ||
+      status === "PAUSED" ||
+      status === "RESEARCHING" ||
+      status === "DRAFTING" ||
+      status === "LINKING" ||
+      status === "ILLUSTRATING" ||
+      status === "OPTIMIZING" ||
+      status === "REVIEWING"
+    );
+  });
+
   const canResume = computed(
     () => canWriteJob.value && job.value?.status === "PAUSED"
   );
 
   const briefPending = computed(() =>
     job.value ? isBriefPending(job.value) : false
+  );
+
+  const jobSummary = computed(() =>
+    job.value ? buildJobDetailSummary(job.value) : null
   );
 
   function calloutIcon(type: "success" | "warning" | "info" | "error") {
@@ -389,8 +409,10 @@ export function useJobDetail(options?: {
     canTriggerRewrite,
     canRetry,
     canPause,
+    canCancel,
     canResume,
     briefPending,
+    jobSummary,
     calloutIcon,
     goBack,
     goSiteManage,
