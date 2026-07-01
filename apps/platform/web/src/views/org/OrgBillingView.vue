@@ -2,151 +2,174 @@
   订阅与用量页：配额摘要与用量明细（只读；续期/加购由平台 Console 操作）。
 -->
 <template>
-  <div class="p-4 space-y-4">
-    <el-card v-loading="loadingQuota" shadow="never">
-      <template #header>
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <span class="font-medium">订阅与配额</span>
-          <el-button link type="primary" @click="refreshQuota">刷新</el-button>
-          <el-button link type="primary" @click="downloadBillingUsageCsv">导出 CSV</el-button>
-          <el-button type="primary" size="small" @click="requestRenew">申请续费</el-button>
-          <el-button size="small" @click="openUpgradeDialog">申请升级</el-button>
-          <el-button size="small" @click="openTopUpDialog">申请加购</el-button>
-        </div>
+  <AdminPageShell title="订阅与用量" description="续期与加购需由平台管理员审批。">
+    <template #actions>
+      <el-button link type="primary" :loading="quotaAsync.loading.value" @click="quotaAsync.retry">
+        刷新
+      </el-button>
+      <el-dropdown trigger="click">
+        <el-button size="small">
+          更多
+          <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+        </el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item @click="downloadBillingUsageCsv">导出 CSV</el-dropdown-item>
+            <el-dropdown-item @click="requestRenew">申请续费</el-dropdown-item>
+            <el-dropdown-item @click="openUpgradeDialog">申请升级</el-dropdown-item>
+            <el-dropdown-item @click="openTopUpDialog">申请加购</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+    </template>
+
+    <el-alert
+      class="mb-4"
+      type="info"
+      :closable="false"
+      show-icon
+      title="续期与加购可通过「更多」菜单提交，由平台管理员审批。"
+    />
+
+    <el-alert
+      v-if="quotaAsync.error.value"
+      type="error"
+      :title="quotaAsync.error.value"
+      show-icon
+      class="mb-4"
+    >
+      <template #default>
+        <el-button type="primary" link @click="quotaAsync.retry">重试</el-button>
       </template>
+    </el-alert>
+
+    <template v-if="profile">
+      <QuotaSummaryCard :quota="profile.quota" class="mb-4" />
 
       <el-alert
+        v-if="profile.quota.subscriptionActive === false"
         class="mb-4"
-        type="info"
+        type="error"
         :closable="false"
         show-icon
-        title="续期与加购可通过下方「申请续费/升级」提交，由平台管理员审批。"
+        title="企业有效期已过，请联系平台管理员续期后继续使用。"
       />
 
-      <template v-if="profile">
-        <el-alert
-          v-if="profile.quota.subscriptionActive === false"
-          class="mb-4"
-          type="error"
-          :closable="false"
-          show-icon
-          title="企业有效期已过，请联系平台管理员续期后继续使用。"
-        />
+      <el-alert
+        v-else-if="quotaLowWarning"
+        class="mb-4"
+        type="warning"
+        :closable="false"
+        show-icon
+        :title="quotaLowWarning"
+      />
 
-        <el-alert
-          v-else-if="quotaLowWarning"
-          class="mb-4"
-          type="warning"
-          :closable="false"
-          show-icon
-          :title="quotaLowWarning"
-        />
-
-        <div class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <div class="text-sm text-gray-500">套餐</div>
-            <div class="text-2xl font-medium">
-              {{ dictLabel(planNameDict, profile.planName) }}
-            </div>
+      <div class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <div class="text-sm text-gray-500">套餐</div>
+          <div class="text-2xl font-medium">
+            {{ dictLabel(planNameDict, profile.planName) }}
           </div>
-          <div>
-            <div class="text-sm text-gray-500">订阅状态</div>
-            <div class="text-2xl font-medium">
-              <el-tag :type="dictTagType(subscriptionStatusDict, profile.subscriptionStatus)">
-                {{ dictLabel(subscriptionStatusDict, profile.subscriptionStatus) }}
+        </div>
+        <div>
+          <div class="text-sm text-gray-500">订阅状态</div>
+          <div class="text-2xl font-medium">
+            <el-tag :type="dictTagType(subscriptionStatusDict, profile.subscriptionStatus)">
+              {{ dictLabel(subscriptionStatusDict, profile.subscriptionStatus) }}
+            </el-tag>
+          </div>
+        </div>
+        <el-statistic title="月配额" :value="profile.monthlyArticleQuota" suffix="篇" />
+        <el-statistic title="剩余可用" :value="profile.quota.remaining" suffix="篇" />
+      </div>
+
+      <div class="mb-4 rounded-lg border border-gray-100 bg-gray-50/80 px-4 py-3">
+        <div class="text-sm text-gray-500">企业有效时间</div>
+        <div class="mt-1 text-lg font-medium">
+          {{ formatPeriodWindow(profile.currentPeriodStart, profile.currentPeriodEnd) }}
+        </div>
+        <div
+          v-if="profile.quota.daysRemaining != null && profile.currentPeriodEnd"
+          class="mt-1 text-sm"
+          :class="profile.quota.subscriptionActive ? 'text-gray-500' : 'text-red-500'"
+        >
+          {{
+            profile.quota.subscriptionActive
+              ? `剩余 ${profile.quota.daysRemaining} 天`
+              : "已过期"
+          }}
+        </div>
+      </div>
+    </template>
+
+    <el-divider />
+
+    <div v-loading="usageAsync.loading.value" class="space-y-4">
+      <div class="font-medium">用量明细</div>
+      <el-alert
+        v-if="usageAsync.error.value"
+        type="error"
+        :title="usageAsync.error.value"
+        show-icon
+      >
+        <template #default>
+          <el-button type="primary" link @click="fetchUsage">重试</el-button>
+        </template>
+      </el-alert>
+      <el-empty
+        v-else-if="!usageAsync.loading.value && items.length === 0"
+        description="暂无用量记录"
+      />
+      <template v-else-if="items.length > 0">
+        <el-table :data="items" stripe>
+          <el-table-column prop="createdAt" label="时间" min-width="170">
+            <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+          </el-table-column>
+          <el-table-column prop="serviceType" label="服务类型" width="120">
+            <template #default="{ row }">
+              <el-tag :type="dictTagType(billingServiceTypeDict, row.serviceType)">
+                {{ dictLabel(billingServiceTypeDict, row.serviceType) }}
               </el-tag>
-            </div>
-          </div>
-          <el-statistic title="月配额" :value="profile.monthlyArticleQuota" suffix="篇" />
-          <el-statistic
-            title="剩余可用"
-            :value="profile.quota.remaining"
-            suffix="篇"
+            </template>
+          </el-table-column>
+          <el-table-column prop="provider" label="提供方" width="100" />
+          <el-table-column prop="tokensOrCount" label="用量" width="90" align="right" />
+          <el-table-column prop="estimatedCost" label="预估费用" width="110" align="right">
+            <template #default="{ row }">${{ Number(row.estimatedCost ?? 0).toFixed(2) }}</template>
+          </el-table-column>
+          <el-table-column prop="projectType" label="项目类型" width="120">
+            <template #default="{ row }">{{ row.projectType || "-" }}</template>
+          </el-table-column>
+        </el-table>
+        <div class="flex justify-end">
+          <el-pagination
+            v-model:current-page="page"
+            v-model:page-size="limit"
+            :total="total"
+            :page-sizes="[10, 20, 50]"
+            layout="total, sizes, prev, pager, next"
+            @current-change="fetchUsage"
+            @size-change="onSizeChange"
           />
         </div>
-
-        <div class="mb-4 rounded-lg border border-gray-100 bg-gray-50/80 px-4 py-3">
-          <div class="text-sm text-gray-500">套餐能力（只读）</div>
-          <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-700">
-            <li>试用版：基础 SEO 工作台 + 按月篇数配额</li>
-            <li>标准版：完整工作流 + CMS 发布 + GSC 嵌入</li>
-            <li>企业版：更高配额 + Console 人工续期与加购</li>
-          </ul>
-          <p class="mt-2 text-xs text-gray-500">续期与加购请联系平台管理员，租户侧不可自助变更套餐。</p>
-        </div>
-
-        <div class="mb-4 rounded-lg border border-gray-100 bg-gray-50/80 px-4 py-3">
-          <div class="text-sm text-gray-500">企业有效时间</div>
-          <div class="mt-1 text-lg font-medium">
-            {{ formatPeriodWindow(profile.currentPeriodStart, profile.currentPeriodEnd) }}
-          </div>
-          <div
-            v-if="profile.quota.daysRemaining != null && profile.currentPeriodEnd"
-            class="mt-1 text-sm"
-            :class="profile.quota.subscriptionActive ? 'text-gray-500' : 'text-red-500'"
-          >
-            {{
-              profile.quota.subscriptionActive
-                ? `剩余 ${profile.quota.daysRemaining} 天`
-                : "已过期"
-            }}
-          </div>
-        </div>
-
-        <el-progress
-          class="mb-4"
-          :percentage="quotaPercent"
-          :status="quotaPercent >= 90 ? 'exception' : undefined"
-        />
       </template>
-    </el-card>
+    </div>
 
-    <el-card v-loading="loadingUsage" shadow="never">
-      <template #header>
-        <span class="font-medium">用量明细</span>
-      </template>
+    <el-divider />
 
-      <el-table :data="items" stripe>
-        <el-table-column prop="createdAt" label="时间" min-width="170">
-          <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
-        </el-table-column>
-        <el-table-column prop="serviceType" label="服务类型" width="120">
-          <template #default="{ row }">
-            <el-tag :type="dictTagType(billingServiceTypeDict, row.serviceType)">
-              {{ dictLabel(billingServiceTypeDict, row.serviceType) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="provider" label="提供方" width="100" />
-        <el-table-column prop="tokensOrCount" label="用量" width="90" align="right" />
-        <el-table-column prop="estimatedCost" label="预估费用" width="110" align="right">
-          <template #default="{ row }">${{ Number(row.estimatedCost ?? 0).toFixed(2) }}</template>
-        </el-table-column>
-        <el-table-column prop="projectType" label="项目类型" width="120">
-          <template #default="{ row }">{{ row.projectType || "-" }}</template>
-        </el-table-column>
-      </el-table>
-
-      <div class="mt-4 flex justify-end">
-        <el-pagination
-          v-model:current-page="page"
-          v-model:page-size="limit"
-          :total="total"
-          :page-sizes="[10, 20, 50]"
-          layout="total, sizes, prev, pager, next"
-          @current-change="fetchUsage"
-          @size-change="onSizeChange"
-        />
-      </div>
-    </el-card>
-
-    <el-card v-loading="loadingRequests" shadow="never">
-      <template #header>
-        <span class="font-medium">申请记录</span>
-      </template>
-      <el-table :data="billingRequests" stripe>
+    <div v-loading="requestsAsync.loading.value" class="space-y-4">
+      <div class="font-medium">申请记录</div>
+      <el-empty
+        v-if="!requestsAsync.loading.value && !requestsAsync.error.value && billingRequests.length === 0"
+        description="暂无申请记录"
+      >
+        <el-button type="primary" size="small" @click="requestRenew">申请续费</el-button>
+      </el-empty>
+      <el-table v-else-if="billingRequests.length > 0" :data="billingRequests" stripe>
         <el-table-column prop="type" label="类型" width="100">
-          <template #default="{ row }">{{ dictLabel(billingChangeRequestTypeDict, row.type) || row.type }}</template>
+          <template #default="{ row }">
+            {{ dictLabel(billingChangeRequestTypeDict, row.type) || row.type }}
+          </template>
         </el-table-column>
         <el-table-column prop="message" label="说明" min-width="160">
           <template #default="{ row }">{{ row.message || "-" }}</template>
@@ -162,7 +185,7 @@
           <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
         </el-table-column>
       </el-table>
-    </el-card>
+    </div>
 
     <el-dialog v-model="upgradeVisible" title="申请升级套餐" width="420px">
       <el-form label-width="80px">
@@ -204,11 +227,15 @@
         </el-button>
       </template>
     </el-dialog>
-  </div>
+  </AdminPageShell>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { ArrowDown } from "@element-plus/icons-vue";
+import AdminPageShell from "@/components/layout/AdminPageShell.vue";
+import QuotaSummaryCard from "@/components/org/QuotaSummaryCard.vue";
+import { useAsyncData } from "@/composables/useAsyncData";
 import { getOrganizationProfile, type OrganizationProfile } from "@/api/org/organization";
 import {
   listBillingUsage,
@@ -233,11 +260,7 @@ import { formatPeriodWindow } from "@/utils/period";
 
 defineOptions({ name: "OrgBillingView" });
 
-const loadingQuota = ref(false);
-const loadingUsage = ref(false);
-const loadingRequests = ref(false);
 const submittingRequest = ref(false);
-const profile = ref<OrganizationProfile | null>(null);
 const items = ref<CreditUsageItem[]>([]);
 const billingRequests = ref<BillingRequestItem[]>([]);
 const plans = ref<SubscriptionPlan[]>([]);
@@ -251,22 +274,30 @@ const upgradeMessage = ref("");
 const topUpAmount = ref(100);
 const topUpMessage = ref("");
 
-const quotaPercent = computed(() => {
-  const quota = profile.value?.quota;
-  if (!quota?.periodQuota) return 0;
-  return Math.min(
-    100,
-    Math.round((quota.reservedTotal / quota.periodQuota) * 100)
-  );
+const quotaAsync = useAsyncData(() => getOrganizationProfile());
+const profile = computed(() => quotaAsync.data.value);
+
+const usageAsync = useAsyncData(async () => {
+  const result = await listBillingUsage(page.value, limit.value);
+  items.value = result.items;
+  total.value = result.pagination.total;
+  page.value = result.pagination.page;
+  limit.value = result.pagination.limit;
+  return result;
+});
+
+const requestsAsync = useAsyncData(async () => {
+  billingRequests.value = (await listBillingRequests()).items;
+  return billingRequests.value;
 });
 
 const quotaLowWarning = computed(() => {
   const quota = profile.value?.quota;
   if (!quota || quota.subscriptionActive === false) return "";
-  const total = quota.periodQuota;
-  if (total <= 0) return "";
+  const totalQuota = quota.periodQuota;
+  if (totalQuota <= 0) return "";
   const remaining = quota.remaining;
-  const percent = Math.round((remaining / total) * 100);
+  const percent = Math.round((remaining / totalQuota) * 100);
   if (remaining < 10 || percent < 20) {
     return `本月内容配额即将用尽（剩余 ${remaining} 篇，约 ${percent}%），请联系平台管理员续期或加购。`;
   }
@@ -277,26 +308,8 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleString("zh-CN");
 }
 
-async function refreshQuota() {
-  loadingQuota.value = true;
-  try {
-    profile.value = await getOrganizationProfile();
-  } finally {
-    loadingQuota.value = false;
-  }
-}
-
 async function fetchUsage() {
-  loadingUsage.value = true;
-  try {
-    const result = await listBillingUsage(page.value, limit.value);
-    items.value = result.items;
-    total.value = result.pagination.total;
-    page.value = result.pagination.page;
-    limit.value = result.pagination.limit;
-  } finally {
-    loadingUsage.value = false;
-  }
+  await usageAsync.load();
 }
 
 function onSizeChange() {
@@ -308,32 +321,9 @@ async function requestRenew() {
   try {
     await createBillingRequest({ type: "RENEW", message: "申请续费" });
     message("续费申请已提交", { type: "success" });
-    await loadRequests();
+    await requestsAsync.load();
   } catch {
-    message("提交失败", { type: "error" });
-  }
-}
-
-function billingRequestStatusLabel(status: string) {
-  if (status === "PENDING") return "待审批";
-  if (status === "APPROVED") return "已通过";
-  if (status === "REJECTED") return "已拒绝";
-  return status;
-}
-
-function billingRequestStatusType(status: string) {
-  if (status === "PENDING") return "warning";
-  if (status === "APPROVED") return "success";
-  if (status === "REJECTED") return "danger";
-  return "info";
-}
-
-async function loadRequests() {
-  loadingRequests.value = true;
-  try {
-    billingRequests.value = (await listBillingRequests()).items;
-  } finally {
-    loadingRequests.value = false;
+    // global HTTP interceptor shows API errors
   }
 }
 
@@ -371,9 +361,9 @@ async function submitUpgrade() {
     });
     message("升级申请已提交", { type: "success" });
     upgradeVisible.value = false;
-    await loadRequests();
+    await requestsAsync.load();
   } catch {
-    message("提交失败", { type: "error" });
+    // global HTTP interceptor shows API errors
   } finally {
     submittingRequest.value = false;
   }
@@ -389,15 +379,15 @@ async function submitTopUp() {
     });
     message("加购申请已提交", { type: "success" });
     topUpVisible.value = false;
-    await loadRequests();
+    await requestsAsync.load();
   } catch {
-    message("提交失败", { type: "error" });
+    // global HTTP interceptor shows API errors
   } finally {
     submittingRequest.value = false;
   }
 }
 
 onMounted(async () => {
-  await Promise.all([refreshQuota(), fetchUsage(), loadRequests(), loadPlans()]);
+  await Promise.all([quotaAsync.load(), fetchUsage(), requestsAsync.load(), loadPlans()]);
 });
 </script>

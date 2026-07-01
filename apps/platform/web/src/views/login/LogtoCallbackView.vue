@@ -6,7 +6,7 @@ import { initRouter, resolveEntryPath } from "@/router/utils";
 import { useUserStoreHook } from "@/store/modules/user";
 import { storageLocal } from "@pureadmin/utils";
 import { userKey } from "@/utils/auth";
-import { getLogtoConfig, logtoCallback } from "@/api/user";
+import { getLogtoConfig, hasAuthSession, logtoCallback } from "@/api/user";
 
 defineOptions({
   name: "LogtoCallback"
@@ -38,7 +38,7 @@ onMounted(async () => {
       sessionStorage.getItem("wm:invite-token") ??
       (typeof route.query.inviteToken === "string" ? route.query.inviteToken : undefined);
     const res = await logtoCallback({ code, redirectUri, inviteToken });
-    if (!res?.success) {
+    if (!hasAuthSession(res)) {
       errorText.value = "Logto 登录失败";
       return;
     }

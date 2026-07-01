@@ -2,7 +2,7 @@
  * Google Search Console HTTP 入口。
  *
  * 边界：
- * - 不负责：OAuth token 存储加密（后续可接 KMS）
+ * - 不负责：OAuth token 存储（由 secret-cipher 加密落库）
  *
  * 入口：
  * - GscController
@@ -85,7 +85,7 @@ export class GscOAuthController {
     const webOrigin = process.env.WEB_APP_ORIGIN?.trim() || 'http://localhost:5173';
 
     if (error || !code || !state) {
-      res.redirect(`${webOrigin}/console/gsc?gsc=error`);
+      res.redirect(`${webOrigin}/console/sites?gsc=error`);
       return;
     }
 
@@ -98,7 +98,7 @@ export class GscOAuthController {
         action: 'gsc.oauth.callback',
         message,
       });
-      res.redirect(`${webOrigin}/console/gsc?gsc=error`);
+      res.redirect(`${webOrigin}/console/sites?gsc=error`);
     }
   }
 }

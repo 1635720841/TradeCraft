@@ -19,6 +19,7 @@ import { ListShopifyBlogsDto } from './dto/list-shopify-blogs.dto';
 import { SiteArticleCrawlerService } from './site-article-crawler.service';
 import { SiteService } from './site.service';
 import { seoFactoryRoutes } from '../../constants/seo-factory-routes';
+import { parsePageLimit } from '../../../../core/utils/parse-page-limit.util';
 
 @Controller(seoFactoryRoutes('sites'))
 export class SiteController {
@@ -52,11 +53,11 @@ export class SiteController {
     return { data: site, meta: { traceId: ctx.traceId } };
   }
 
-  @Post('shopify/blogs')
+  @Get('shopify/blogs')
   async listShopifyBlogs(
     @ReqCtx() ctx: RequestContext,
     @Param('projectId') projectId: string,
-    @Body() dto: ListShopifyBlogsDto,
+    @Query() dto: ListShopifyBlogsDto,
   ) {
     await this.projectService.assertSeoSiteManage(ctx.organizationId, projectId, ctx);
     const data = await this.siteService.listShopifyBlogs(
@@ -67,11 +68,11 @@ export class SiteController {
     return { data, meta: { traceId: ctx.traceId } };
   }
 
-  @Post('shopify/products')
+  @Get('shopify/products')
   async listShopifyProducts(
     @ReqCtx() ctx: RequestContext,
     @Param('projectId') projectId: string,
-    @Body() dto: ListShopifyBlogsDto,
+    @Query() dto: ListShopifyBlogsDto,
   ) {
     await this.projectService.assertSeoSiteManage(ctx.organizationId, projectId, ctx);
     const data = await this.siteService.listShopifyProducts(
@@ -182,12 +183,15 @@ export class SiteController {
     @Query('seoArticlesOnly') seoArticlesOnly?: string,
   ) {
     await this.projectService.assertSeoSiteRead(ctx.organizationId, projectId, ctx);
+    const safeLimit = limit
+      ? parsePageLimit('1', limit, { page: 1, limit: 50 }).limit
+      : undefined;
     const articles = await this.siteArticleCrawler.discoverForSite(
       ctx.organizationId,
       projectId,
       siteId,
       {
-        limit: limit ? Number(limit) : undefined,
+        limit: safeLimit,
         seoArticlesOnly: seoArticlesOnly !== 'false',
       },
     );

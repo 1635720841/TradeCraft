@@ -2,7 +2,7 @@
  * Prompt 用途展示元数据（运营向）。
  */
 
-import type { PromptRuntimeSlot, PromptRuntimeSlotId } from "@/api/platform/prompt";
+import type { PromptRuntimeSlot, PromptRuntimeSlotId } from "@/api/console/prompt";
 
 export type PromptUsageCategory = "active" | "legacy" | "unused";
 

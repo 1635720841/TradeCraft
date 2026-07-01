@@ -28,6 +28,7 @@ import { CreateJobsFromClusterDto } from './dto/create-jobs-from-cluster.dto';
 import { CreateKeywordClusterDto } from './dto/create-keyword-cluster.dto';
 import { UpdateKeywordClusterDto } from './dto/update-keyword-cluster.dto';
 import { KeywordClusterService } from './keyword-cluster.service';
+import { parsePageLimit } from '../../../../core/utils/parse-page-limit.util';
 import { seoFactoryRoutes } from '../../constants/seo-factory-routes';
 
 @Controller(seoFactoryRoutes('keyword-clusters'))
@@ -53,13 +54,14 @@ export class KeywordClusterController {
     @Query('limit') limit?: string,
   ) {
     await this.projectService.assertSeoKeywordRead(ctx.organizationId, projectId, ctx);
+    const { page: safePage, limit: safeLimit } = parsePageLimit(page, limit, { page: 1, limit: 50 });
     const data = await this.keywordClusterService.findOneDetail(
       ctx.organizationId,
       projectId,
       id,
       {
-        page: page ? Number(page) : undefined,
-        limit: limit ? Number(limit) : undefined,
+        page: safePage,
+        limit: safeLimit,
       },
     );
     return { data, meta: { traceId: ctx.traceId } };

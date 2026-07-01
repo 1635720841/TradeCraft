@@ -11,7 +11,10 @@ const {
 
 test('buildDraftImagePublicUrl includes signed query', () => {
   const url = buildDraftImagePublicUrl('proj1', 'job1', 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jpg');
-  assert.match(url, /^\/api\/v1\/projects\/proj1\/article-jobs\/job1\/draft\/images\/.+\?exp=\d+&sig=[a-f0-9]+$/);
+  assert.match(
+    url,
+    /^\/api\/v1\/projects\/proj1\/seo-factory\/article-jobs\/job1\/draft\/images\/.+\?exp=\d+&sig=[a-f0-9]+$/,
+  );
 
   const parsed = parseDraftImageApiUrl(url);
   assert.deepEqual(parsed, {

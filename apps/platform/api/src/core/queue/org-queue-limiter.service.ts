@@ -52,10 +52,21 @@ export class OrgQueueLimiterService {
       await client.pexpire(rateKey, this.rateDurationMs);
     }
     if (rateCount > this.rateMax) {
+      await client.decr(rateKey);
       throw new BusinessException(
         ErrorCodes.RATE_LIMIT_EXCEEDED,
         `入队过于频繁，请 ${Math.ceil(this.rateDurationMs / 1000)} 秒后再试`,
       );
+    }
+  }
+
+  /** 入队失败时回滚速率计数 */
+  async rollbackRateSlot(organizationId: string): Promise<void> {
+    const rateKey = `org_queue:rate:${organizationId}`;
+    const client = this.redis.getClient();
+    const next = await client.decr(rateKey);
+    if (next <= 0) {
+      await client.del(rateKey);
     }
   }
 

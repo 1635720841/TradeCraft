@@ -36,7 +36,7 @@ import WorkbenchIcon from "./WorkbenchIcon.vue";
 
 defineOptions({ name: "SeoFactoryWorkbenchNav" });
 
-type NavKey = "overview" | "jobs" | "keywords" | "sites";
+type NavKey = "overview" | "jobs" | "keywords" | "sites" | "settings";
 
 const NAV_ITEMS: Array<{
   key: NavKey;
@@ -72,6 +72,13 @@ const NAV_ITEMS: Array<{
     description: "品牌素材",
     route: "SeoFactorySites",
     seoPermission: "seo:job:read"
+  },
+  {
+    key: "settings",
+    label: "项目配置",
+    description: "流程与集成",
+    route: "SeoFactorySettings",
+    seoPermission: "seo:site:manage"
   }
 ];
 
@@ -100,6 +107,7 @@ const activeNav = computed((): NavKey => {
   if (name && JOBS_ROUTE_NAMES.has(name)) return "jobs";
   if (name && KEYWORDS_ROUTE_NAMES.has(name)) return "keywords";
   if (name && SITES_ROUTE_NAMES.has(name)) return "sites";
+  if (name === "SeoFactorySettings") return "settings";
   return "overview";
 });
 

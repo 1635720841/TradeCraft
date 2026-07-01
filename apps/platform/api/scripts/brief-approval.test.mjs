@@ -33,27 +33,37 @@ describe('isBriefApprovedOrSkipped', () => {
   });
 });
 
+const SCORE_CALIBRATION_DEFAULTS = {
+  scoreCalibrationShadow: true,
+  scoreCalibrationReduceRpa: false,
+  scoreCalibrationLocalAlign: false,
+};
+
 describe('parseSiteWorkflowSettings', () => {
   it('reads requireBriefApproval flag', () => {
     assert.deepEqual(parseSiteWorkflowSettings({ requireBriefApproval: true }), {
       requireBriefApproval: true,
       enableParaphrase: true,
       enableIllustration: true,
+      ...SCORE_CALIBRATION_DEFAULTS,
     });
     assert.deepEqual(parseSiteWorkflowSettings({}), {
       requireBriefApproval: false,
       enableParaphrase: true,
       enableIllustration: true,
+      ...SCORE_CALIBRATION_DEFAULTS,
     });
     assert.deepEqual(parseSiteWorkflowSettings({ enableParaphrase: false }), {
       requireBriefApproval: false,
       enableParaphrase: false,
       enableIllustration: true,
+      ...SCORE_CALIBRATION_DEFAULTS,
     });
     assert.deepEqual(parseSiteWorkflowSettings({ enableIllustration: false }), {
       requireBriefApproval: false,
       enableParaphrase: true,
       enableIllustration: false,
+      ...SCORE_CALIBRATION_DEFAULTS,
     });
   });
 });

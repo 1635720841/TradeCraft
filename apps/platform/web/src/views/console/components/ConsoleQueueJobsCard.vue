@@ -71,7 +71,7 @@
       </el-table-column>
       <el-table-column label="进度" min-width="120">
         <template #default="{ row }">
-          {{ progressLabel(row) }}
+          {{ progressLabel(queueJobRow(row)) }}
         </template>
       </el-table-column>
       <el-table-column label="入队时间" width="160">
@@ -82,10 +82,10 @@
       <el-table-column label="操作" width="90" fixed="right">
         <template #default="{ row }">
           <el-button
-            v-if="row.projectId && row.jobId"
+            v-if="queueJobRow(row).projectId && queueJobRow(row).jobId"
             type="primary"
             link
-            @click="emit('open-job', row)"
+            @click="emit('open-job', queueJobRow(row))"
           >
             查看
           </el-button>
@@ -101,6 +101,7 @@ import type { ConsoleQueueJobItem } from "@/api/console/health";
 import { consoleQueueDict, queueJobStateDict } from "@/constants/dicts/platform";
 import { jobStatusDict } from "@/constants/dicts/seo-factory";
 import { dictLabel, dictOptions, dictTagType } from "@/utils/dict";
+import { tableRow } from "@/utils/table-row";
 
 defineOptions({ name: "ConsoleQueueJobsCard" });
 
@@ -144,5 +145,9 @@ function progressLabel(row: ConsoleQueueJobItem) {
   if (row.resumeFrom) return `续跑 ${row.resumeFrom}`;
   if (row.articleStatus) return dictLabel(jobStatusDict, row.articleStatus) || row.articleStatus;
   return "—";
+}
+
+function queueJobRow(row: unknown): ConsoleQueueJobItem {
+  return tableRow<ConsoleQueueJobItem>(row);
 }
 </script>

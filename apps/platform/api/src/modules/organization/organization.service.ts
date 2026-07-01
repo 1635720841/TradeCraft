@@ -1,5 +1,7 @@
 /**
  * 企业服务：组织信息与成员管理（租户内）。
+ *
+ * 边界：编排委托 OrganizationProfileService / OrganizationMemberService，本类不承载业务逻辑。
  */
 
 import { Injectable } from '@nestjs/common';

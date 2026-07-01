@@ -41,7 +41,7 @@ describe('seo-article-filter', () => {
     assert.equal(meta.backfillKept, 0);
   });
 
-  it('backfills useful pages when article candidates are scarce', () => {
+  it('keeps article candidates only when articlesOnly is true', () => {
     const organic = [
       { link: 'https://example.com/blog/industrial-valve-guide', title: 'Guide' },
       { link: 'https://supplier.com/solutions/valves', title: 'Solutions' },
@@ -56,10 +56,10 @@ describe('seo-article-filter', () => {
       minArticleCandidates: 3,
     });
 
-    assert.equal(filtered.length, 3);
+    assert.equal(filtered.length, 1);
     assert.equal(meta.articleKept, 1);
-    assert.equal(meta.backfillKept, 2);
-    assert.ok(filtered.some((item) => item.link?.includes('/about-us')));
+    assert.equal(meta.backfillKept, 0);
+    assert.ok(filtered[0].link?.includes('/blog/'));
   });
 
   it('includes all result types when articlesOnly is false', () => {

@@ -11,12 +11,13 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { tenantIsolationExtension } from '../prisma/prisma-tenant.extension';
+import { softDeleteExtension } from '../prisma/prisma-soft-delete.extension';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   constructor() {
     super();
-    const extended = this.$extends(tenantIsolationExtension);
+    const extended = this.$extends(softDeleteExtension).$extends(tenantIsolationExtension);
 
     return new Proxy(extended, {
       get(target, prop, receiver) {

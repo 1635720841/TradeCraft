@@ -43,214 +43,46 @@
         </el-collapse-item>
       </el-collapse>
 
-      <div v-if="schedulingSummary?.unclusteredCount && quickFilter !== 'unclustered'" class="mb-4">
-        <el-alert type="warning" :closable="false" show-icon>
-          <template #title>
-            {{ schedulingSummary.unclusteredCount }} 个关键词尚未分组
-          </template>
-          <template #default>
-            <span class="text-sm text-gray-600">建议先加入专题，再按主题批量创建任务。</span>
-            <el-button link type="primary" class="ml-1" @click="goUnclusteredFilter">
-              查看未分组
-            </el-button>
-          </template>
-        </el-alert>
-      </div>
+      <KeywordPoolFilters
+        v-model:quick-filter="quickFilter"
+        v-model:filter-status="filterStatus"
+        v-model:filter-intent="filterIntent"
+        v-model:filter-cluster-id="filterClusterId"
+        :clusters="clusters"
+        :scheduling-summary="schedulingSummary"
+        :active-filter-title="activeFilterTitle"
+        :selected-count="selectedKeywords.length"
+        :can-manage-keywords="canManageKeywords"
+        :deleting="deleting"
+        @quick-filter-change="onQuickFilterChange"
+        @filter-change="onFilterChange"
+        @cluster-filter-change="onClusterFilterChange"
+        @clear-filters="clearAllFilters"
+        @go-unclustered="goUnclusteredFilter"
+        @assign-cluster="openAssignClusterDialog"
+        @batch-delete="handleBatchDelete"
+      />
 
-      <div
-        v-if="schedulingSummary?.highPriorityQueueableCount && quickFilter === 'queueable'"
-        class="mb-4"
-      >
-        <el-alert type="success" :closable="false" show-icon>
-          <template #title>
-            {{ schedulingSummary.highPriorityQueueableCount }} 个高优先级待写词
-          </template>
-          <template #default>
-            <span class="text-sm text-gray-600">建议优先勾选这些词创建任务或加入专题后排产。</span>
-          </template>
-        </el-alert>
-      </div>
-
-      <div v-if="filterClusterId || quickFilter !== 'all'" class="mb-4">
-        <el-alert type="info" :closable="false" show-icon :title="activeFilterTitle">
-          <template #default>
-            <el-button link type="primary" @click="clearAllFilters">查看全部关键词</el-button>
-          </template>
-        </el-alert>
-      </div>
-
-      <div v-if="selectedKeywords.length" class="mb-4 flex flex-wrap items-center gap-2">
-        <span class="text-sm text-gray-600">已选 {{ selectedKeywords.length }} 项</span>
-        <el-button v-if="canManageKeywords" size="small" @click="openAssignClusterDialog">加入专题</el-button>
-        <el-button
-          v-if="canManageKeywords"
-          size="small"
-          type="danger"
-          plain
-          :loading="deleting"
-          @click="handleBatchDelete"
-        >
-          删除
-        </el-button>
-      </div>
-
-      <div class="mb-4 flex flex-wrap items-center gap-3">
-        <el-radio-group v-model="quickFilter" @change="onQuickFilterChange">
-          <el-radio-button value="queueable">待写</el-radio-button>
-          <el-radio-button value="gscVerified">本站有曝光</el-radio-button>
-          <el-radio-button value="unclustered">未分组</el-radio-button>
-          <el-radio-button value="all">全部</el-radio-button>
-        </el-radio-group>
-        <el-select v-model="filterStatus" clearable placeholder="状态" style="width: 140px" @change="onFilterChange">
-          <el-option
-            v-for="item in keywordStatusDict"
-            :key="item.value"
-            :label="item.label"
-            :value="item.value"
-          />
-        </el-select>
-        <el-select v-model="filterIntent" clearable placeholder="意图" style="width: 140px" @change="onFilterChange">
-          <el-option
-            v-for="item in keywordIntentDict"
-            :key="item.value"
-            :label="item.label"
-            :value="item.value"
-          />
-        </el-select>
-        <el-select
-          v-model="filterClusterId"
-          clearable
-          placeholder="专题"
-          style="width: 160px"
-          @change="onClusterFilterChange"
-        >
-          <el-option
-            v-for="item in clusters"
-            :key="item.id"
-            :label="item.name"
-            :value="item.id"
-          />
-        </el-select>
-      </div>
-
-      <el-table
-        ref="tableRef"
-        v-loading="loading"
-        :data="keywords"
-        stripe
+      <KeywordPoolTable
+        ref="keywordTableRef"
+        v-model:page="page"
+        v-model:limit="limit"
+        :loading="loading"
+        :keywords="keywords"
+        :can-manage-keywords="canManageKeywords"
+        :creating-job-id="creatingJobId"
+        :deleting-id="deletingId"
+        :total="total"
+        :empty-keyword-hint="emptyKeywordHint"
         @selection-change="handleSelectionChange"
-      >
-        <el-table-column type="selection" width="48" :selectable="isRowSelectable" />
-        <el-table-column prop="keyword" label="关键词" min-width="180" show-overflow-tooltip />
-        <el-table-column label="站点搜索" width="108">
-          <template #default="{ row }">
-            <el-tooltip
-              v-if="row.gscInsight && row.gscInsight.status !== 'none'"
-              :content="gscInsightHint(row.gscInsight)"
-              placement="top"
-            >
-              <el-tag :type="gscInsightTagType(row.gscInsight.status)" size="small">
-                {{ gscInsightLabel(row.gscInsight.status) }}
-              </el-tag>
-            </el-tooltip>
-            <span v-else class="text-xs text-gray-400">-</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="priorityScore" label="建议优先级" width="108" sortable>
-          <template #default="{ row }">
-            <el-tooltip :content="priorityHint(row.priorityScore)" placement="top">
-              <el-tag :type="priorityTierTagType(row.priorityScore)" size="small">
-                {{ priorityTierLabel(row.priorityScore) }}
-              </el-tag>
-            </el-tooltip>
-          </template>
-        </el-table-column>
-        <el-table-column prop="intent" label="意图" width="110">
-          <template #default="{ row }">
-            <el-tag size="small" :type="dictTagType(keywordIntentDict, row.intent)">
-              {{ dictLabel(keywordIntentDict, row.intent) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="专题" width="130" show-overflow-tooltip>
-          <template #default="{ row }">
-            <span v-if="row.cluster?.name">{{ row.cluster.name }}</span>
-            <span v-else class="text-gray-400">未分组</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="88">
-          <template #default="{ row }">
-            <el-tag size="small" :type="displayStatus(row.status).type">
-              {{ displayStatus(row.status).label }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="source" label="来源" width="100">
-          <template #default="{ row }">
-            {{ dictLabel(keywordSourceDict, row.source) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="280" fixed="right">
-          <template #default="{ row }">
-            <el-button
-              v-if="canManageKeywords && row.gscInsight && row.gscInsight.status !== 'none'"
-              type="primary"
-              link
-              @click="expandKeywordFromGsc(row as KeywordEntryItem)"
-            >
-              AI 扩展
-            </el-button>
-            <el-button
-              v-if="row.status !== 'ARCHIVED' && row.status !== 'USED'"
-              type="primary"
-              link
-              :loading="creatingJobId === row.id"
-              @click="handleCreateJob(row as KeywordEntryItem)"
-            >
-              创建任务
-            </el-button>
-            <el-button
-              v-if="row.lastJobId"
-              type="primary"
-              link
-              @click="goJobDetail(row.lastJobId!)"
-            >
-              查看任务
-            </el-button>
-            <el-button
-              v-if="canManageKeywords"
-              type="primary"
-              link
-              @click="openEditDialog(row as KeywordEntryItem)"
-            >
-              编辑
-            </el-button>
-            <el-button
-              v-if="canManageKeywords"
-              type="danger"
-              link
-              :loading="deletingId === row.id"
-              @click="handleDelete(row as KeywordEntryItem)"
-            >
-              删除
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <div class="mt-4 flex justify-end">
-        <el-pagination
-          v-model:current-page="page"
-          v-model:page-size="limit"
-          :total="total"
-          :page-sizes="[10, 20, 50]"
-          layout="total, sizes, prev, pager, next"
-          @current-change="fetchKeywords"
-          @size-change="onSizeChange"
-        />
-      </div>
-
-      <el-empty v-if="!loading && keywords.length === 0" :description="emptyKeywordHint" />
+        @create-job="handleCreateJob"
+        @go-job-detail="goJobDetail"
+        @edit-row="openEditDialog"
+        @delete-row="handleDelete"
+        @expand-from-gsc="expandKeywordFromGsc"
+        @page-change="fetchKeywords"
+        @size-change="onSizeChange"
+      />
     </el-card>
 
     <el-dialog
@@ -520,7 +352,7 @@
       </el-table>
       <el-empty
         v-if="!gscDiscoveredLoading && gscDiscoveredQueries.length === 0"
-        description="暂无新搜索词；请先在「设置 → Google 搜索表现」同步数据"
+        description="暂无新搜索词；请先在「站点详情 → 搜索表现」同步数据"
       />
       <template #footer>
         <el-button @click="gscImportDialogVisible = false">取消</el-button>
@@ -541,34 +373,13 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="assignClusterDialogVisible" title="加入专题" width="460px">
-      <el-radio-group v-model="assignMode" class="mb-4">
-        <el-radio value="existing">选择已有专题</el-radio>
-        <el-radio value="new">新建专题</el-radio>
-      </el-radio-group>
-      <el-select
-        v-if="assignMode === 'existing'"
-        v-model="assignClusterId"
-        class="w-full"
-        placeholder="选择专题"
-      >
-        <el-option v-for="item in clusters" :key="item.id" :label="item.name" :value="item.id" />
-      </el-select>
-      <el-input
-        v-else
-        v-model="newClusterName"
-        maxlength="100"
-        show-word-limit
-        placeholder="如：工业阀门选型"
-      />
-      <p class="mt-3 text-sm text-gray-500">
-        将把已选的 {{ selectedKeywords.length }} 个关键词归入该专题。
-      </p>
-      <template #footer>
-        <el-button @click="assignClusterDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="assigningCluster" @click="submitAssignCluster">确定</el-button>
-      </template>
-    </el-dialog>
+    <KeywordClusterAssignDialog
+      v-model="assignClusterDialogVisible"
+      :project-id="projectId"
+      :clusters="clusters"
+      :keyword-ids="selectedKeywordIds"
+      @assigned="onClusterAssigned"
+    />
   </div>
 </template>
 
@@ -576,12 +387,6 @@
 import { computed, inject, nextTick, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { FormInstance, FormRules, TableInstance } from "element-plus";
-import {
-  assignKeywordsToCluster,
-  createKeywordCluster,
-  listKeywordClusters,
-  type KeywordClusterItem
-} from "@/api/seo-factory/keyword-cluster";
 import {
   createJobFromKeyword,
   createJobsFromKeywords,
@@ -594,11 +399,9 @@ import {
   importGscKeywords,
   importKeywords,
   listGscDiscoveredQueries,
-  listKeywords,
   updateKeyword,
   type CreateKeywordPayload,
   type GscDiscoveredQuery,
-  type GscKeywordInsight,
   type KeywordEntryItem
 } from "@/api/seo-factory/keyword";
 import { listSites } from "@/api/seo-factory/site";
@@ -606,30 +409,25 @@ import { getSiteKeywordConflicts } from "@/api/seo-factory/keyword-conflict";
 import type { SiteItem } from "@/api/seo-factory/types";
 import { ElMessageBox } from "element-plus";
 import {
-  keywordIntentDict,
-  keywordSourceDict,
-  keywordStatusDict
+  keywordIntentDict
 } from "@/constants/dicts/seo-factory";
 import { dictLabel, dictTagType } from "@/utils/dict";
 import {
-  getKeywordDisplayStatus,
   getKeywordPriorityTier,
-  getKeywordPriorityTierHint,
   getKeywordPriorityTierLabel,
-  getKeywordPriorityTierTagType,
-  isKeywordQueueable
+  getKeywordPriorityTierTagType
 } from "@/utils/seo-factory/keyword-display";
 import {
-  buildGscSeedTopicHint,
-  getGscKeywordInsightHint,
-  getGscKeywordInsightLabel,
-  getGscKeywordInsightTagType,
-  type GscKeywordInsightStatus
+  buildGscSeedTopicHint
 } from "@/utils/seo-factory/gsc-keyword-display";
 import { message } from "@/utils/message";
 import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
+import { useKeywordPoolData } from "@/composables/seo-factory/useKeywordPoolData";
 import { useArticleQuotaPreview } from "@/composables/useArticleQuotaPreview";
 import { keywordSchedulingContextKey } from "@/composables/seo-factory/keyword-scheduling-context";
+import KeywordClusterAssignDialog from "./components/KeywordClusterAssignDialog.vue";
+import KeywordPoolFilters from "./components/KeywordPoolFilters.vue";
+import KeywordPoolTable from "./components/KeywordPoolTable.vue";
 
 defineOptions({ name: "KeywordPoolView" });
 
@@ -652,19 +450,28 @@ const emptyKeywordHint = computed(() =>
     : "暂无关键词，请联系管理员导入；您可勾选后批量创建任务"
 );
 
-const activeFilterTitle = computed(() => {
-  const parts: string[] = [];
-  if (quickFilter.value === "queueable") parts.push("待写");
-  if (quickFilter.value === "gscVerified") parts.push("本站有曝光");
-  if (quickFilter.value === "unclustered") parts.push("未分组");
-  if (filterClusterId.value) {
-    const name = clusters.value.find((c) => c.id === filterClusterId.value)?.name;
-    if (name) parts.push(`专题「${name}」`);
-  }
-  return parts.length ? `筛选：${parts.join(" · ")}` : "筛选中";
-});
+const {
+  loading,
+  keywords,
+  page,
+  limit,
+  total,
+  filterStatus,
+  filterIntent,
+  filterClusterId,
+  quickFilter,
+  clusters,
+  activeFilterTitle,
+  fetchKeywords,
+  loadClusters,
+  goUnclusteredFilter,
+  onQuickFilterChange,
+  onFilterChange,
+  onClusterFilterChange,
+  clearAllFilters,
+  onSizeChange
+} = useKeywordPoolData(projectId);
 
-const loading = ref(false);
 const saving = ref(false);
 const importing = ref(false);
 const generatingSeeds = ref(false);
@@ -672,17 +479,9 @@ const confirmingSeeds = ref(false);
 const batchCreating = ref(false);
 const sitesLoading = ref(false);
 const sites = ref<SiteItem[]>([]);
-const keywords = ref<KeywordEntryItem[]>([]);
 const selectedKeywords = ref<KeywordEntryItem[]>([]);
-const tableRef = ref<TableInstance>();
-const page = ref(1);
-const limit = ref(20);
-const total = ref(0);
-const filterStatus = ref("");
-const filterIntent = ref("");
-const filterClusterId = ref("");
-const quickFilter = ref<"all" | "queueable" | "unclustered" | "gscVerified">("queueable");
-const clusters = ref<KeywordClusterItem[]>([]);
+const selectedKeywordIds = computed(() => selectedKeywords.value.map((row) => row.id));
+const keywordTableRef = ref<InstanceType<typeof KeywordPoolTable>>();
 const creatingJobId = ref<string | null>(null);
 const deleting = ref(false);
 const deletingId = ref<string | null>(null);
@@ -703,10 +502,6 @@ const selectedSeedCandidates = ref<KeywordSeedCandidate[]>([]);
 const seedPreviewSiteId = ref("");
 const seedPreviewTableRef = ref<TableInstance>();
 const assignClusterDialogVisible = ref(false);
-const assigningCluster = ref(false);
-const assignClusterId = ref("");
-const assignMode = ref<"existing" | "new">("existing");
-const newClusterName = ref("");
 const editingId = ref("");
 const importText = ref("");
 const formRef = ref<FormInstance>();
@@ -738,28 +533,8 @@ const batchJobForm = reactive({
   siteId: ""
 });
 
-function isRowSelectable(row: KeywordEntryItem) {
-  return isKeywordQueueable(row.status);
-}
-
-function displayStatus(status: string) {
-  return getKeywordDisplayStatus(status);
-}
-
-function priorityTierLabel(score: number) {
-  return getKeywordPriorityTierLabel(getKeywordPriorityTier(score));
-}
-
-function priorityTierTagType(score: number) {
-  return getKeywordPriorityTierTagType(getKeywordPriorityTier(score));
-}
-
-function priorityHint(score: number) {
-  return getKeywordPriorityTierHint(getKeywordPriorityTier(score));
-}
-
 function clearSelection() {
-  tableRef.value?.clearSelection();
+  keywordTableRef.value?.clearSelection();
   selectedKeywords.value = [];
 }
 
@@ -767,55 +542,9 @@ function handleSelectionChange(rows: KeywordEntryItem[]) {
   selectedKeywords.value = rows;
 }
 
-function gscInsightLabel(status: GscKeywordInsightStatus) {
-  return getGscKeywordInsightLabel(status);
-}
-
-function gscInsightTagType(status: GscKeywordInsightStatus) {
-  return getGscKeywordInsightTagType(status);
-}
-
-function gscInsightHint(insight: GscKeywordInsight) {
-  return getGscKeywordInsightHint(insight);
-}
-
-async function fetchKeywords() {
-  loading.value = true;
-  try {
-    const res = await listKeywords(projectId, page.value, limit.value, {
-      status: quickFilter.value === "queueable" ? undefined : filterStatus.value || undefined,
-      intent: filterIntent.value || undefined,
-      clusterId: filterClusterId.value || undefined,
-      unclustered: quickFilter.value === "unclustered",
-      queueable: quickFilter.value === "queueable",
-      gscVerified: quickFilter.value === "gscVerified",
-      excludeArchived:
-        quickFilter.value === "all" && !filterStatus.value ? undefined : false
-    });
-    keywords.value = res.data ?? [];
-    total.value = res.meta?.pagination?.total ?? keywords.value.length;
-  } finally {
-    loading.value = false;
-  }
-}
-
 function notifySummaryRefresh() {
   emit("refreshSummary");
   void schedulingCtx?.refreshSummary();
-}
-
-function goUnclusteredFilter() {
-  quickFilter.value = "unclustered";
-  onQuickFilterChange();
-}
-
-function onQuickFilterChange() {
-  if (quickFilter.value === "queueable") {
-    filterStatus.value = "";
-  }
-  page.value = 1;
-  syncFiltersToRoute();
-  void fetchKeywords();
 }
 
 async function openGscImportDialog() {
@@ -858,129 +587,19 @@ async function submitGscImport() {
   }
 }
 
-function onFilterChange() {
-  page.value = 1;
-  void fetchKeywords();
-}
-
-function syncFiltersToRoute() {
-  const query: Record<string, string> = {};
-  if (filterClusterId.value) query.clusterId = filterClusterId.value;
-  if (quickFilter.value === "queueable") query.queueable = "1";
-  if (quickFilter.value === "unclustered") query.unclustered = "1";
-  if (quickFilter.value === "gscVerified") query.gscVerified = "1";
-  router.replace({ name: "SeoFactoryKeywords", params: { projectId }, query });
-}
-
-function onClusterFilterChange() {
-  page.value = 1;
-  syncFiltersToRoute();
-  void fetchKeywords();
-}
-
-function clearAllFilters() {
-  quickFilter.value = "all";
-  filterClusterId.value = "";
-  filterStatus.value = "";
-  filterIntent.value = "";
-  page.value = 1;
-  router.replace({ name: "SeoFactoryKeywords", params: { projectId } });
-  void fetchKeywords();
-}
-
-function clearClusterFilter() {
-  filterClusterId.value = "";
-  onClusterFilterChange();
-}
-
-async function loadClusters() {
-  clusters.value = await listKeywordClusters(projectId);
-}
-
-function goTopicClusters() {
-  router.push({ name: "SeoFactoryTopicClusters", params: { projectId } });
-}
-
 function openAssignClusterDialog() {
   if (selectedKeywords.value.length === 0) {
     message("请先勾选关键词", { type: "warning" });
     return;
   }
-  assignMode.value = clusters.value.length > 0 ? "existing" : "new";
-  assignClusterId.value = clusters.value[0]?.id ?? "";
-  newClusterName.value = "";
   assignClusterDialogVisible.value = true;
 }
 
-async function submitAssignCluster() {
-  if (selectedKeywords.value.length === 0) return;
-
-  const keywordIds = selectedKeywords.value.map((row) => row.id);
-
-  if (assignMode.value === "new") {
-    const name = newClusterName.value.trim();
-    if (name.length < 2) {
-      message("请输入至少 2 个字的专题名称", { type: "warning" });
-      return;
-    }
-    assigningCluster.value = true;
-    try {
-      await createKeywordCluster(projectId, { name, keywordIds });
-      message(`已创建专题并加入 ${keywordIds.length} 个关键词`, { type: "success" });
-      assignClusterDialogVisible.value = false;
-      clearSelection();
-      await loadClusters();
-      await fetchKeywords();
-      notifySummaryRefresh();
-    } finally {
-      assigningCluster.value = false;
-    }
-    return;
-  }
-
-  if (!assignClusterId.value) {
-    message("请选择专题", { type: "warning" });
-    return;
-  }
-  assigningCluster.value = true;
-  try {
-    const result = await assignKeywordsToCluster(
-      projectId,
-      assignClusterId.value,
-      keywordIds
-    );
-    message(`已加入专题：${result.assigned} 个关键词`, { type: "success" });
-    assignClusterDialogVisible.value = false;
-    clearSelection();
-    await fetchKeywords();
-    await loadClusters();
-    notifySummaryRefresh();
-  } finally {
-    assigningCluster.value = false;
-  }
-}
-
-function syncClusterFilterFromRoute() {
-  const clusterId = route.query.clusterId;
-  filterClusterId.value = typeof clusterId === "string" ? clusterId : "";
-  if (filterClusterId.value) {
-    quickFilter.value = "all";
-  } else if (route.query.queueable === "1" || route.query.queueable === "true") {
-    quickFilter.value = "queueable";
-  } else if (route.query.unclustered === "1" || route.query.unclustered === "true") {
-    quickFilter.value = "unclustered";
-  } else if (route.query.gscVerified === "1" || route.query.gscVerified === "true") {
-    quickFilter.value = "gscVerified";
-  } else if (route.query.all === "1" || route.query.all === "true") {
-    quickFilter.value = "all";
-  } else {
-    quickFilter.value = "queueable";
-  }
-}
-
-function onSizeChange() {
-  page.value = 1;
+function onClusterAssigned() {
+  clearSelection();
+  void loadClusters();
   void fetchKeywords();
+  notifySummaryRefresh();
 }
 
 function resetForm() {
@@ -1029,6 +648,14 @@ function seedPriorityScore(row: {
 }) {
   const raw = (row.businessValueScore ?? 0.5) * 0.5 + (row.contentFitScore ?? 0.5) * 0.5;
   return Math.round(raw * 1000) / 10;
+}
+
+function priorityTierLabel(score: number) {
+  return getKeywordPriorityTierLabel(getKeywordPriorityTier(score));
+}
+
+function priorityTierTagType(score: number) {
+  return getKeywordPriorityTierTagType(getKeywordPriorityTier(score));
 }
 
 function isSeedRowSelectable(row: KeywordSeedCandidate) {
@@ -1384,24 +1011,12 @@ function goJobDetail(jobId: string) {
 }
 
 onMounted(() => {
-  syncClusterFilterFromRoute();
-  void loadClusters();
-  void fetchKeywords();
   if (route.query.gscImport === "1" || route.query.gscImport === "true") {
     void openGscImportDialog();
   } else {
     openSeedDialogFromRoute();
   }
 });
-
-watch(
-  () => [route.query.clusterId, route.query.queueable, route.query.unclustered, route.query.gscVerified],
-  () => {
-    syncClusterFilterFromRoute();
-    page.value = 1;
-    void fetchKeywords();
-  }
-);
 
 watch(
   () => [route.query.seedTopic, route.query.seedSiteId],

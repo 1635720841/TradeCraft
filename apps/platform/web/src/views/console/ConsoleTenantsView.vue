@@ -28,7 +28,12 @@
         </div>
       </template>
 
-      <el-table :data="tenants" stripe>
+      <el-empty v-if="!loading && tenants.length === 0" description="暂无企业租户">
+        <el-button v-if="canCreateTenant" type="primary" size="small" @click="openCreate">
+          开户
+        </el-button>
+      </el-empty>
+      <el-table v-else :data="tenants" stripe>
         <el-table-column prop="name" label="企业名称" min-width="160" />
         <el-table-column prop="planName" label="套餐" width="100">
           <template #default="{ row }">
@@ -44,7 +49,7 @@
         </el-table-column>
         <el-table-column label="开户邮箱" min-width="180">
           <template #default="{ row }">
-            {{ primaryAccountEmail(row) }}
+            {{ primaryAccountEmail(tenantRow(row)) }}
           </template>
         </el-table-column>
         <el-table-column prop="memberCount" label="账号数" width="80" align="center" />
@@ -56,14 +61,26 @@
         </el-table-column>
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
-            <router-link
-              :to="`/console/tenants/${row.id}`"
-              class="mr-2 text-primary text-sm"
-            >
-              详情
-            </router-link>
-            <el-button v-if="canManageTenant" type="primary" link @click="openEdit(row)">编辑</el-button>
-            <el-button v-if="canManageTenant" type="primary" link @click="openTopUp(row)">加购</el-button>
+            <div class="hidden sm:inline-flex sm:items-center sm:gap-1">
+              <router-link
+                :to="`/console/tenants/${tenantRow(row).id}`"
+                class="mr-2 text-primary text-sm"
+              >
+                详情
+              </router-link>
+              <el-button v-if="canManageTenant" type="primary" link @click="openEdit(tenantRow(row))">编辑</el-button>
+              <el-button v-if="canManageTenant" type="primary" link @click="openTopUp(tenantRow(row))">加购</el-button>
+            </div>
+            <el-dropdown class="sm:hidden" trigger="click" @command="(cmd) => onTenantRowCommand(cmd, tenantRow(row))">
+              <el-button type="primary" link>操作</el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="detail">详情</el-dropdown-item>
+                  <el-dropdown-item v-if="canManageTenant" command="edit">编辑</el-dropdown-item>
+                  <el-dropdown-item v-if="canManageTenant" command="topup">加购</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
         </el-table-column>
       </el-table>
@@ -100,15 +117,19 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import { listTenants, type TenantItem } from "@/api/console/index";
 import { planNameDict, subscriptionStatusDict } from "@/constants/dicts/platform";
 import { dictLabel, dictTagType } from "@/utils/dict";
 import { hasPerms } from "@/utils/auth";
 import { formatPeriodEnd } from "@/utils/period";
+import { tableRow } from "@/utils/table-row";
 import TenantEditDialog from "./components/TenantEditDialog.vue";
 import TenantTopUpDialog from "./components/TenantTopUpDialog.vue";
 
 defineOptions({ name: "ConsoleTenantsView" });
+
+const router = useRouter();
 
 const canCreateTenant = computed(() => hasPerms("console:tenant:create"));
 const canManageTenant = computed(() => hasPerms("console:tenant:update"));
@@ -127,6 +148,10 @@ const editingTenant = ref<TenantItem | null>(null);
 const topUpVisible = ref(false);
 const topUpOrgId = ref("");
 const topUpTenantName = ref("");
+
+function tenantRow(row: unknown): TenantItem {
+  return tableRow<TenantItem>(row);
+}
 
 async function fetchList() {
   loading.value = true;
@@ -172,6 +197,13 @@ function openTopUp(row: TenantItem) {
   topUpOrgId.value = row.id;
   topUpTenantName.value = row.name;
   topUpVisible.value = true;
+}
+
+function onTenantRowCommand(command: string | number | object, row: TenantItem) {
+  const cmd = String(command);
+  if (cmd === "detail") void router.push(`/console/tenants/${row.id}`);
+  else if (cmd === "edit") openEdit(row);
+  else if (cmd === "topup") openTopUp(row);
 }
 
 onMounted(() => {

@@ -101,7 +101,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import type { FormInstance, FormRules } from "element-plus";
-import type { PromptRuntimeSlot } from "@/api/platform/prompt";
+import type { PromptRuntimeSlot } from "@/api/console/prompt";
 
 defineOptions({ name: "PromptEditorDialog" });
 

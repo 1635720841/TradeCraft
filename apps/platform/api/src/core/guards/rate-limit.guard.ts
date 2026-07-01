@@ -29,6 +29,9 @@ export class RateLimitGuard implements CanActivate {
       context.getClass(),
     ]);
     if (isPublic) {
+      const request = context.switchToHttp().getRequest<Request>();
+      const clientIp = resolveClientIp(request);
+      await this.rateLimitService.assertWithinPublicLimit(clientIp);
       return true;
     }
 
@@ -49,4 +52,12 @@ export class RateLimitGuard implements CanActivate {
     await this.rateLimitService.assertWithinOrgLimit(reqCtx.organizationId);
     return true;
   }
+}
+
+function resolveClientIp(request: Request): string {
+  const forwarded = request.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string' && forwarded.trim()) {
+    return forwarded.split(',')[0]?.trim() ?? 'unknown';
+  }
+  return request.ip ?? request.socket?.remoteAddress ?? 'unknown';
 }

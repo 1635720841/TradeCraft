@@ -46,6 +46,11 @@ return { data: toDto(result), meta: { traceId: ctx.traceId } };
 @HttpCode(202)  // POST 创建长任务
 ```
 
+## 敏感凭证
+
+- GSC / 平台级 token、CMS 站点凭证（Shopify accessToken、WordPress applicationPassword）使用 `secret-cipher` 加密存储
+- 生产环境配置 `SECRET_CIPHER_KEY`；明文 legacy 数据用 `scripts/migrate-gsc-token-encrypt.mjs` / `scripts/migrate-site-cms-config-encrypt.mjs` 迁移
+
 ## 管道顺序
 
 Middleware(TraceId) → Guard → Interceptor → Pipe(ValidationPipe) → Controller → Service

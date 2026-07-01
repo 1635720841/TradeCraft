@@ -26,6 +26,7 @@ import { ReqCtx } from '../../../../core/decorators/request-context.decorator';
 
 import { ProjectService } from '../../../../modules/project/project.service';
 
+import { parsePageLimit } from '../../../../core/utils/parse-page-limit.util';
 import { SitePageService } from './site-page.service';
 import { PatchSitePageDto } from './dto/patch-site-page.dto';
 import { seoFactoryRoutes } from '../../constants/seo-factory-routes';
@@ -56,9 +57,10 @@ export class SitePageController {
   ) {
     await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
 
+    const { page: safePage, limit: safeLimit } = parsePageLimit(page, limit);
     const result = await this.sitePageService.listForSite(ctx.organizationId, projectId, siteId, {
-      page: page ? Number(page) : 1,
-      limit: limit ? Number(limit) : 20,
+      page: safePage,
+      limit: safeLimit,
       includeInactive: includeInactive === '1' || includeInactive === 'true',
     });
 

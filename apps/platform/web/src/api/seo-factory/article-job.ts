@@ -7,6 +7,7 @@
 
 import { http } from "@/utils/http";
 import type {
+  ArticleJobArticleImage,
   ArticleJobItem,
   BatchArticleJobsResult,
   CreateArticleJobPayload,
@@ -26,6 +27,9 @@ import { seoFactoryApiPath } from "./paths";
 function projectBase(projectId: string) {
   return seoFactoryApiPath(projectId, "article-jobs");
 }
+
+/** BFL 生图轮询最久约 2 分钟，需长于全局 axios 默认 10s */
+const BFL_IMAGE_REQUEST_TIMEOUT_MS = 150_000;
 
 /** 创建文章任务（202 异步入队） */
 export async function createArticleJob(
@@ -590,6 +594,86 @@ export async function reapplyArticleInternalLinks(projectId: string, jobId: stri
       internalLinksApplied: boolean;
     }>
   >("post", `${projectBase(projectId)}/${jobId}/internal-links/reapply`);
+  return res.data;
+}
+
+export interface ArticleImagesPatchPayload {
+  articleImages: Array<{
+    alt: string;
+    url: string;
+    source?: ArticleJobArticleImage["source"];
+    insertAfterHeading?: string;
+  }>;
+}
+
+/** 人工编辑配图列表并同步正文 */
+export async function patchArticleImages(
+  projectId: string,
+  jobId: string,
+  payload: ArticleImagesPatchPayload
+) {
+  const res = await http.request<
+    WmApiResponse<{
+      id: string;
+      articleImages: ArticleJobArticleImage[];
+      imagesApplied: boolean;
+    }>
+  >("patch", `${projectBase(projectId)}/${jobId}/article-images`, { data: payload });
+  return res.data;
+}
+
+/** 按描述生成并插入一张 AI 配图 */
+export async function generateArticleImage(
+  projectId: string,
+  jobId: string,
+  payload: { prompt: string; alt?: string; insertAfterHeading?: string }
+) {
+  const res = await http.request<
+    WmApiResponse<{
+      id: string;
+      articleImages: ArticleJobArticleImage[];
+      imagesApplied: boolean;
+    }>
+  >("post", `${projectBase(projectId)}/${jobId}/article-images/generate`, {
+    data: payload,
+    timeout: BFL_IMAGE_REQUEST_TIMEOUT_MS,
+    skipGlobalErrorToast: true
+  });
+  return res.data;
+}
+
+/** 重新生成指定索引的 AI 配图 */
+export async function regenerateArticleImage(
+  projectId: string,
+  jobId: string,
+  index: number,
+  payload?: { prompt?: string }
+) {
+  const res = await http.request<
+    WmApiResponse<{
+      id: string;
+      articleImages: ArticleJobArticleImage[];
+      imagesApplied: boolean;
+    }>
+  >("post", `${projectBase(projectId)}/${jobId}/article-images/${index}/regenerate`, {
+    data: payload ?? {},
+    timeout: BFL_IMAGE_REQUEST_TIMEOUT_MS,
+    skipGlobalErrorToast: true
+  });
+  return res.data;
+}
+
+/** 重跑自动配图（清除 BFL 图后重新补足） */
+export async function reapplyArticleImages(projectId: string, jobId: string) {
+  const res = await http.request<
+    WmApiResponse<{
+      id: string;
+      imagesApplied: boolean;
+    }>
+  >("post", `${projectBase(projectId)}/${jobId}/article-images/reapply`, {
+    timeout: BFL_IMAGE_REQUEST_TIMEOUT_MS,
+    skipGlobalErrorToast: true
+  });
   return res.data;
 }
 

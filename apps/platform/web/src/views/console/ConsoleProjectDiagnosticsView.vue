@@ -11,6 +11,7 @@
         <h1 class="text-lg font-medium">项目诊断</h1>
         <p class="text-sm text-gray-500">
           跨企业调整评分门槛、校准策略与搜索结果竞品参数。日常运营开关请在企业项目「项目配置」中修改。
+          「评分校准实验室」用于离线验证评分模型与阈值；「内容评分试算」可快速试算单篇稿件得分，均不影响线上任务。
         </p>
       </div>
       <div class="flex gap-2">
@@ -18,8 +19,6 @@
         <el-button plain @click="goContentScore">内容评分试算</el-button>
       </div>
     </div>
-
-    <ConsoleProjectScopeBar />
 
     <el-empty v-if="!projectId" description="请先选择企业与 SEO 项目" />
 
@@ -163,7 +162,6 @@ import { dictLabel } from "@/utils/dict";
 import { message } from "@/utils/message";
 import { isPlatformOperatorUser } from "@/utils/platform-operator-access";
 import { useConsoleProjectScope } from "@/composables/console/useConsoleProjectScope";
-import ConsoleProjectScopeBar from "./components/ConsoleProjectScopeBar.vue";
 
 defineOptions({ name: "ConsoleProjectDiagnosticsView" });
 

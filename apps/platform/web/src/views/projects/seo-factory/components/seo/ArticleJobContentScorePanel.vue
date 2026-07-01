@@ -158,6 +158,11 @@ function hydrateFromSnapshot(snapshot: ArticleJobContentScoreSnapshot): PanelRes
     missingKeywords: [],
     missingKeywordCount: snapshot.missingKeywordCount,
     wordCount: { current: 0, competitor: null, gap: null },
+    readability: {
+      flesch: null,
+      longSentencesOver22: 0,
+      longParagraphsOver65: 0
+    },
     suggestions: [],
     recommendedKeywords: [],
     featureAttribution: []

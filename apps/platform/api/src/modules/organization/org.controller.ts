@@ -6,6 +6,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query } from '@
 import type { RequestContext } from '@wm/shared-core';
 import { ReqCtx } from '../../core/decorators/request-context.decorator';
 import { Permissions } from '../../core/decorators/permissions.decorator';
+import { parsePageLimit } from '../../core/utils/parse-page-limit.util';
 import { SetUserPermissionsDto } from '../console/dto/set-user-permissions.dto';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
@@ -74,9 +75,10 @@ export class OrgController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
+    const { page: safePage, limit: safeLimit } = parsePageLimit(page, limit, { page: 1, limit: 50 });
     const result = await this.organizationService.listMembers(ctx.organizationId, ctx.role, {
-      page: page ? Number(page) : 1,
-      limit: limit ? Number(limit) : 50,
+      page: safePage,
+      limit: safeLimit,
     });
     return {
       data: result.items,
@@ -228,12 +230,19 @@ export class OrgController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('action') action?: string,
+    @Query('actorKeyword') actorKeyword?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
   ) {
+    const { page: safePage, limit: safeLimit } = parsePageLimit(page, limit);
     const result = await this.auditService.list({
       organizationId: ctx.organizationId,
-      page: page ? Number(page) : 1,
-      limit: limit ? Number(limit) : 20,
+      page: safePage,
+      limit: safeLimit,
       action,
+      actorKeyword,
+      dateFrom,
+      dateTo,
     });
     return {
       data: result.items,

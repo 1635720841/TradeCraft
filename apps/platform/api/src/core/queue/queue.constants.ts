@@ -15,6 +15,9 @@ export const PLAYWRIGHT_QUEUE = 'seo-factory-playwright';
 /** seo-factory GSC 过期数据定时同步 */
 export const GSC_SYNC_QUEUE = 'seo-factory-gsc-sync';
 
+/** seo-factory 自动生产调度 */
+export const AUTOPILOT_QUEUE = 'seo-factory-autopilot';
+
 /** 平台出站 Webhook 投递 */
 export const WEBHOOK_DELIVER_QUEUE = 'platform-webhook-deliver';
 

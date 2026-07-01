@@ -372,7 +372,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { FormInstance, FormRules, InputInstance } from "element-plus";
 import { ElMessageBox } from "element-plus";
@@ -737,5 +737,12 @@ onMounted(async () => {
   await loadSites();
   applyRoutePrefill();
   void quotaPreview.refreshQuota();
+});
+
+onUnmounted(() => {
+  if (keywordConflictTimer) {
+    clearTimeout(keywordConflictTimer);
+    keywordConflictTimer = null;
+  }
 });
 </script>

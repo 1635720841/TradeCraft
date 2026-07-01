@@ -64,6 +64,7 @@ export default {
     {
       path: "/console/system",
       name: "ConsoleSystem",
+      component: () => import("@/views/console/ConsoleSystemLayout.vue"),
       redirect: "/console/health",
       meta: {
         title: "系统管理",
@@ -98,8 +99,8 @@ export default {
           name: "ConsoleGsc",
           component: () => import("@/views/console/ConsoleGscView.vue"),
           meta: {
-            title: "搜索表现",
-            menuKey: "console:gsc",
+            title: "GSC 平台授权",
+            showLink: false,
             permission: "console:gsc:manage",
             roles: [...consoleOpsRoles]
           }
@@ -114,7 +115,21 @@ export default {
             permission: "console:prompt:read",
             roles: [...consoleOpsRoles]
           }
-        },
+        }
+      ]
+    },
+    {
+      path: "/console/labs",
+      name: "ConsoleLabs",
+      component: () => import("@/views/console/ConsoleLabsLayout.vue"),
+      redirect: "/console/labs/diagnostics",
+      meta: {
+        title: "实验室",
+        menuKey: "console:labs",
+        permission: "console:tenant:read",
+        roles: [...consoleOpsRoles]
+      },
+      children: [
         {
           path: "/console/labs/diagnostics",
           name: "ConsoleProjectDiagnostics",
@@ -123,7 +138,8 @@ export default {
             title: "项目诊断",
             menuKey: "console:labs",
             permission: "console:tenant:read",
-            roles: [...consoleOpsRoles]
+            roles: [...consoleOpsRoles],
+            showLink: false
           }
         },
         {

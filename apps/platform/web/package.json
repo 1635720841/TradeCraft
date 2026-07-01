@@ -29,6 +29,7 @@
     "@vueuse/core": "^14.0.0",
     "@vueuse/motion": "^3.0.3",
     "@wm/shared-core": "workspace:*",
+    "@wm/seo-scoring": "workspace:*",
     "animate.css": "^4.1.1",
     "axios": "^1.12.2",
     "dayjs": "^1.11.18",

@@ -6,6 +6,7 @@ import { Injectable } from '@nestjs/common';
 import { ProjectStatus } from '@prisma/client';
 import { type RequestContext } from '@wm/shared-core';
 import { PrismaService } from '../../core/database/prisma.service';
+import { softDeleteTimestamp } from '../../core/prisma/prisma-soft-delete.extension';
 import { BusinessException } from '../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../core/exceptions/error-codes';
 import { tenantVisibleProjectMemberUserFilter } from '../access/tenant-member-visibility';
@@ -214,12 +215,14 @@ export class ProjectService {
       throw new BusinessException(ErrorCodes.NOT_FOUND, '项目不存在');
     }
 
+    const deletedAt = softDeleteTimestamp();
     await this.prisma.$transaction(async (tx) => {
-      await tx.articleJob.deleteMany({ where: { projectId } });
-      await tx.keywordEntry.deleteMany({ where: { projectId } });
-      await tx.keywordCluster.deleteMany({ where: { projectId } });
-      await tx.site.deleteMany({ where: { projectId } });
-      await tx.project.delete({ where: { id: projectId } });
+      await tx.articleJob.updateMany({ where: { projectId, deletedAt: null }, data: { deletedAt } });
+      await tx.keywordEntry.updateMany({ where: { projectId, deletedAt: null }, data: { deletedAt } });
+      await tx.keywordCluster.updateMany({ where: { projectId, deletedAt: null }, data: { deletedAt } });
+      await tx.sitePage.updateMany({ where: { projectId, deletedAt: null }, data: { deletedAt } });
+      await tx.site.updateMany({ where: { projectId, deletedAt: null }, data: { deletedAt } });
+      await tx.project.update({ where: { id: projectId }, data: { deletedAt } });
     });
 
     if (actor) {

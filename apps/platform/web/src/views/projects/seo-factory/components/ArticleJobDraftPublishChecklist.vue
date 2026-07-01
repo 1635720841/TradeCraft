@@ -129,7 +129,15 @@ function emitAction(action: PublishChecklistAction) {
     emit("go-sites");
     return;
   }
-  emit("action", action);
+  if (isActionButton(action)) {
+    emit(
+      "action",
+      action as Exclude<
+        PublishChecklistAction,
+        "go_ymyl" | "go_edit" | "go_internal_links" | "go_images" | "go_sites" | "go_seo"
+      >
+    );
+  }
 }
 
 function actionLabel(action: PublishChecklistAction) {

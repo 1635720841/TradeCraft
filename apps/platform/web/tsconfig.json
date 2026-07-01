@@ -34,6 +34,12 @@
       ],
       "@wm/shared-core/*": [
         "../../../packages/shared-core/src/*"
+      ],
+      "@wm/seo-scoring": [
+        "../../../packages/seo-scoring/src/index.ts"
+      ],
+      "@wm/seo-scoring/*": [
+        "../../../packages/seo-scoring/src/*"
       ]
     },
     "types": [

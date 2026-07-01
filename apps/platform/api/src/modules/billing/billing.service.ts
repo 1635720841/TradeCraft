@@ -70,19 +70,32 @@ export class BillingService {
       return;
     }
 
-    await this.prisma.creditUsage.create({
-      data: {
-        organizationId: payload.organizationId,
-        projectId: payload.projectId,
-        projectType: 'seo-factory',
-        serviceType: ARTICLE_SERVICE_TYPE,
-        provider: ARTICLE_PROVIDER,
-        tokensOrCount: 1,
-        estimatedCost: 0,
-        traceId: payload.traceId,
-        breakdown: { articleCompleted: 1 },
-      },
-    });
+    try {
+      await this.prisma.creditUsage.create({
+        data: {
+          organizationId: payload.organizationId,
+          projectId: payload.projectId,
+          projectType: 'seo-factory',
+          serviceType: ARTICLE_SERVICE_TYPE,
+          provider: ARTICLE_PROVIDER,
+          tokensOrCount: 1,
+          estimatedCost: 0,
+          traceId: payload.traceId,
+          breakdown: { articleCompleted: 1 },
+        },
+      });
+    } catch (error) {
+      const code = (error as { code?: string })?.code;
+      if (code === 'P2002') {
+        this.logger.info('Billing skipped (unique race)', {
+          traceId: payload.traceId,
+          jobId: payload.jobId,
+          action: 'billing.skip_duplicate_race',
+        });
+        return;
+      }
+      throw error;
+    }
 
     this.logger.info('Article usage recorded', {
       traceId: payload.traceId,

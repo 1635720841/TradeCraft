@@ -5,8 +5,10 @@
 import { Body, Controller, Get, Param, Patch, Query } from '@nestjs/common';
 import type { RequestContext } from '@wm/shared-core';
 import { ReqCtx } from '../../core/decorators/request-context.decorator';
+import { parsePageLimit } from '../../core/utils/parse-page-limit.util';
 import { InAppNotificationService } from './in-app-notification.service';
 import { UserNotificationPreferenceService } from './user-notification-preference.service';
+import { UpdateNotificationPreferencesDto } from './dto/update-notification-preferences.dto';
 
 @Controller('api/v1/org/notifications')
 export class OrgNotificationController {
@@ -18,10 +20,11 @@ export class OrgNotificationController {
     @Query('limit') limit?: string,
     @Query('unreadOnly') unreadOnly?: string,
   ) {
+    const { limit: safeLimit } = parsePageLimit('1', limit, { page: 1, limit: 30 });
     const data = await this.notifications.list(
       ctx.userId,
       ctx.organizationId,
-      limit ? Number(limit) : 30,
+      safeLimit,
       unreadOnly === '1' || unreadOnly === 'true',
     );
     const unread = await this.notifications.unreadCount(ctx.userId, ctx.organizationId);
@@ -60,7 +63,7 @@ export class OrgNotificationPreferenceController {
   @Patch()
   async update(
     @ReqCtx() ctx: RequestContext,
-    @Body() body: { emailEnabled?: boolean; mutedTypes?: string[] },
+    @Body() body: UpdateNotificationPreferencesDto,
   ) {
     const data = await this.preferences.update(ctx.userId, ctx.organizationId, body);
     return { data, meta: { traceId: ctx.traceId } };

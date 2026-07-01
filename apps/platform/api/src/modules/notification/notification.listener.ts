@@ -28,6 +28,7 @@ import { RedisService } from '../../core/redis/redis.service';
 import { EmailNotificationService } from './email-notification.service';
 import { InAppNotificationService } from './in-app-notification.service';
 import { NotificationRecipientService } from './notification-recipient.service';
+import { RobotNotificationService } from './robot-notification.service';
 import { appendNotificationLink } from './notification-link.util';
 
 const QUOTA_ALERT_TTL_SEC = 86_400;
@@ -38,6 +39,7 @@ export class NotificationListener {
     private readonly email: EmailNotificationService,
     private readonly inApp: InAppNotificationService,
     private readonly recipients: NotificationRecipientService,
+    private readonly robots: RobotNotificationService,
     private readonly redis: RedisService,
     private readonly prisma: PrismaService,
   ) {}
@@ -79,6 +81,14 @@ export class NotificationListener {
         linkPath,
       ),
     });
+
+    await this.robots.notify({
+      organizationId: payload.organizationId,
+      eventType: 'brief_pending',
+      title: `大纲待确认：${payload.targetKeyword}`,
+      body: '请确认大纲后再生成正文',
+      linkPath,
+    });
   }
 
   @OnEvent(ARTICLE_FAILED_EVENT)
@@ -118,6 +128,14 @@ export class NotificationListener {
         linkPath,
       ),
     });
+
+    await this.robots.notify({
+      organizationId: payload.organizationId,
+      eventType: 'job_failed',
+      title: `任务失败：${payload.targetKeyword}`,
+      body: payload.errorMessage,
+      linkPath,
+    });
   }
 
   @OnEvent(ORG_QUOTA_LOW_EVENT)
@@ -151,6 +169,14 @@ export class NotificationListener {
         '',
         `剩余：${payload.remaining} / ${payload.monthlyQuota} 篇`,
       ].join('\n'),
+    });
+
+    await this.robots.notify({
+      organizationId: payload.organizationId,
+      eventType: 'quota_low',
+      title: `配额即将用尽（剩余 ${payload.remaining} 篇）`,
+      body: `剩余 ${payload.remaining} / ${payload.monthlyQuota} 篇`,
+      linkPath: '/org/billing',
     });
   }
 
@@ -210,6 +236,13 @@ export class NotificationListener {
         ),
       });
     }
+
+    await this.robots.notify({
+      organizationId: payload.organizationId,
+      eventType: 'assigned',
+      title: `您被指派任务：${payload.targetKeyword}`,
+      linkPath,
+    });
   }
 
   @OnEvent(ARTICLE_COMMENT_ADDED_EVENT)

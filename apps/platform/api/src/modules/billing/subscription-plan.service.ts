@@ -3,7 +3,7 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import { BillingCycle, SubscriptionStatus } from '@prisma/client';
+import { BillingCycle, Prisma, SubscriptionStatus } from '@prisma/client';
 import { PrismaService } from '../../core/database/prisma.service';
 import { BusinessException } from '../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../core/exceptions/error-codes';
@@ -13,6 +13,7 @@ import {
   isSubscriptionActive,
   resolveNextPeriodEnd,
 } from './subscription.util';
+import { getTrialPlanDefaultsSnapshot } from './build-trial-organization.util';
 
 const PLAN_DEFAULTS: Record<
   string,
@@ -22,6 +23,8 @@ const PLAN_DEFAULTS: Record<
   standard: { name: '标准版', monthlyArticleQuota: 500, billingCycle: BillingCycle.MONTHLY },
   enterprise: { name: '企业版', monthlyArticleQuota: 2000, billingCycle: BillingCycle.YEARLY },
 };
+
+type DbClient = PrismaService | Prisma.TransactionClient;
 
 @Injectable()
 export class SubscriptionPlanService {
@@ -57,18 +60,7 @@ export class SubscriptionPlanService {
   }
 
   async getTrialPlanDefaults() {
-    const trial = PLAN_DEFAULTS.trial;
-    const now = new Date();
-    const periodEnd = resolveNextPeriodEnd(now, trial.billingCycle);
-    return {
-      planId: 'trial',
-      planName: 'trial',
-      monthlyArticleQuota: trial.monthlyArticleQuota,
-      billingCycle: trial.billingCycle,
-      subscriptionStatus: SubscriptionStatus.TRIAL,
-      currentPeriodStart: now,
-      currentPeriodEnd: periodEnd,
-    };
+    return getTrialPlanDefaultsSnapshot();
   }
 
   async applyPlan(
@@ -82,6 +74,7 @@ export class SubscriptionPlanService {
       currentPeriodStart?: Date;
       currentPeriodEnd?: Date;
     },
+    db: DbClient = this.prisma,
   ) {
     const planKey = planName.trim().toLowerCase();
     const defaults = PLAN_DEFAULTS[planKey];
@@ -101,7 +94,7 @@ export class SubscriptionPlanService {
       assertValidPeriodRange(periodStart, periodEnd);
     }
 
-    return this.prisma.organization.update({
+    return db.organization.update({
       where: { id: organizationId },
       data: {
         planId: planKey,
@@ -116,8 +109,8 @@ export class SubscriptionPlanService {
     });
   }
 
-  async renewCurrentPeriod(organizationId: string) {
-    const org = await this.prisma.organization.findFirst({
+  async renewCurrentPeriod(organizationId: string, db: DbClient = this.prisma) {
+    const org = await db.organization.findFirst({
       where: { id: organizationId },
       select: { billingCycle: true, currentPeriodEnd: true },
     });
@@ -128,7 +121,7 @@ export class SubscriptionPlanService {
     const start = org.currentPeriodEnd ?? new Date();
     const end = resolveNextPeriodEnd(start, org.billingCycle);
 
-    return this.prisma.organization.update({
+    return db.organization.update({
       where: { id: organizationId },
       data: {
         subscriptionStatus: SubscriptionStatus.ACTIVE,
@@ -143,18 +136,34 @@ export class SubscriptionPlanService {
     });
   }
 
-  async addQuotaTopUp(organizationId: string, amount: number, note?: string) {
+  async addQuotaTopUp(organizationId: string, amount: number, note?: string, db: DbClient = this.prisma) {
     if (amount < 1) {
       throw new BusinessException(ErrorCodes.VALIDATION_ERROR, '加购数量至少为 1');
     }
 
-    const org = await this.prisma.organization.update({
-      where: { id: organizationId },
-      data: { articleQuotaBonus: { increment: amount } },
-      select: { articleQuotaBonus: true },
-    });
+    const applyTopUp = async (tx: Prisma.TransactionClient) => {
+      const org = await tx.organization.update({
+        where: { id: organizationId },
+        data: { articleQuotaBonus: { increment: amount } },
+        select: { articleQuotaBonus: true },
+      });
 
-    return { amount, bonusTotal: org.articleQuotaBonus, note };
+      await tx.articleQuotaTopUp.create({
+        data: {
+          organizationId,
+          amount,
+          note: note?.trim() || null,
+        },
+      });
+
+      return { amount, bonusTotal: org.articleQuotaBonus, note };
+    };
+
+    if ('$transaction' in db) {
+      return db.$transaction(applyTopUp);
+    }
+
+    return applyTopUp(db);
   }
 
   buildQuotaExtras(org: {

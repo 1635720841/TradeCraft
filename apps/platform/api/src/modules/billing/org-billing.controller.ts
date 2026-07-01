@@ -7,6 +7,7 @@ import type { Response } from 'express';
 import type { RequestContext } from '@wm/shared-core';
 import { ReqCtx } from '../../core/decorators/request-context.decorator';
 import { Permissions } from '../../core/decorators/permissions.decorator';
+import { parsePageLimit } from '../../core/utils/parse-page-limit.util';
 import { BillingRequestService } from './billing-request.service';
 import { BillingService } from './billing.service';
 import { CreateBillingRequestDto } from './dto/create-billing-request.dto';
@@ -36,10 +37,11 @@ export class OrgBillingController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
+    const { page: safePage, limit: safeLimit } = parsePageLimit(page, limit);
     const result = await this.billingService.listUsage(
       ctx.organizationId,
-      page ? Number(page) : 1,
-      limit ? Number(limit) : 20,
+      safePage,
+      safeLimit,
     );
     return {
       data: result.items,
@@ -71,9 +73,10 @@ export class OrgBillingController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
+    const { page: safePage, limit: safeLimit } = parsePageLimit(page, limit);
     const result = await this.billingRequestService.listForOrg(ctx.organizationId, {
-      page: page ? Number(page) : 1,
-      limit: limit ? Number(limit) : 20,
+      page: safePage,
+      limit: safeLimit,
     });
     return {
       data: result.items,
@@ -85,7 +88,7 @@ export class OrgBillingController {
   }
 
   @Post('requests')
-  @Permissions('org:billing:read')
+  @Permissions('org:billing:manage')
   async createRequest(@ReqCtx() ctx: RequestContext, @Body() dto: CreateBillingRequestDto) {
     const data = await this.billingRequestService.create(ctx, dto);
     return { data, meta: { traceId: ctx.traceId } };

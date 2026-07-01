@@ -17,7 +17,7 @@ import {
   type PromptRuntimeSlot,
   type PromptRuntimeSlotId,
   type PromptTemplateItem
-} from "@/api/platform/prompt";
+} from "@/api/console/prompt";
 import {
   canDeletePromptVersion,
   resolvePromptUsage,
@@ -256,6 +256,7 @@ export function usePromptManage() {
     usageOf,
     deleteCheck,
     refreshAll,
+    fetchPrompts,
     handleApplyBinding,
     onSizeChange,
     openCreateDialog,

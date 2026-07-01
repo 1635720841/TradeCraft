@@ -38,6 +38,17 @@ export default {
       }
     },
     {
+      path: "/org/integrations",
+      name: "OrgIntegrations",
+      component: () => import("@/views/org/OrgIntegrationsView.vue"),
+      meta: {
+        title: "集成与 Webhook",
+        menuKey: "org:integrations",
+        permission: "org:integration:manage",
+        roles: ["admin", "super_admin"]
+      }
+    },
+    {
       path: "/org/members",
       name: "OrgMembers",
       component: () => import("@/views/org/OrgMembersView.vue"),

@@ -216,4 +216,14 @@ current limits - temperature sensing at the pack and cell level - alarms for war
     assert.match(fixed, /^- current limits$/m);
     assert.match(fixed, /^- event logging for support and maintenance teams\.$/m);
   });
+
+  it('preserves standalone markdown image lines with long signed URLs during format repair', () => {
+    const imageUrl =
+      'https://delivery.eu2.bfl.ai/durable/2026070104/ef746010/sample.jpeg?se=2026-07-01T04%3A30%3A20Z&sp=r&sv=2026-02-06&sr=b&rsct=image/jpeg&sig=QPN1A4oRDVBxW4beKwNa1nx7VDhSUXzcuvS23qg143o%3D';
+    const content = `## Flight time\n\n![uav bms diagram](${imageUrl})\n\nFlight time depends on BMS design.`;
+    const out = validateAndFixSemrushStructure(content);
+
+    assert.ok(out.content.includes(imageUrl));
+    assert.doesNotMatch(out.content, /sample\.jpeg\?\n/);
+  });
 });

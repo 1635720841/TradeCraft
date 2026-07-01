@@ -23,19 +23,30 @@
 
     <p v-if="summaryText" class="mb-3 text-sm text-gray-700">{{ summaryText }}</p>
 
-    <div v-if="quillbot?.changesSummary?.length" class="mb-3">
+    <div
+      v-if="quillbot?.changesSummary?.length && !quillbot?.usedOriginal"
+      class="mb-3"
+    >
       <div class="mb-1 text-sm font-medium">变更摘要</div>
       <ul class="list-disc space-y-1 pl-5 text-sm text-gray-700">
         <li v-for="(line, index) in quillbot.changesSummary" :key="index">{{ line }}</li>
       </ul>
     </div>
 
-    <div v-if="quillbot?.warnings?.length" class="mb-3">
+    <div v-if="userWarnings.length" class="mb-3">
       <div class="mb-1 text-sm font-medium text-amber-700">注意</div>
       <ul class="list-disc space-y-1 pl-5 text-sm text-amber-800">
-        <li v-for="(line, index) in quillbot.warnings" :key="index">{{ line }}</li>
+        <li v-for="(line, index) in userWarnings" :key="index">{{ line }}</li>
       </ul>
     </div>
+
+    <el-collapse v-if="technicalWarnings.length" class="mb-2">
+      <el-collapse-item title="查看跳过详情" name="technical">
+        <ul class="list-disc space-y-1 pl-5 text-sm text-gray-600">
+          <li v-for="(line, index) in technicalWarnings" :key="index">{{ line }}</li>
+        </ul>
+      </el-collapse-item>
+    </el-collapse>
 
     <el-collapse v-if="showCompare" class="mt-2">
       <el-collapse-item title="查看润色前后对比" name="compare">
@@ -77,10 +88,21 @@ const emit = defineEmits<{
   rerun: [];
 }>();
 
+function isTechnicalWarning(line: string): boolean {
+  return (
+    line.includes("chunk_skipped:") ||
+    line.includes("document_skipped:") ||
+    line.includes("validate_skipped:") ||
+    line.startsWith("format_repaired:") ||
+    line === "readability_repaired_before_save"
+  );
+}
+
 const visible = computed(() => Boolean(props.quillbot?.completedAt || props.quillbot?.skipped));
 
 const statusTagType = computed(() => {
   if (props.quillbot?.skipped) return "info";
+  if (props.quillbot?.polishUnneeded) return "success";
   if (props.quillbot?.usedOriginal) return "warning";
   if (props.quillbot?.passed) return "success";
   return "info";
@@ -88,6 +110,7 @@ const statusTagType = computed(() => {
 
 const statusLabel = computed(() => {
   if (props.quillbot?.skipped) return "已跳过";
+  if (props.quillbot?.polishUnneeded) return "无需润色";
   if (props.quillbot?.usedOriginal) return "已保留原稿";
   if (props.quillbot?.passed) return "已完成";
   return "未完成";
@@ -97,7 +120,17 @@ const summaryText = computed(() => {
   const quillbot = props.quillbot;
   if (!quillbot) return "";
   if (quillbot.skipped) return quillbot.warnings?.[0] ?? "已跳过原创表达优化";
+  if (quillbot.polishUnneeded) {
+    const chunkCount = quillbot.chunkCount ?? 0;
+    if (chunkCount > 1) {
+      return `已检查 ${chunkCount} 个段落，未发现需处理的 AI 套话，正文保持 Semrush 优化稿不变。`;
+    }
+    return "未发现需处理的 AI 套话，正文保持 Semrush 优化稿不变。";
+  }
   if (quillbot.usedOriginal) {
+    if (quillbot.warnings?.some((line) => line.includes("paraphrase_aborted:low_chunk_success_rate"))) {
+      return "分块润色成功率过低，已保留 Semrush 优化稿（正文已符合发布标准）。";
+    }
     return "复检未通过，已保留 Semrush 优化稿。可查看下方警告了解原因。";
   }
   const parts: string[] = [];
@@ -119,13 +152,23 @@ const summaryText = computed(() => {
   return "已完成句式润色，结构与 SEO 目标保持不变。";
 });
 
+const technicalWarnings = computed(() =>
+  (props.quillbot?.warnings ?? []).filter((line) => isTechnicalWarning(line))
+);
+
+const userWarnings = computed(() => {
+  if (props.quillbot?.polishUnneeded) return [];
+  return (props.quillbot?.warnings ?? []).filter((line) => !isTechnicalWarning(line));
+});
+
 const showCompare = computed(
   () =>
     Boolean(props.originalContent?.trim()) &&
     Boolean(props.currentContent?.trim()) &&
     props.originalContent?.trim() !== props.currentContent?.trim() &&
     !props.quillbot?.skipped &&
-    !props.quillbot?.usedOriginal
+    !props.quillbot?.usedOriginal &&
+    !props.quillbot?.polishUnneeded
 );
 </script>
 

@@ -7,7 +7,7 @@ const route = useRoute();
 
 const pageTitle = computed(() => {
   const title = route.meta?.title;
-  if (title === false || title == null) return "首页";
+  if (title == null || title === "") return "首页";
   return transformI18n(title);
 });
 </script>

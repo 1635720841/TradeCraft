@@ -8,6 +8,8 @@
  * - injectInternalLinks
  */
 
+import { SWA_MIN_INTERNAL_LINKS } from '../../constants/swa-content';
+
 export interface SitePageCandidate {
   url: string;
   title: string;
@@ -224,8 +226,50 @@ function pickAnchorText(sectionText: string, page: SitePageCandidate): string {
   return title || 'Learn more';
 }
 
+/** Markdown 内链（排除 `![alt](url)` 配图语法） */
+const MARKDOWN_LINK_PATTERN = /(?<!!)\[([^\]]+)\]\(([^)]+)\)/;
+
 function paragraphHasLink(paragraph: string): boolean {
-  return /\[.+?\]\(.+?\)/.test(paragraph) || /<a\s/i.test(paragraph);
+  return MARKDOWN_LINK_PATTERN.test(paragraph) || /<a\s/i.test(paragraph);
+}
+
+function countInternalMarkdownLinks(content: string): number {
+  const matches = content.match(new RegExp(MARKDOWN_LINK_PATTERN.source, 'g'));
+  return matches?.length ?? 0;
+}
+
+function extractInternalLinksFromContent(content: string): InternalLinkRecord[] {
+  const records: InternalLinkRecord[] = [];
+  const pattern = new RegExp(MARKDOWN_LINK_PATTERN.source, 'g');
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(content)) !== null) {
+    const anchorText = match[1]?.trim() ?? '';
+    const targetUrl = match[2]?.trim() ?? '';
+    if (!anchorText || !targetUrl) continue;
+    records.push({
+      anchorText,
+      targetUrl,
+      pageType: inferPageTypeFromUrl(targetUrl),
+      confidence: 1,
+      matchReason: 'existing_in_content',
+    });
+  }
+
+  return records;
+}
+
+function mergeLinkRecords(
+  existing: InternalLinkRecord[],
+  injected: InternalLinkRecord[],
+): InternalLinkRecord[] {
+  const injectedByUrl = new Map(injected.map((link) => [link.targetUrl, link]));
+  const seen = new Set<string>();
+
+  return existing.map((link) => {
+    seen.add(link.targetUrl);
+    return injectedByUrl.get(link.targetUrl) ?? link;
+  }).concat(injected.filter((link) => !seen.has(link.targetUrl)));
 }
 
 function insertLinkIntoSection(section: ContentSection, anchorText: string, url: string): string {
@@ -282,10 +326,12 @@ export function injectInternalLinks(
   }
 
   const wordCount = countWords(trimmed);
-  const targetLinks = Math.min(
+  const existingLinkCount = countInternalMarkdownLinks(trimmed);
+  const desiredTotal = Math.min(
     opts.maxLinks,
-    Math.max(1, Math.floor(wordCount / opts.wordsPerLink)),
+    Math.max(SWA_MIN_INTERNAL_LINKS, Math.floor(wordCount / opts.wordsPerLink)),
   );
+  const targetLinks = Math.max(0, desiredTotal - existingLinkCount);
 
   const sections = splitSections(trimmed);
   const urlUseCount = new Map<string, number>();
@@ -344,9 +390,12 @@ export function injectInternalLinks(
     urlUseCount.set(candidate.page.url, used + 1);
   }
 
+  const nextContent = rebuildContent(trimmed, sections, updatedBodies);
+  const existingLinks = extractInternalLinksFromContent(trimmed);
+
   return {
-    content: rebuildContent(trimmed, sections, updatedBodies),
-    links,
+    content: nextContent,
+    links: mergeLinkRecords(existingLinks, links),
   };
 }
 

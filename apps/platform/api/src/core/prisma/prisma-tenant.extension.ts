@@ -36,6 +36,23 @@ const TENANT_MODELS = new Set([
 
 const READ_OPS = new Set(['findMany', 'findFirst', 'count', 'aggregate']);
 const WRITE_FILTER_OPS = new Set(['update', 'updateMany', 'delete', 'deleteMany']);
+const CREATE_OPS = new Set(['create', 'createMany']);
+
+function assertOrganizationIdOnCreate(
+  data: Record<string, unknown> | Record<string, unknown>[],
+  orgId: string,
+): void {
+  const rows = Array.isArray(data) ? data : [data];
+  for (const row of rows) {
+    const rowOrgId = row.organizationId;
+    if (typeof rowOrgId !== 'string' || !rowOrgId.trim()) {
+      throw new Error(`租户隔离：create 必须显式设置 organizationId`);
+    }
+    if (rowOrgId !== orgId) {
+      throw new Error(`租户隔离：create organizationId 与当前请求上下文不一致`);
+    }
+  }
+}
 
 export const tenantIsolationExtension = Prisma.defineExtension({
   name: 'tenant-isolation',
@@ -55,6 +72,13 @@ export const tenantIsolationExtension = Prisma.defineExtension({
         if (READ_OPS.has(operation) || WRITE_FILTER_OPS.has(operation)) {
           const nextArgs = args as { where?: Record<string, unknown> };
           nextArgs.where = { ...(nextArgs.where ?? {}), organizationId: orgId };
+        }
+
+        if (CREATE_OPS.has(operation)) {
+          const nextArgs = args as { data?: Record<string, unknown> | Record<string, unknown>[] };
+          if (nextArgs.data) {
+            assertOrganizationIdOnCreate(nextArgs.data, orgId);
+          }
         }
 
         return query(args);

@@ -28,12 +28,12 @@ function createPrisma() {
     emitted,
     billingChangeRequest: {
       findFirst: async ({ where }) =>
-        requests.find(
-          (row) =>
-            row.organizationId === where.organizationId &&
-            (!where.status || row.status === where.status) &&
-            (!where.id || row.id === where.id),
-        ) ?? null,
+        requests.find((row) => {
+          if (where.id && row.id !== where.id) return false;
+          if (where.organizationId && row.organizationId !== where.organizationId) return false;
+          if (where.status && row.status !== where.status) return false;
+          return true;
+        }) ?? null,
       findMany: async ({ where, skip, take, orderBy }) => {
         let rows = requests.filter((row) => row.organizationId === where.organizationId);
         if (orderBy?.createdAt === 'desc') {
@@ -128,5 +128,60 @@ describe('BillingRequestService', () => {
     assert.equal(result.total, 1);
     assert.equal(result.items.length, 1);
     assert.equal(result.items[0].organizationId, ORG_A);
+  });
+
+  it('approve rejects UPGRADE without targetPlanId', async () => {
+    const prisma = createPrisma();
+    prisma.$transaction = async (fn) => fn(prisma);
+    const service = createService(prisma);
+    const row = {
+      id: 'req_upgrade_empty',
+      organizationId: ORG_A,
+      type: 'UPGRADE',
+      targetPlanId: null,
+      topUpAmount: null,
+      status: 'PENDING',
+    };
+    prisma.requests.push(row);
+
+    await assert.rejects(
+      () => service.approve(row.id, 'reviewer-1'),
+      (err) => {
+        assert.equal(err.code, ErrorCodes.VALIDATION_ERROR);
+        return true;
+      },
+    );
+    assert.equal(prisma.requests[0].status, 'PENDING');
+  });
+
+  it('approve rolls back when subscription plan mutation fails', async () => {
+    const prisma = createPrisma();
+    prisma.$transaction = async (fn) => fn(prisma);
+
+    let renewCalled = false;
+    const service = new BillingRequestService(
+      prisma,
+      {
+        renewCurrentPeriod: async () => {
+          renewCalled = true;
+          throw new Error('renew failed');
+        },
+        applyPlan: async () => {},
+        addQuotaTopUp: async () => {},
+      },
+      { emit: () => {} },
+      { log: async () => {} },
+    );
+
+    const ctx = {
+      organizationId: ORG_A,
+      userId: 'user-1',
+      traceId: 'tr_billing_req',
+    };
+    const row = await service.create(ctx, { type: 'RENEW' });
+
+    await assert.rejects(() => service.approve(row.id, 'reviewer-1'), /renew failed/);
+    assert.equal(renewCalled, true);
+    assert.equal(prisma.requests[0].status, 'PENDING');
   });
 });

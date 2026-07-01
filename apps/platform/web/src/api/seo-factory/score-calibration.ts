@@ -409,7 +409,7 @@ export async function listScoreCalibrationPairs(
   options: {
     page?: number;
     limit?: number;
-    dataset?: "all" | "holdout" | "train";
+    dataset?: "all" | "holdout" | "train" | "excluded";
     source?: "all" | "workflow" | "manual";
     minAbsError?: number;
     maxAbsError?: number;

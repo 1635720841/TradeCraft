@@ -2,7 +2,7 @@
 
 export type KeywordPriorityTier = "high" | "medium" | "low";
 
-export type KeywordDisplayStatusType = "success" | "warning" | "primary" | "info";
+export type KeywordDisplayStatusType = "success" | "warning" | "primary" | "info" | "danger";
 
 export interface KeywordDisplayStatus {
   label: string;

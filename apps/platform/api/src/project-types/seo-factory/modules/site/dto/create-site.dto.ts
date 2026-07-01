@@ -14,6 +14,7 @@ import { SiteShopifyConfigDto } from './site-shopify-config.dto';
 import { SiteWorkflowSettingsDto } from './site-workflow-settings.dto';
 import { SiteContentProfileDto } from './site-content-profile.dto';
 import { SiteSerpResearchSettingsDto } from './site-serp-research-settings.dto';
+import { SiteAutopilotSettingsDto } from './site-autopilot-settings.dto';
 
 export class CreateSiteDto {
   @IsString()
@@ -72,4 +73,9 @@ export class CreateSiteDto {
   @ValidateNested()
   @Type(() => SiteSerpResearchSettingsDto)
   serpResearch?: SiteSerpResearchSettingsDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SiteAutopilotSettingsDto)
+  autopilot?: SiteAutopilotSettingsDto;
 }

@@ -28,6 +28,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import type { RequestContext } from '@wm/shared-core';
 import { ReqCtx } from '../../../../core/decorators/request-context.decorator';
+import { parsePageLimit } from '../../../../core/utils/parse-page-limit.util';
 import { Public } from '../../../../core/decorators/public.decorator';
 import { UnauthorizedException } from '../../../../core/exceptions/auth.exception';
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
@@ -46,7 +47,13 @@ import { PatchArticleDraftDto, RollbackArticleDraftDto } from './dto/patch-artic
 import { ResolveDraftStaleDto } from './dto/resolve-draft-stale.dto';
 import { ArticleJobBriefService } from './article-job-brief.service';
 import { ArticleJobInternalLinksService } from './article-job-internal-links.service';
+import { ArticleJobImagesService } from './article-job-images.service';
 import { PatchInternalLinksDto } from './dto/patch-internal-links.dto';
+import { PatchArticleImagesDto } from './dto/patch-article-images.dto';
+import {
+  GenerateArticleImageDto,
+  RegenerateArticleImageDto,
+} from './dto/regenerate-article-image.dto';
 import { ArticleJobService } from './article-job.service';
 import { ArticleJobStatsService } from './article-job-stats.service';
 import { CmsPublishService } from '../export/cms-publish.service';
@@ -74,6 +81,7 @@ export class ArticleJobController {
     private readonly articleJobReviewService: ArticleJobReviewService,
     private readonly articleJobBriefService: ArticleJobBriefService,
     private readonly articleJobInternalLinksService: ArticleJobInternalLinksService,
+    private readonly articleJobImagesService: ArticleJobImagesService,
     private readonly cmsPublishService: CmsPublishService,
     private readonly exportService: ExportService,
     private readonly projectService: ProjectService,
@@ -237,11 +245,12 @@ export class ArticleJobController {
     @Query('keyword') keyword?: string,
   ) {
     await this.projectService.assertSeoJobRead(ctx.organizationId, projectId, ctx);
+    const { page: safePage, limit: safeLimit } = parsePageLimit(page, limit);
     const result = await this.articleJobService.findMany(
       ctx.organizationId,
       projectId,
-      page ? Number(page) : 1,
-      limit ? Number(limit) : 20,
+      safePage,
+      safeLimit,
       {
         briefPending: briefPending === '1' || briefPending === 'true',
         generating: generating === '1' || generating === 'true',
@@ -634,6 +643,79 @@ export class ArticleJobController {
   ) {
     await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
     const data = await this.articleJobInternalLinksService.reapplyInternalLinks(
+      ctx.organizationId,
+      projectId,
+      id,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Patch(':id/article-images')
+  async patchArticleImages(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+    @Body() dto: PatchArticleImagesDto,
+  ) {
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
+    const data = await this.articleJobImagesService.patchArticleImages(
+      ctx.organizationId,
+      projectId,
+      id,
+      ctx.userId,
+      dto,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Post(':id/article-images/generate')
+  async generateArticleImage(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+    @Body() dto: GenerateArticleImageDto,
+  ) {
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
+    const data = await this.articleJobImagesService.generateArticleImage(
+      ctx.organizationId,
+      projectId,
+      id,
+      ctx.userId,
+      dto,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Post(':id/article-images/:index/regenerate')
+  async regenerateArticleImage(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+    @Param('index') index: string,
+    @Body() dto: RegenerateArticleImageDto,
+  ) {
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
+    const imageIndex = Number.parseInt(index, 10);
+    const data = await this.articleJobImagesService.regenerateArticleImage(
+      ctx.organizationId,
+      projectId,
+      id,
+      ctx.userId,
+      imageIndex,
+      dto,
+    );
+    return { data, meta: { traceId: ctx.traceId } };
+  }
+
+  @Post(':id/article-images/reapply')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async reapplyArticleImages(
+    @ReqCtx() ctx: RequestContext,
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+  ) {
+    await this.projectService.assertSeoJobWrite(ctx.organizationId, projectId, ctx);
+    const data = await this.articleJobImagesService.reapplyArticleImages(
       ctx.organizationId,
       projectId,
       id,

@@ -11,24 +11,24 @@
     <el-table v-if="drivers.length" :data="drivers" size="small" border max-height="360">
       <el-table-column prop="label" label="特征" min-width="100" />
       <el-table-column label="样本值" width="80">
-        <template #default="{ row }">{{ row.featureValue }}</template>
+        <template #default="{ row }">{{ (row as ScoreCalibrationFeatureDriver).featureValue }}</template>
       </el-table-column>
       <el-table-column label="训练均值" width="80">
-        <template #default="{ row }">{{ row.meanValue }}</template>
+        <template #default="{ row }">{{ (row as ScoreCalibrationFeatureDriver).meanValue }}</template>
       </el-table-column>
       <el-table-column label="偏离" width="80">
         <template #default="{ row }">
-          <span :class="deviationClass(row)">{{ formatDeviation(row) }}</span>
+          <span :class="deviationClass(row as ScoreCalibrationFeatureDriver)">{{ formatDeviation(row as ScoreCalibrationFeatureDriver) }}</span>
         </template>
       </el-table-column>
       <el-table-column label="贡献" width="80">
         <template #default="{ row }">
-          <span :class="contributionClass(row)">{{ formatContribution(row.contribution) }}</span>
+          <span :class="contributionClass(row as ScoreCalibrationFeatureDriver)">{{ formatContribution((row as ScoreCalibrationFeatureDriver).contribution) }}</span>
         </template>
       </el-table-column>
       <el-table-column label="方向" width="70">
         <template #default="{ row }">
-          {{ row.direction === "raises" ? "抬高" : "压低" }}
+          {{ (row as ScoreCalibrationFeatureDriver).direction === "raises" ? "抬高" : "压低" }}
         </template>
       </el-table-column>
     </el-table>

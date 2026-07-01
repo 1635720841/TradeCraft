@@ -12,6 +12,7 @@ import { CreatePromptTemplateDto } from './dto/create-prompt-template.dto';
 import { UpdatePromptBindingDto } from './dto/update-prompt-binding.dto';
 import { UpdatePromptTemplateDto } from './dto/update-prompt-template.dto';
 import { AuditService } from '../access/audit.service';
+import { parsePageLimit } from '../../core/utils/parse-page-limit.util';
 import { PromptBindingService } from './prompt-binding.service';
 import { PromptService } from './prompt.service';
 
@@ -57,10 +58,8 @@ export class PromptController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    const result = await this.promptService.list(
-      page ? Number(page) : 1,
-      limit ? Number(limit) : 20,
-    );
+    const { page: safePage, limit: safeLimit } = parsePageLimit(page, limit);
+    const result = await this.promptService.list(safePage, safeLimit);
     return {
       data: result.items,
       meta: {

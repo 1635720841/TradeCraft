@@ -26,8 +26,17 @@ import {
 import { PrismaService } from '../../../../core/database/prisma.service';
 import { LoggerService } from '../../../../core/logger/logger.service';
 import { parseSiteWorkflowSettings } from '../../constants/brief-approval';
+import {
+  PARAPHRASE_CHUNK_LENGTH_MAX,
+  PARAPHRASE_CHUNK_LENGTH_MIN,
+  PARAPHRASE_MAX_CHANGE_RATIO_FOR_VALIDATE_SKIP,
+  PARAPHRASE_MIN_CHUNK_SUCCESS_RATIO,
+} from '../../constants/paraphrase';
 import type { LlmJobContext } from '../llm/llm.service';
 import { buildOptimizeBriefContext } from '../llm/optimize-context.util';
+import {
+  applyDeterministicAntiAiPolish,
+} from './paraphrase-cliche.util';
 import {
   joinParaphraseChunks,
   shouldUseChunkedParaphrase,
@@ -35,7 +44,16 @@ import {
 } from './paraphrase-chunk.util';
 import { buildParaphraseProtectedTerms } from './paraphrase-protected-terms.util';
 import { checkParaphraseLocalScoreRegression } from './paraphrase-regression.util';
+import { isPolishUnneededOutcome } from './paraphrase-outcome.util';
+import { isNearlyIdenticalParaphrase } from './paraphrase-similarity.util';
 import { checkParaphraseSafety } from './paraphrase-safety.util';
+import {
+  finalizeParaphraseMediaContent,
+  resolveParaphraseChunkSkip,
+  shieldParaphraseMedia,
+  syncAllMediaFromOriginal,
+  unshieldParaphraseMedia,
+} from './paraphrase-media.util';
 
 export interface ParaphraseJobContext extends LlmJobContext {}
 
@@ -146,13 +164,20 @@ export class ParaphraseService {
     const rawParaphraseResult = shouldUseChunkedParaphrase(originalContent)
       ? await this.paraphraseByChunks(ctx, job.seoCheckData, originalContent, runContext)
       : await this.paraphraseWholeDocument(originalContent, runContext);
+
+    let workingContent = syncAllMediaFromOriginal(originalContent, rawParaphraseResult.content);
+    const { content: shieldedForFormat, tokens: formatMediaTokens } = shieldParaphraseMedia(workingContent);
     const originalTitle = originalContent.match(/^#\s+(.+)$/m)?.[1]?.trim();
     const formatRepair = validateAndFixSemrushStructure(
-      enforceArticleH1Boundary(rawParaphraseResult.content, originalTitle),
+      enforceArticleH1Boundary(shieldedForFormat, originalTitle),
+    );
+    workingContent = syncAllMediaFromOriginal(
+      originalContent,
+      unshieldParaphraseMedia(formatRepair.content, formatMediaTokens),
     );
     const paraphraseResult = {
       ...rawParaphraseResult,
-      content: formatRepair.content,
+      content: workingContent,
       warnings: [
         ...(rawParaphraseResult.warnings ?? []),
         ...formatRepair.errors.map((error) => `format_repaired:${error}`),
@@ -170,13 +195,29 @@ export class ParaphraseService {
       recommendedKeywords: protectedTerms,
     });
 
-    const validation = await this.paraphraseProvider.validate({
-      keyword: ctx.targetKeyword,
-      originalContent,
-      paraphrasedContent: paraphraseResult.content,
-      contentLanguage: ctx.contentLanguage,
-      protectedTerms,
-    });
+    const skipLlmValidate =
+      safety.passed &&
+      (paraphraseResult.content === originalContent ||
+        isNearlyIdenticalParaphrase(
+          originalContent,
+          paraphraseResult.content,
+          ctx.contentLanguage,
+          PARAPHRASE_MAX_CHANGE_RATIO_FOR_VALIDATE_SKIP,
+        ));
+
+    const validation = skipLlmValidate
+      ? {
+          passed: true,
+          warnings: ['validate_skipped:minimal_change'],
+          promptVersion: 'safety_gate',
+        }
+      : await this.paraphraseProvider.validate({
+          keyword: ctx.targetKeyword,
+          originalContent,
+          paraphrasedContent: paraphraseResult.content,
+          contentLanguage: ctx.contentLanguage,
+          protectedTerms,
+        });
 
     let regressionReason: string | undefined;
     let localScoreBefore: number | undefined;
@@ -228,7 +269,57 @@ export class ParaphraseService {
     originalContent: string,
     runContext: ParaphraseRunContext,
   ): Promise<ParaphraseOutput & { chunkStats?: { total: number; polished: number } }> {
-    return this.paraphraseProvider.paraphrase(this.buildParaphraseInput(originalContent, runContext));
+    const skipReason = resolveParaphraseChunkSkip(originalContent);
+    if (skipReason) {
+      const deterministic = applyDeterministicAntiAiPolish(originalContent);
+      if (deterministic.changed) {
+        const safety = checkParaphraseSafety({
+          keyword: runContext.keyword,
+          originalContent,
+          paraphrasedContent: deterministic.content,
+          contentLanguage: runContext.contentLanguage,
+          protectedTerms: runContext.protectedTerms,
+          recommendedKeywords: runContext.protectedTerms,
+          lengthRatioMin: PARAPHRASE_CHUNK_LENGTH_MIN,
+          lengthRatioMax: PARAPHRASE_CHUNK_LENGTH_MAX,
+        });
+        if (safety.passed) {
+          return {
+            content: deterministic.content,
+            promptVersion: 'deterministic_anti_ai',
+            changesSummary: ['deterministic_anti_ai_polish'],
+            warnings: [],
+          };
+        }
+      }
+
+      return {
+        content: originalContent,
+        promptVersion: '',
+        changesSummary: [],
+        warnings: [`document_skipped:${skipReason}`],
+      };
+    }
+
+    return this.paraphraseShieldedContent(originalContent, runContext);
+  }
+
+  private buildChunkSafetyInput(
+    runContext: ParaphraseRunContext,
+    chunk: { content: string; isLead: boolean },
+    paraphrasedContent: string,
+  ) {
+    return {
+      keyword: runContext.keyword,
+      originalContent: chunk.content,
+      paraphrasedContent,
+      contentLanguage: runContext.contentLanguage,
+      protectedTerms: runContext.protectedTerms,
+      recommendedKeywords: runContext.protectedTerms,
+      skipKeywordHeadCheck: !chunk.isLead,
+      lengthRatioMin: PARAPHRASE_CHUNK_LENGTH_MIN,
+      lengthRatioMax: PARAPHRASE_CHUNK_LENGTH_MAX,
+    };
   }
 
   private async paraphraseByChunks(
@@ -242,6 +333,7 @@ export class ParaphraseService {
     const changesSummary: string[] = [];
     const warnings: string[] = [];
     let polishedCount = 0;
+    let eligibleCount = 0;
     let promptVersion = '';
 
     for (let index = 0; index < chunks.length; index++) {
@@ -252,24 +344,37 @@ export class ParaphraseService {
         `原创表达优化中（${index + 1}/${chunks.length}）…`,
       );
 
-      const chunkHint = chunk.isLead
-        ? 'Lead section — if this opens the article, keep the target keyword in the first 200 characters.'
-        : 'Single H2 section only — do NOT add new ## headings; keyword-in-first-200-chars rule does not apply.';
+      const skipReason = resolveParaphraseChunkSkip(chunk.content, { isLead: chunk.isLead });
+      if (skipReason) {
+        const deterministic = applyDeterministicAntiAiPolish(chunk.content);
+        if (deterministic.changed) {
+          const detSafety = checkParaphraseSafety(
+            this.buildChunkSafetyInput(runContext, chunk, deterministic.content),
+          );
+          if (detSafety.passed) {
+            polishedChunks.push(deterministic.content);
+            polishedCount += 1;
+            changesSummary.push(`[${chunk.id}] deterministic_anti_ai_polish`);
+            continue;
+          }
+        }
 
-      const result = await this.paraphraseProvider.paraphrase(
-        this.buildParaphraseInput(chunk.content, runContext, chunkHint),
-      );
+        polishedChunks.push(chunk.content);
+        warnings.push(`[${chunk.id}] chunk_skipped:${skipReason}`);
+        continue;
+      }
+
+      eligibleCount += 1;
+
+      const chunkHint =
+        'Single H2 section only — change at most 1–2 awkward sentences; do NOT add ##/### headings; keep word count within 98%–102%; preserve protected terms verbatim.';
+
+      const result = await this.paraphraseShieldedContent(chunk.content, runContext, chunkHint);
       promptVersion = result.promptVersion;
 
-      const chunkSafety = checkParaphraseSafety({
-        keyword: runContext.keyword,
-        originalContent: chunk.content,
-        paraphrasedContent: result.content,
-        contentLanguage: runContext.contentLanguage,
-        protectedTerms: runContext.protectedTerms,
-        recommendedKeywords: runContext.protectedTerms,
-        skipKeywordHeadCheck: !chunk.isLead,
-      });
+      const chunkSafety = checkParaphraseSafety(
+        this.buildChunkSafetyInput(runContext, chunk, result.content),
+      );
 
       if (chunkSafety.passed) {
         polishedChunks.push(result.content);
@@ -282,12 +387,37 @@ export class ParaphraseService {
       }
     }
 
+    if (eligibleCount > 0 && polishedCount / eligibleCount < PARAPHRASE_MIN_CHUNK_SUCCESS_RATIO) {
+      return {
+        content: originalContent,
+        promptVersion,
+        changesSummary: [],
+        warnings: [...warnings, 'paraphrase_aborted:low_chunk_success_rate'],
+        chunkStats: { total: chunks.length, polished: 0 },
+      };
+    }
+
     return {
       content: joinParaphraseChunks(polishedChunks.map((content) => ({ content }))),
       promptVersion,
       changesSummary: [...new Set(changesSummary)].slice(0, 12),
-      warnings: [...new Set(warnings)].slice(0, 16),
+      warnings: [...new Set(warnings)].slice(0, 32),
       chunkStats: { total: chunks.length, polished: polishedCount },
+    };
+  }
+
+  private async paraphraseShieldedContent(
+    originalContent: string,
+    runContext: ParaphraseRunContext,
+    chunkHint?: string,
+  ): Promise<ParaphraseOutput> {
+    const { content: shielded, tokens } = shieldParaphraseMedia(originalContent);
+    const result = await this.paraphraseProvider.paraphrase(
+      this.buildParaphraseInput(shielded, runContext, chunkHint),
+    );
+    return {
+      ...result,
+      content: finalizeParaphraseMediaContent(originalContent, result.content, tokens),
     };
   }
 
@@ -310,11 +440,17 @@ export class ParaphraseService {
   }
 
   private async finalizeParaphrase(input: ParaphraseFinalizeInput): Promise<void> {
-    const useOriginal = input.paraphrasedContent === input.originalContent;
-    const finalContent = applyReadabilityParagraphFix(input.paraphrasedContent, {
+    const { content: shieldedForReadability, tokens: readabilityTokens } = shieldParaphraseMedia(
+      input.paraphrasedContent,
+    );
+    const readabilityFixed = applyReadabilityParagraphFix(shieldedForReadability, {
       maxWords: SEMRUSH_PARAGRAPH_MAX_WORDS,
       maxSentences: SEMRUSH_PARAGRAPH_MAX_SENTENCES,
     });
+    const finalContent = syncAllMediaFromOriginal(
+      input.originalContent,
+      unshieldParaphraseMedia(readabilityFixed, readabilityTokens),
+    );
     const readabilityRepaired = finalContent !== input.paraphrasedContent;
     const allWarnings = [
       ...input.safetyIssues,
@@ -323,17 +459,28 @@ export class ParaphraseService {
       ...(input.regressionReason ? [input.regressionReason] : []),
       ...(readabilityRepaired ? ['readability_repaired_before_save'] : []),
     ];
+    const contentUnchanged = finalContent.trim() === input.originalContent.trim();
+    const polishUnneeded = isPolishUnneededOutcome({
+      contentUnchanged,
+      chunksPolished: input.chunkStats?.polished,
+      safetyIssueCount: input.safetyIssues.length,
+      validationPassed: input.validationPassed,
+      regressionReason: input.regressionReason,
+      warnings: allWarnings,
+    });
+    const keptOriginalDueToFailure = contentUnchanged && !polishUnneeded;
 
     const seoCheckData = {
       ...((input.seoCheckData ?? {}) as Record<string, unknown>),
       quillbot: {
         completedAt: new Date().toISOString(),
         skipped: false,
-        passed: !useOriginal,
-        usedOriginal: useOriginal,
+        passed: polishUnneeded || !keptOriginalDueToFailure,
+        usedOriginal: keptOriginalDueToFailure,
+        polishUnneeded,
         promptVersion: input.paraphraseMeta.promptVersion,
         validatePromptVersion: input.validatePromptVersion,
-        changesSummary: input.paraphraseMeta.changesSummary ?? [],
+        changesSummary: keptOriginalDueToFailure ? [] : (input.paraphraseMeta.changesSummary ?? []),
         warnings: allWarnings,
         briefSummary: input.briefSummary,
         protectedTermCount: input.protectedTerms.length,
@@ -352,7 +499,7 @@ export class ParaphraseService {
           ...input.draftData,
           content: finalContent,
           paraphraseApplied: true,
-          paraphraseOriginalContent: useOriginal ? undefined : input.originalContent,
+          paraphraseOriginalContent: keptOriginalDueToFailure ? undefined : input.originalContent,
         } as object,
         seoCheckData: seoCheckData as object,
       },
@@ -361,7 +508,8 @@ export class ParaphraseService {
     this.logger.info('QuillBot paraphrase completed', {
       traceId: input.ctx.traceId,
       jobId: input.jobId,
-      usedOriginal: useOriginal,
+      polishUnneeded,
+      keptOriginalDueToFailure,
       warningCount: allWarnings.length,
       protectedTermCount: input.protectedTerms.length,
       chunkCount: input.chunkStats?.total,

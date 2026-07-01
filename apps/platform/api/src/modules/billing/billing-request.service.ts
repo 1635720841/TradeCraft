@@ -25,6 +25,15 @@ export class BillingRequestService {
     private readonly auditService: AuditService,
   ) {}
 
+  private assertRequestPayload(type: BillingRequestType, targetPlanId?: string | null, topUpAmount?: number | null) {
+    if (type === 'UPGRADE' && !targetPlanId?.trim()) {
+      throw new BusinessException(ErrorCodes.VALIDATION_ERROR, '升级申请须指定目标套餐');
+    }
+    if (type === 'TOPUP' && (!topUpAmount || topUpAmount < 1)) {
+      throw new BusinessException(ErrorCodes.VALIDATION_ERROR, '加购申请须指定数量');
+    }
+  }
+
   async create(
     ctx: RequestContext,
     input: {
@@ -40,6 +49,8 @@ export class BillingRequestService {
     if (pending) {
       throw new BusinessException(ErrorCodes.FORBIDDEN, '已有待审批的申请');
     }
+
+    this.assertRequestPayload(input.type, input.targetPlanId, input.topUpAmount);
 
     const request = await this.prisma.billingChangeRequest.create({
       data: {
@@ -112,31 +123,42 @@ export class BillingRequestService {
   }
 
   async approve(requestId: string, reviewerId: string, traceId?: string) {
-    const request = await this.prisma.billingChangeRequest.findFirst({
-      where: { id: requestId, status: 'PENDING' },
-    });
-    if (!request) {
-      throw new BusinessException(ErrorCodes.NOT_FOUND, '申请不存在');
-    }
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const request = await tx.billingChangeRequest.findFirst({
+        where: { id: requestId, status: 'PENDING' },
+      });
+      if (!request) {
+        throw new BusinessException(ErrorCodes.NOT_FOUND, '申请不存在');
+      }
 
-    if (request.type === 'RENEW') {
-      await this.subscriptionPlanService.renewCurrentPeriod(request.organizationId);
-    } else if (request.type === 'UPGRADE' && request.targetPlanId) {
-      await this.subscriptionPlanService.applyPlan(request.organizationId, request.targetPlanId);
-    } else if (request.type === 'TOPUP' && request.topUpAmount) {
-      await this.subscriptionPlanService.addQuotaTopUp(
-        request.organizationId,
-        request.topUpAmount,
-      );
-    }
+      this.assertRequestPayload(request.type, request.targetPlanId, request.topUpAmount);
 
-    const updated = await this.prisma.billingChangeRequest.update({
-      where: { id: requestId },
-      data: { status: 'APPROVED', reviewedById: reviewerId, reviewedAt: new Date() },
+      if (request.type === 'RENEW') {
+        await this.subscriptionPlanService.renewCurrentPeriod(request.organizationId, tx);
+      } else if (request.type === 'UPGRADE' && request.targetPlanId) {
+        await this.subscriptionPlanService.applyPlan(
+          request.organizationId,
+          request.targetPlanId,
+          undefined,
+          tx,
+        );
+      } else if (request.type === 'TOPUP' && request.topUpAmount) {
+        await this.subscriptionPlanService.addQuotaTopUp(
+          request.organizationId,
+          request.topUpAmount,
+          undefined,
+          tx,
+        );
+      }
+
+      return tx.billingChangeRequest.update({
+        where: { id: requestId },
+        data: { status: 'APPROVED', reviewedById: reviewerId, reviewedAt: new Date() },
+      });
     });
 
     await this.auditService.log({
-      organizationId: request.organizationId,
+      organizationId: updated.organizationId,
       actorUserId: reviewerId,
       action: 'console.billing.request.approve',
       targetType: 'BillingChangeRequest',

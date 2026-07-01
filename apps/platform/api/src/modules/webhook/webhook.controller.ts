@@ -6,6 +6,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestj
 import type { RequestContext } from '@wm/shared-core';
 import { ReqCtx } from '../../core/decorators/request-context.decorator';
 import { Permissions } from '../../core/decorators/permissions.decorator';
+import { parsePageLimit } from '../../core/utils/parse-page-limit.util';
 import { WebhookService } from './webhook.service';
 
 @Controller('api/v1/org/webhooks')
@@ -19,9 +20,10 @@ export class OrgWebhookController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
+    const { page: safePage, limit: safeLimit } = parsePageLimit(page, limit);
     const result = await this.webhookService.list(ctx.organizationId, {
-      page: page ? Number(page) : 1,
-      limit: limit ? Number(limit) : 20,
+      page: safePage,
+      limit: safeLimit,
     });
     return {
       data: result.items,
@@ -84,11 +86,12 @@ export class OrgWebhookController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
+    const { page: safePage, limit: safeLimit } = parsePageLimit(page, limit);
     const result = await this.webhookService.listDeliveries(
       ctx.organizationId,
       id,
-      page ? Number(page) : 1,
-      limit ? Number(limit) : 20,
+      safePage,
+      safeLimit,
     );
     return {
       data: result.items,

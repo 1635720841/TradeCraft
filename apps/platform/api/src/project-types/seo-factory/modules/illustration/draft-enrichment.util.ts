@@ -4,6 +4,7 @@
 
 import type { InternalLinkRecord } from '../linking/link-match.util';
 import { countMarkdownImages, type ArticleImageRecord } from './article-image.util';
+import { insertArticleImageMarkdown } from './article-images-edit.util';
 
 export interface DraftEnrichmentInput {
   content: string;
@@ -38,8 +39,12 @@ function reinsertInternalLink(content: string, link: InternalLinkRecord): string
 
 function reinsertArticleImage(content: string, image: ArticleImageRecord): string {
   if (contentHasUrl(content, image.url)) return content;
-  const markdown = `![${image.alt}](${image.url})`;
-  return `${content.trim()}\n\n${markdown}`;
+  return insertArticleImageMarkdown(
+    content,
+    image.alt,
+    image.url,
+    image.insertAfterHeading,
+  );
 }
 
 /** 将 metadata 中的内链/配图补回正文（优化轮次可能已删除 Markdown 语法） */

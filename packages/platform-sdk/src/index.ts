@@ -9,3 +9,4 @@
  */
 
 export * from './project-type-plugin.interface';
+export * from './console-gsc.port';

@@ -127,9 +127,9 @@ export async function listShopifyBlogs(
   }
 ): Promise<ShopifyBlogItem[]> {
   const res = await http.request<WmApiResponse<ShopifyBlogItem[]>>(
-    "post",
+    "get",
     seoFactoryApiPath(projectId, "sites/shopify/blogs"),
-    { data: payload }
+    { params: payload }
   );
   return res.data ?? [];
 }
@@ -144,9 +144,9 @@ export async function listShopifyProducts(
   }
 ): Promise<ShopifyProductItem[]> {
   const res = await http.request<WmApiResponse<ShopifyProductItem[]>>(
-    "post",
+    "get",
     seoFactoryApiPath(projectId, "sites/shopify/products"),
-    { data: payload }
+    { params: payload }
   );
   return res.data ?? [];
 }

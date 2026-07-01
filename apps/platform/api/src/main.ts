@@ -9,7 +9,7 @@
  */
 
 import 'dotenv/config';
-import { validateRequiredEnv } from './core/config/env.validation';
+import { validateRequiredEnv, readCorsOrigins } from './core/config/env.validation';
 import { initHttpDispatcher } from './core/http/http-fetch';
 
 validateRequiredEnv();
@@ -19,6 +19,7 @@ initHttpDispatcher();
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { json, urlencoded } from 'express';
+import helmet from 'helmet';
 import { networkInterfaces } from 'node:os';
 import { AppModule } from './app.module';
 
@@ -41,10 +42,15 @@ const JSON_BODY_LIMIT = process.env.API_JSON_BODY_LIMIT ?? '1mb';
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
 
+  app.use(helmet());
   app.use(json({ limit: JSON_BODY_LIMIT }));
   app.use(urlencoded({ extended: true, limit: JSON_BODY_LIMIT }));
 
-  app.enableCors({ origin: true });
+  const corsOrigin = readCorsOrigins();
+  app.enableCors({
+    origin: corsOrigin,
+    credentials: true,
+  });
 
   app.useGlobalPipes(
     new ValidationPipe({

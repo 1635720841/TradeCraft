@@ -64,7 +64,7 @@ onUnmounted(() => {
 
 <template>
   <el-dropdown trigger="click" placement="bottom-end" @visible-change="v => v && refresh()">
-    <button type="button" class="shell-topbar-action shell-topbar-notice">
+    <button type="button" class="shell-topbar-action shell-topbar-notice" aria-label="通知">
       <el-badge
         :value="noticesNum === 0 ? '' : noticesNum"
         :max="99"

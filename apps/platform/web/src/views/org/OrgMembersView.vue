@@ -29,7 +29,15 @@
         title="本页管理本企业成员与授权。平台运营在 Console 开户时仅创建首位账号；此后增删成员、授予管理员均在此完成。项目内 SEO 能力须在「项目管理 → 成员」中配置。"
       />
 
-      <el-table :data="filteredMembers" stripe>
+      <el-empty
+        v-if="!loading && filteredMembers.length === 0"
+        :description="keyword ? '没有匹配的成员' : '暂无成员'"
+      >
+        <el-button v-if="canCreate && !keyword" type="primary" size="small" @click="openCreate">
+          邀请成员
+        </el-button>
+      </el-empty>
+      <el-table v-else :data="filteredMembers" stripe>
         <el-table-column prop="email" label="邮箱" min-width="180" />
         <el-table-column prop="name" label="姓名" min-width="120">
           <template #default="{ row }">{{ row.name || "-" }}</template>
@@ -268,7 +276,9 @@
               show-icon
             >
               项目权限决定成员能否创建、查看或管理企业项目；SEO
-              业务能力请在各项目的成员设置中单独授权。
+              业务能力请在
+              <router-link to="/org/projects" class="text-primary">项目管理</router-link>
+              中单独授权。
             </el-alert>
             <el-checkbox-group
               :model-value="selectedGrantIds"

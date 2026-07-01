@@ -7,7 +7,8 @@ import type {
   PureHttpError,
   RequestMethods,
   PureHttpResponse,
-  PureHttpRequestConfig
+  PureHttpRequestConfig,
+  HttpRequestConfig
 } from "./types.d";
 import { stringify } from "qs";
 import { getToken, formatToken, removeToken } from "@/utils/auth";
@@ -36,7 +37,10 @@ class PureHttp {
   }
 
   /** `token`过期后，暂存待执行的请求 */
-  private static requests = [];
+  private static requests: Array<{
+    onSuccess: (token: string) => void;
+    onFailure: (error: unknown) => void;
+  }> = [];
 
   /** 防止重复刷新`token` */
   private static isRefreshing = false;
@@ -49,12 +53,25 @@ class PureHttp {
 
   /** 重连原始请求 */
   private static retryOriginalRequest(config: PureHttpRequestConfig) {
-    return new Promise(resolve => {
-      PureHttp.requests.push((token: string) => {
-        config.headers["Authorization"] = formatToken(token);
-        resolve(config);
+    return new Promise((resolve, reject) => {
+      PureHttp.requests.push({
+        onSuccess: (token: string) => {
+          config.headers["Authorization"] = formatToken(token);
+          resolve(config);
+        },
+        onFailure: reject
       });
     });
+  }
+
+  private static flushRequestQueue(token: string) {
+    PureHttp.requests.forEach(cb => cb.onSuccess(token));
+    PureHttp.requests = [];
+  }
+
+  private static rejectRequestQueue(error: unknown) {
+    PureHttp.requests.forEach(cb => cb.onFailure(error));
+    PureHttp.requests = [];
   }
 
   /** 请求拦截 */
@@ -88,8 +105,12 @@ class PureHttp {
                       .then(res => {
                         const token = res.data.accessToken;
                         config.headers["Authorization"] = formatToken(token);
-                        PureHttp.requests.forEach(cb => cb(token));
-                        PureHttp.requests = [];
+                        PureHttp.flushRequestQueue(token);
+                      })
+                      .catch(error => {
+                        PureHttp.rejectRequestQueue(error);
+                        removeToken();
+                        useUserStoreHook().logOut();
                       })
                       .finally(() => {
                         PureHttp.isRefreshing = false;
@@ -145,7 +166,7 @@ class PureHttp {
           if (status === 401 && !isLoginRequest) {
             removeToken();
             useUserStoreHook().logOut();
-          } else {
+          } else if (!(($error.config ?? {}) as PureHttpRequestConfig).skipGlobalErrorToast) {
             message(errMsg, { type: "error" });
           }
         }
@@ -158,7 +179,7 @@ class PureHttp {
   public request<T>(
     method: RequestMethods,
     url: string,
-    param?: AxiosRequestConfig,
+    param?: HttpRequestConfig,
     axiosConfig?: PureHttpRequestConfig
   ): Promise<T> {
     const config = {
@@ -184,7 +205,7 @@ class PureHttp {
   /** 单独抽离的`post`工具函数 */
   public post<T, P>(
     url: string,
-    params?: AxiosRequestConfig<P>,
+    params?: HttpRequestConfig,
     config?: PureHttpRequestConfig
   ): Promise<T> {
     return this.request<T>("post", url, params, config);
@@ -193,7 +214,7 @@ class PureHttp {
   /** 单独抽离的`get`工具函数 */
   public get<T, P>(
     url: string,
-    params?: AxiosRequestConfig<P>,
+    params?: HttpRequestConfig,
     config?: PureHttpRequestConfig
   ): Promise<T> {
     return this.request<T>("get", url, params, config);

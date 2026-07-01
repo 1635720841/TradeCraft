@@ -23,7 +23,10 @@ import {
 import { runAfterCommit } from '../../core/event-bus/run-after-commit';
 import { WEBHOOK_DELIVER_QUEUE } from '../../core/queue/queue.constants';
 import { PrismaService } from '../../core/database/prisma.service';
+import { RedisService } from '../../core/redis/redis.service';
 import type { WebhookDeliverJobData } from './webhook-delivery.processor';
+
+const QUOTA_WEBHOOK_DEDUPE_SEC = 86_400;
 
 @Injectable()
 export class WebhookDispatcherService {
@@ -31,6 +34,7 @@ export class WebhookDispatcherService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
     @InjectQueue(WEBHOOK_DELIVER_QUEUE)
     private readonly webhookQueue: Queue<WebhookDeliverJobData>,
   ) {}
@@ -64,7 +68,17 @@ export class WebhookDispatcherService {
 
   @OnEvent(ORG_QUOTA_LOW_EVENT)
   onQuotaLow(payload: OrgQuotaLowPayload) {
-    runAfterCommit(() => this.dispatch(payload.organizationId, 'org.quota_low', payload));
+    runAfterCommit(() => this.dispatchQuotaLow(payload));
+  }
+
+  private async dispatchQuotaLow(payload: OrgQuotaLowPayload) {
+    const dedupeKey = `webhook:quota_low:${payload.organizationId}`;
+    const client = this.redis.getClient();
+    const set = await client.set(dedupeKey, '1', 'EX', QUOTA_WEBHOOK_DEDUPE_SEC, 'NX');
+    if (set !== 'OK') {
+      return;
+    }
+    await this.dispatch(payload.organizationId, 'org.quota_low', payload);
   }
 
   async dispatch(organizationId: string, event: string, payload: unknown) {

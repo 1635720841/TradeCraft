@@ -71,7 +71,7 @@ export const CONSOLE_PERMISSION_SECTIONS: Array<{
   },
   {
     key: "gsc",
-    label: "搜索表现",
+    label: "GSC 集成",
     match: id => id.startsWith("console:gsc:")
   },
   {

@@ -12,6 +12,7 @@ import {
   type OrganizationType,
 } from '@wm/shared-core';
 import { attachRequestContext, type StoredRequestContext } from '../context/request-context.store';
+import { BYPASS_TENANT_SCOPE_KEY } from '../decorators/bypass-tenant-scope.decorator';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
 import { ROLES_KEY } from '../decorators/roles.decorator';
@@ -79,8 +80,11 @@ export class AuthGuard implements CanActivate {
     const permissions = await this.permissionService.resolveUserPermissions(claims.sub, role);
 
     const path = request.path ?? request.url ?? '';
-    const bypassTenantScope =
-      organizationType === 'PLATFORM' || path.startsWith('/api/v1/console');
+    const handlerBypass = this.reflector.getAllAndOverride<boolean>(BYPASS_TENANT_SCOPE_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    const bypassTenantScope = path.startsWith('/api/v1/console') || handlerBypass === true;
 
     const reqCtx: StoredRequestContext = {
       traceId,

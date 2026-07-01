@@ -45,7 +45,7 @@ import {
  * 如何匹配所有文件请看：https://github.com/mrmlnc/fast-glob#basic-syntax
  * 如何排除文件请看：https://cn.vitejs.dev/guide/features.html#negative-patterns
  */
-const modules: Record<string, any> = import.meta.glob(
+const modules: Record<string, { default: RouteConfigsTable }> = import.meta.glob(
   ["./modules/**/*.ts", "!./modules/**/remaining.ts"],
   {
     eager: true
@@ -53,11 +53,7 @@ const modules: Record<string, any> = import.meta.glob(
 );
 
 /** 原始静态路由（未做任何处理） */
-const routes = [];
-
-Object.keys(modules).forEach(key => {
-  routes.push(modules[key].default);
-});
+const routes = Object.keys(modules).map(key => modules[key].default);
 
 /** 导出处理后的静态路由（三级及以上的路由全部拍成二级） */
 export const constantRoutes: Array<RouteRecordRaw> = formatTwoStageRoutes(
@@ -118,8 +114,8 @@ export function resetRouter() {
   resetLoadedPaths();
 }
 
-/** 路由白名单 */
-const whiteList = ["/login", "/login/callback"];
+/** 路由白名单（未登录可访问） */
+const whiteList = ["/login", "/login/callback", "/invite/accept"];
 
 const { VITE_HIDE_HOME } = import.meta.env;
 
@@ -156,12 +152,13 @@ router.beforeEach((to: ToRouteType, _from, next) => {
   if (Cookies.get(multipleTabsKey) && userInfo) {
     // 无角色权限跳转 403
     if (to.meta?.roles && !isOneOfArray(to.meta?.roles, userInfo?.roles)) {
-      return next({ path: "/error/403" });
+      return next({ path: "/error/403", query: { reason: "role_denied" } });
     }
     // 无功能权限跳转 403
     const routePermission = to.meta?.permission as string | string[] | undefined;
     if (!hasRoutePermission(userInfo, routePermission)) {
-      return next({ path: "/error/403" });
+      const reason = to.path.startsWith("/console") ? "console_denied" : "org_permission";
+      return next({ path: "/error/403", query: { reason } });
     }
     // 开启隐藏首页后在浏览器地址栏手动输入首页welcome路由则跳转到404页面
     if (VITE_HIDE_HOME === "true" && to.fullPath === "/welcome") {

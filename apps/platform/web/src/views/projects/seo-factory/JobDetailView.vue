@@ -7,93 +7,29 @@
 <template>
   <div v-loading="loading && !job" class="job-detail">
     <template v-if="job">
-      <header class="job-detail-top">
-        <div class="job-detail-top__head">
-          <div class="job-detail-top__main">
-            <el-button
-              link
-              type="primary"
-              class="job-detail-top__back"
-              title="返回任务列表"
-              @click="goBack"
-            >
-              <IconifyIconOnline icon="ri:arrow-left-line" />
-            </el-button>
-            <div class="job-detail-top__title-wrap">
-              <div class="job-detail-top__title-row">
-                <h1>{{ job.targetKeyword }}</h1>
-                <el-tag
-                  :type="dictTagType(jobStatusDict, job.status)"
-                  size="small"
-                >
-                  {{ dictLabel(jobStatusDict, job.status) }}
-                </el-tag>
-                <el-tag
-                  v-if="job.searchIntent"
-                  size="small"
-                  :type="dictTagType(keywordIntentDict, job.searchIntent)"
-                >
-                  {{ dictLabel(keywordIntentDict, job.searchIntent) }}
-                </el-tag>
-                <el-tag v-if="polling" type="info" size="small">刷新中</el-tag>
-              </div>
-              <div class="job-detail-top__meta">
-                {{ formatTime(job.createdAt) }}
-                <span v-if="job.updatedAt">
-                  · 更新 {{ formatTime(job.updatedAt) }}</span
-                >
-              </div>
-            </div>
-          </div>
-          <div class="job-detail-top__actions">
-            <el-button
-              v-if="canRetry && canWriteJob"
-              type="primary"
-              size="small"
-              :loading="retrying"
-              @click="handleRetry"
-            >
-              重新生成
-            </el-button>
-            <el-button
-              v-if="job.outputUrl && !exportStale"
-              type="success"
-              size="small"
-              :loading="exportDownloading === 'html'"
-              @click="handleDownloadExport('html')"
-            >
-              下载 HTML
-            </el-button>
-            <el-button
-              v-if="cmsUiEnabled && canPublishToCms && canPublishJob"
-              type="success"
-              size="small"
-              plain
-              :loading="cmsPublishing"
-              @click="handlePublishToCms"
-            >
-              {{ cmsPublishButtonLabel }}
-            </el-button>
-            <el-button
-              v-if="canWriteJob"
-              type="danger"
-              size="small"
-              plain
-              :loading="deleting"
-              @click="handleDelete"
-            >
-              删除
-            </el-button>
-          </div>
-        </div>
-
-        <ArticleJobOutcomeSummaryCard
-          :job="job"
-          @go-diagnose="goDetailTab('diagnose')"
-          @go-section="goDetailTab('diagnose', $event)"
-          @print-report="creationReportOpen = true"
-        />
-      </header>
+      <JobDetailHeader
+        :job="job"
+        :polling="polling"
+        :can-retry="canRetry"
+        :can-write-job="canWriteJob"
+        :retrying="retrying"
+        :export-stale="exportStale"
+        :export-downloading="exportDownloading"
+        :cms-ui-enabled="cmsUiEnabled"
+        :can-publish-to-cms="canPublishToCms"
+        :can-publish-job="canPublishJob"
+        :cms-publishing="cmsPublishing"
+        :cms-publish-button-label="cmsPublishButtonLabel"
+        :deleting="deleting"
+        @back="goBack"
+        @retry="handleRetry"
+        @download-export="handleDownloadExport"
+        @publish-cms="handlePublishToCms"
+        @delete-job="handleDelete"
+        @go-diagnose="goDetailTab('diagnose')"
+        @go-section="goDetailTab('diagnose', $event)"
+        @print-report="creationReportOpen = true"
+      />
 
       <section
         v-if="nextStep"
@@ -374,63 +310,36 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { computed, ref } from "vue";
 import {
   acceptArticleRewrite,
   cancelSemrushCheck,
   discardArticleRewrite,
   deleteArticleJob,
-  patchArticleDraft,
-  resolveArticleDraftStale,
   refreshArticleJobSerp,
   rerunArticleOptimization,
   rerunArticleParaphrase,
   retryArticleJob,
-  rollbackArticleDraft,
   triggerArticleRewrite,
   triggerSemrushCheck
 } from "@/api/seo-factory/article-job";
-import {
-  listJobActivity,
-  type JobActivityItem
-} from "@/api/seo-factory/article-job-activity";
 import type {
   DraftResolveStaleAction,
-  DraftStalenessAffected,
-  ManualEditHistoryEntry,
   RewriteArticleJobPayload
 } from "@/api/seo-factory/types";
-import type { DraftPostSaveAction } from "@/api/seo-factory/types";
 import {
-  previewPendingEditAffected,
-  buildPublishChecklist,
   buildPrePublishChecklist,
   prePublishChecklistAllDone,
-  needsSaveConfirmDialog,
-  resolveQuickSaveAction,
   type PublishChecklistAction
 } from "@/utils/seo-factory/draft-edit-preview";
 import { ElMessageBox } from "element-plus";
-import { useArticleJobPolling } from "@/composables/seo-factory/useArticleJobPolling";
 import { useJobNextStep } from "@/composables/seo-factory/useJobNextStep";
 import { useJobExportActions } from "@/composables/seo-factory/useJobExportActions";
+import { useJobDetail } from "@/composables/seo-factory/useJobDetail";
+import { useJobDraftActions } from "@/composables/seo-factory/useJobDraftActions";
 import { WORDPRESS_CMS_UI_ENABLED } from "@/constants/feature-flags";
 import { message } from "@/utils/message";
-import {
-  jobStatusDict,
-  keywordIntentDict
-} from "@/constants/dicts/seo-factory";
-import {
-  LOCAL_SEO_PASS_THRESHOLD,
-  SEMRUSH_PASS_THRESHOLD
-} from "@/constants/seo-factory";
-import { dictLabel, dictTagType } from "@/utils/dict";
-import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
-import { isBriefPending } from "@/utils/seo-factory/job-progress";
-import { formatWorkflowProgressShort } from "@/utils/seo-factory/workflow-progress";
 import type { DiagnoseSection } from "@/utils/seo-factory/job-detail-summary";
-import { resolveEffectiveLocalSeoScore } from "@/utils/seo-factory/local-seo-display";
 import ArticleJobDetailSidebar from "./components/ArticleJobDetailSidebar.vue";
 import ArticleJobBriefPanel from "./components/ArticleJobBriefPanel.vue";
 import ArticleJobBriefReviewPanel from "./components/ArticleJobBriefReviewPanel.vue";
@@ -445,7 +354,7 @@ import ArticleJobDraftRollbackDialog from "./components/ArticleJobDraftRollbackD
 import ArticleJobDraftSaveDialog from "./components/ArticleJobDraftSaveDialog.vue";
 import ArticleJobDraftStalenessBanner from "./components/ArticleJobDraftStalenessBanner.vue";
 import ArticleJobDraftVersionConflictDialog from "./components/ArticleJobDraftVersionConflictDialog.vue";
-import ArticleJobOutcomeSummaryCard from "./components/ArticleJobOutcomeSummaryCard.vue";
+import JobDetailHeader from "./components/JobDetailHeader.vue";
 import ArticleJobRewriteDrawer from "./components/ArticleJobRewriteDrawer.vue";
 import ArticleJobRewriteResult from "./components/ArticleJobRewriteResult.vue";
 import ArticleJobQuillbotPanel from "./components/ArticleJobQuillbotPanel.vue";
@@ -453,75 +362,7 @@ import ArticleJobQuillbotPanel from "./components/ArticleJobQuillbotPanel.vue";
 defineOptions({ name: "JobDetailView" });
 
 const cmsUiEnabled = WORDPRESS_CMS_UI_ENABLED;
-
-const route = useRoute();
-const router = useRouter();
-const activeTab = ref<"article" | "diagnose" | "brief">("article");
 const creationReportOpen = ref(false);
-const activityItems = ref<JobActivityItem[]>([]);
-const diagnosePanelRef = ref<InstanceType<
-  typeof ArticleJobDiagnosePanel
-> | null>(null);
-
-function goDetailTab(
-  tab: "article" | "diagnose" | "brief",
-  section?: DiagnoseSection
-) {
-  activeTab.value = tab;
-  if (tab === "diagnose" && section) {
-    void nextTick(() => {
-      void nextTick(() => {
-        diagnosePanelRef.value?.scrollToLegacySection(section);
-      });
-    });
-  }
-}
-
-function syncTabFromQuery(tab: unknown) {
-  if (typeof tab !== "string" || !tab) return;
-  if (tab === "draft" || tab === "article") {
-    activeTab.value = "article";
-    return;
-  }
-  if (tab === "brief") {
-    activeTab.value = "brief";
-    return;
-  }
-  const diagnoseSections: Record<string, DiagnoseSection> = {
-    seo: "seo",
-    ymyl: "ymyl",
-    links: "links",
-    images: "images",
-    research: "research",
-    more: "seo",
-    diagnose: "seo"
-  };
-  const section = diagnoseSections[tab];
-  if (section) goDetailTab("diagnose", section);
-}
-
-async function fetchActivity() {
-  if (!projectId.value || !jobId.value) return;
-  try {
-    activityItems.value = await listJobActivity(projectId.value, jobId.value);
-  } catch {
-    activityItems.value = [];
-  }
-}
-
-const projectId = computed(() => route.params.projectId as string);
-const jobId = computed(() => route.params.jobId as string);
-const { can, canReview, canPublish } = useProjectSeoAccess();
-const canWriteJob = computed(() => can("seo:job:create"));
-const canReviewJob = computed(() => canReview());
-const canPublishJob = computed(() => canPublish());
-
-const { job, loading, polling, fetchOnce, startPolling } = useArticleJobPolling(
-  projectId,
-  jobId
-);
-
-const semrushChecking = ref(false);
 const retrying = ref(false);
 const deleting = ref(false);
 const rerunningOptimization = ref(false);
@@ -531,50 +372,103 @@ const rewriteDrawerOpen = ref(false);
 const rewriteSubmitting = ref(false);
 const rewriteAccepting = ref(false);
 const rewriteDiscarding = ref(false);
-const draftViewMode = ref<"preview" | "edit">("preview");
-const draftViewOptions = [
-  { label: "预览", value: "preview" },
-  { label: "编辑", value: "edit" }
-];
-const draftEditorRef = ref<InstanceType<typeof ArticleJobDraftEditor> | null>(
-  null
-);
-const draftSaving = ref(false);
-const draftSaveDialogOpen = ref(false);
-const draftSaveSummary = ref("");
-const pendingEditAffected = ref<DraftStalenessAffected | null>(null);
-const draftRollingBackId = ref<string | null>(null);
-const rollbackDialogOpen = ref(false);
-const rollbackTarget = ref<ManualEditHistoryEntry | null>(null);
-const draftResolving = ref<DraftResolveStaleAction | null>(null);
-const versionConflictOpen = ref(false);
-const pendingSaveAction = ref<DraftPostSaveAction>("refresh_local");
-const pendingGoPreview = ref(false);
-const draftViewModeProxy = computed({
-  get: () => draftViewMode.value,
-  set: (value: "preview" | "edit") => {
-    void switchDraftViewMode(value);
-  }
+
+const {
+  route,
+  projectId,
+  jobId,
+  canWriteJob,
+  canPublishJob,
+  job,
+  loading,
+  polling,
+  fetchOnce,
+  startPolling,
+  activeTab,
+  diagnosePanelRef,
+  goDetailTab,
+  activityItems,
+  semrushChecking,
+  hasDraftContent,
+  rewriteCandidate,
+  draftStaleness,
+  exportStale,
+  draftEditHistory,
+  isSemrushChecking,
+  isRewriting,
+  effectiveLocalSeoScore,
+  localPassThreshold,
+  semrushPassThreshold,
+  ymylReview,
+  requiresHumanReview,
+  gscUnderperformHint,
+  canRerunOptimization,
+  canRerunParaphrase,
+  canRefreshSerp,
+  optimizingProgressMessage,
+  isOptimizingStale,
+  rewriteSuggestions,
+  rewriteBlockedReason,
+  canTriggerRewrite,
+  canRetry,
+  briefPending,
+  calloutIcon,
+  goBack,
+  goSiteManage,
+  handleChecklistGoTab
+} = useJobDetail({
+  isRewriting: rewriteSubmitting,
+  rerunningOptimization,
+  rerunningParaphrase,
+  serpRefreshing,
+  retrying
 });
 
-const hasDraftContent = computed(() => {
-  const content = job.value?.draftData?.content;
-  return Boolean(content && content.trim().length > 0);
+const {
+  draftViewMode,
+  draftViewOptions,
+  draftViewModeProxy,
+  draftEditorRef,
+  draftSaving,
+  draftSaveDialogOpen,
+  draftSaveSummary,
+  pendingEditAffected,
+  draftRollingBackId,
+  rollbackDialogOpen,
+  rollbackTarget,
+  draftResolving,
+  versionConflictOpen,
+  draftEditBlockedReason,
+  canSaveDraftEdit,
+  publishChecklistItems,
+  pendingYmylReReview,
+  switchDraftViewMode,
+  openDraftSaveDialog,
+  handleQuickSave,
+  handleSaveAndPreview,
+  handleVersionConflictRetry,
+  handleConfirmDraftSave,
+  handleResolveDraftStale,
+  handleChecklistAction,
+  handleDraftRollback,
+  submitRollback
+} = useJobDraftActions({
+  route,
+  projectId,
+  jobId,
+  job,
+  fetchOnce,
+  startPolling,
+  hasDraftContent,
+  ymylReview,
+  requiresHumanReview,
+  canWriteJob,
+  rewriteCandidate,
+  isRewriting,
+  isSemrushChecking,
+  draftStaleness,
+  effectiveLocalSeoScore
 });
-
-const semrushPending = computed(
-  () => job.value?.seoCheckData?.semrush?.pending ?? null
-);
-const rewritePending = computed(
-  () => job.value?.draftData?.rewritePending ?? null
-);
-const rewriteCandidate = computed(
-  () => job.value?.draftData?.rewriteCandidate ?? null
-);
-const draftStaleness = computed(() => job.value?.draftData?.staleness ?? null);
-const exportStale = computed(
-  () => draftStaleness.value?.affected?.export === true
-);
 
 const {
   exportDownloading,
@@ -592,191 +486,6 @@ const {
   onPublished: fetchOnce
 });
 
-const draftEditHistory = computed(() =>
-  [...(job.value?.draftData?.manualEditHistory ?? [])].reverse()
-);
-
-const draftEditBlockedReason = computed(() => {
-  if (rewriteCandidate.value) return "请先采纳或放弃 AI 候选版本";
-  if (isRewriting.value) return "AI 重写进行中";
-  if (isSemrushChecking.value) return "Semrush 检测进行中";
-  return "";
-});
-
-const canSaveDraftEdit = computed(
-  () =>
-    canWriteJob.value &&
-    hasDraftContent.value &&
-    !draftEditBlockedReason.value &&
-    !draftSaving.value
-);
-
-watch(draftViewMode, mode => {
-  if (mode === "edit" && draftEditBlockedReason.value) {
-    draftViewMode.value = "preview";
-    message(draftEditBlockedReason.value, { type: "warning" });
-  }
-});
-
-async function switchDraftViewMode(next: "preview" | "edit") {
-  if (next === draftViewMode.value) return;
-
-  if (draftViewMode.value === "edit" && next === "preview") {
-    const editor = draftEditorRef.value;
-    if (editor?.isDirty) {
-      try {
-        await ElMessageBox.confirm(
-          "有未保存的修改，确定离开编辑模式？",
-          "未保存修改",
-          {
-            type: "warning",
-            confirmButtonText: "离开",
-            cancelButtonText: "继续编辑"
-          }
-        );
-      } catch {
-        return;
-      }
-    }
-  }
-
-  if (next === "edit" && draftEditBlockedReason.value) {
-    message(draftEditBlockedReason.value, { type: "warning" });
-    return;
-  }
-
-  draftViewMode.value = next;
-}
-
-watch(
-  () => job.value?.briefData?.approvalStatus,
-  status => {
-    if (status === "pending") goDetailTab("brief");
-  },
-  { immediate: true }
-);
-
-watch(
-  () => route.query,
-  query => {
-    syncTabFromQuery(query.tab);
-    if (query.edit === "1" && hasDraftContent.value)
-      draftViewMode.value = "edit";
-  },
-  { immediate: true }
-);
-
-watch(
-  () => job.value,
-  j => {
-    if (!j || route.query.tab) return;
-    if (isBriefPending(j)) {
-      activeTab.value = "brief";
-    } else if (j.draftData?.content?.trim()) {
-      activeTab.value = "article";
-    }
-  },
-  { immediate: true }
-);
-
-watch(
-  () => [projectId.value, jobId.value] as const,
-  () => void fetchActivity(),
-  { immediate: true }
-);
-
-const gscUnderperformHint = computed(
-  () => route.query.gsc === "underperform" && job.value?.status === "COMPLETED"
-);
-
-const canRerunOptimization = computed(() => {
-  if (!job.value || rerunningOptimization.value) return false;
-  if (job.value.status !== "COMPLETED") return false;
-  if (!hasDraftContent.value) return false;
-  if (isSemrushChecking.value || isRewriting.value) return false;
-  return true;
-});
-
-const canRerunParaphrase = computed(() => {
-  if (!job.value || rerunningParaphrase.value) return false;
-  if (job.value.status !== "COMPLETED") return false;
-  if (!hasDraftContent.value) return false;
-  if (
-    isSemrushChecking.value ||
-    isRewriting.value ||
-    rerunningOptimization.value
-  )
-    return false;
-  return true;
-});
-
-const canRefreshSerp = computed(() => {
-  if (!job.value || serpRefreshing.value) return false;
-  if (job.value.status === "QUEUED" || job.value.status === "RESEARCHING")
-    return false;
-  return true;
-});
-
-onMounted(() => {
-  syncTabFromQuery(route.query.tab);
-  if (route.query.edit === "1" && hasDraftContent.value)
-    draftViewMode.value = "edit";
-});
-
-const isSemrushChecking = computed(
-  () =>
-    semrushChecking.value ||
-    Boolean(semrushPending.value) ||
-    job.value?.status === "OPTIMIZING"
-);
-
-const isRewriting = computed(
-  () => rewriteSubmitting.value || Boolean(rewritePending.value)
-);
-
-const workflowProgress = computed(
-  () => job.value?.seoCheckData?.workflowProgress ?? null
-);
-
-const effectiveLocalSeoScore = computed(() =>
-  resolveEffectiveLocalSeoScore(job.value)
-);
-
-const localPassThreshold = computed(
-  () =>
-    job.value?.siteWorkflow?.localPassThreshold ??
-    job.value?.seoCheckData?.scoreThresholds?.localPassThreshold ??
-    LOCAL_SEO_PASS_THRESHOLD
-);
-
-const semrushPassThreshold = computed(
-  () =>
-    job.value?.siteWorkflow?.semrushPassThreshold ??
-    job.value?.seoCheckData?.scoreThresholds?.semrushPassThreshold ??
-    SEMRUSH_PASS_THRESHOLD
-);
-
-const ymylReview = computed(() => job.value?.seoCheckData?.ymylReview ?? null);
-
-const requiresHumanReview = computed(
-  () => ymylReview.value?.requires_human_review === true
-);
-
-const publishChecklistItems = computed(() =>
-  buildPublishChecklist({
-    staleness: draftStaleness.value,
-    localSeoScore: effectiveLocalSeoScore.value,
-    outputUrl: job.value?.outputUrl,
-    ymylReview: ymylReview.value,
-    semrushRunning: isSemrushChecking.value,
-    resolvingAction: draftResolving.value,
-    contentScore: job.value?.seoCheckData?.contentScore,
-    draftContent: job.value?.draftData?.content ?? "",
-    reduceRpaEnabled:
-      job.value?.seoCheckData?.calibration?.reduceRpaEnabled === true
-  })
-);
-
 const prePublishChecklistItems = computed(() => {
   if (!job.value) return [];
   return buildPrePublishChecklist({
@@ -791,80 +500,6 @@ const prePublishChecklistItems = computed(() => {
 
 const prePublishReady = computed(() =>
   prePublishChecklistAllDone(prePublishChecklistItems.value)
-);
-
-const pendingYmylReReview = computed(() => {
-  if (!requiresHumanReview.value) return false;
-  if (ymylReview.value?.humanReviewStatus !== "approved") return false;
-  return pendingEditAffected.value?.ymyl === true;
-});
-
-function calloutIcon(type: "success" | "warning" | "info" | "error") {
-  const icons = {
-    success: "ri:checkbox-circle-line",
-    warning: "ri:alert-line",
-    info: "ri:information-line",
-    error: "ri:error-warning-line"
-  };
-  return icons[type];
-}
-
-const optimizingProgressMessage = computed(() => {
-  if (job.value?.status === "REVIEWING") return "YMYL 内容审查中…";
-  if (job.value?.status === "LINKING")
-    return "站内内链植入中（Semrush 终检前）…";
-  if (job.value?.status === "ILLUSTRATING")
-    return "正文配图补足中（Semrush 终检前）…";
-  if (job.value?.status !== "OPTIMIZING") return "";
-  const progressText = formatWorkflowProgressShort(workflowProgress.value);
-  if (progressText) return progressText;
-  if (semrushPending.value) return "Semrush 终检中（手动触发，约 2–5 分钟）…";
-  return "工作流优化中（本地预检 + Semrush 终检，全程约 5–20 分钟）…";
-});
-
-const isOptimizingStale = computed(() => {
-  if (job.value?.status !== "OPTIMIZING") return false;
-
-  const pendingStarted = semrushPending.value?.startedAt;
-  if (pendingStarted) {
-    const started = Date.parse(pendingStarted);
-    if (Number.isNaN(started)) return true;
-    return Date.now() - started > 5 * 60 * 1000;
-  }
-
-  const touchAt = workflowProgress.value?.updatedAt ?? job.value?.updatedAt;
-  if (!touchAt) return false;
-  const touched = Date.parse(touchAt);
-  if (Number.isNaN(touched)) return true;
-  return Date.now() - touched > 8 * 60 * 1000;
-});
-
-const rewriteSuggestions = computed(() => {
-  const local = job.value?.seoCheckData?.local?.suggestions ?? [];
-  const semrush = job.value?.seoCheckData?.semrush?.suggestions ?? [];
-  return [...new Set([...local, ...semrush].filter(Boolean))];
-});
-
-const rewriteBlockedReason = computed(() => {
-  if (rewriteCandidate.value) return "请先采纳或放弃当前 AI 候选版本";
-  if (isSemrushChecking.value) return "Semrush 检测进行中，请稍后再试";
-  return "";
-});
-
-const canTriggerRewrite = computed(
-  () =>
-    hasDraftContent.value &&
-    !rewriteCandidate.value &&
-    !isRewriting.value &&
-    !isSemrushChecking.value
-);
-
-const canRetry = computed(
-  () => canWriteJob.value && job.value?.status === "FAILED" && !retrying.value
-);
-
-const briefPending = computed(() =>
-  job.value ? isBriefPending(job.value) : false
 );
 
 const nextStep = useJobNextStep({
@@ -1091,32 +726,6 @@ async function handleDiscardRewrite() {
   }
 }
 
-async function handleResolveDraftStale(action: DraftResolveStaleAction) {
-  if (draftResolving.value) return;
-
-  draftResolving.value = action;
-  try {
-    await resolveArticleDraftStale(projectId.value, jobId.value, action);
-    const labels: Record<DraftResolveStaleAction, string> = {
-      refresh_local: "本地 SEO 已重算",
-      rerun_semrush: "Semrush 终检已启动",
-      regenerate_export: "导出物已重新生成"
-    };
-    message(labels[action], { type: "success" });
-    if (action === "rerun_semrush") startPolling();
-    await fetchOnce();
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : "操作失败";
-    message(msg, { type: "error" });
-  } finally {
-    draftResolving.value = null;
-  }
-}
-
-function handleChecklistAction(action: DraftResolveStaleAction) {
-  void handleResolveDraftStale(action);
-}
-
 function handlePrePublishChecklistAction(
   action: Exclude<
     PublishChecklistAction,
@@ -1132,188 +741,5 @@ function handlePrePublishChecklistAction(
     return;
   }
   void handleResolveDraftStale(action as DraftResolveStaleAction);
-}
-
-function handleChecklistGoTab(tab: "internalLinks" | "images") {
-  goDetailTab("diagnose", tab === "internalLinks" ? "links" : "images");
-}
-
-function goSiteManage() {
-  router.push({
-    name: "SeoFactorySites",
-    params: { projectId: projectId.value }
-  });
-}
-
-function extractApiErrorCode(error: unknown): string | undefined {
-  if (!error || typeof error !== "object") return undefined;
-  const response = (
-    error as { response?: { data?: { error?: { code?: string } } } }
-  ).response;
-  return response?.data?.error?.code;
-}
-
-function openDraftSaveDialog(goPreview = false) {
-  pendingGoPreview.value = goPreview;
-  const editor = draftEditorRef.value;
-  if (!editor || !job.value?.draftData) return;
-
-  const payload = editor.getPayload();
-  const before = job.value.draftData;
-  const affected = previewPendingEditAffected(before, payload);
-  if (!affected) {
-    message("内容无变更", { type: "warning" });
-    return;
-  }
-
-  const parts: string[] = [];
-  if (affected.export) parts.push("导出物");
-  if (affected.localSeo) parts.push("本地 SEO 分");
-  draftSaveSummary.value = `将保存对${parts.length ? parts.join("、") : "稿件"}的修改。`;
-  pendingEditAffected.value = affected;
-  draftSaveDialogOpen.value = true;
-}
-
-function handleQuickSave() {
-  void runDraftSave({ goPreview: false, forceDialog: false });
-}
-
-function handleSaveAndPreview() {
-  void runDraftSave({ goPreview: true, forceDialog: false });
-}
-
-async function runDraftSave(options: {
-  goPreview: boolean;
-  forceDialog: boolean;
-}) {
-  const editor = draftEditorRef.value;
-  if (!editor || !job.value?.draftData) return;
-
-  const payload = editor.getPayload();
-  const before = job.value.draftData;
-  const affected = previewPendingEditAffected(before, payload);
-  if (!affected) {
-    message("内容无变更", { type: "warning" });
-    return;
-  }
-
-  const ymylWasApproved = ymylReview.value?.humanReviewStatus === "approved";
-  if (
-    options.forceDialog ||
-    needsSaveConfirmDialog(before, payload, { ymylWasApproved })
-  ) {
-    pendingGoPreview.value = options.goPreview;
-    openDraftSaveDialog();
-    return;
-  }
-
-  await submitDraftSave(resolveQuickSaveAction(affected), {
-    goPreview: options.goPreview
-  });
-}
-
-async function submitDraftSave(
-  postSaveAction: DraftPostSaveAction,
-  options?: { goPreview?: boolean }
-) {
-  const editor = draftEditorRef.value;
-  if (!editor || !job.value?.draftData || draftSaving.value) return;
-
-  const payload = editor.getPayload();
-  draftSaving.value = true;
-  try {
-    await patchArticleDraft(projectId.value, jobId.value, {
-      ...payload,
-      contentVersion: job.value.draftData.contentVersion ?? 0,
-      postSaveAction
-    });
-    draftSaveDialogOpen.value = false;
-    editor.markSaved();
-    if (options?.goPreview) {
-      await switchDraftViewMode("preview");
-    }
-    message(
-      postSaveAction === "rerun_from_optimizing"
-        ? "已保存，正在重算 SEO / Semrush…"
-        : postSaveAction === "refresh_local"
-          ? "已保存，正在重算本地 SEO…"
-          : "稿件已保存",
-      { type: "success" }
-    );
-    if (postSaveAction === "rerun_from_optimizing") startPolling();
-    await fetchOnce();
-  } catch (error) {
-    if (extractApiErrorCode(error) === "DRAFT_VERSION_CONFLICT") {
-      pendingSaveAction.value = postSaveAction;
-      pendingGoPreview.value = options?.goPreview ?? false;
-      versionConflictOpen.value = true;
-      return;
-    }
-    const msg = error instanceof Error ? error.message : "保存失败";
-    message(msg, { type: "error" });
-  } finally {
-    draftSaving.value = false;
-  }
-}
-
-async function handleVersionConflictRetry() {
-  versionConflictOpen.value = false;
-  await fetchOnce();
-  await submitDraftSave(pendingSaveAction.value, {
-    goPreview: pendingGoPreview.value
-  });
-}
-
-async function handleConfirmDraftSave(postSaveAction: DraftPostSaveAction) {
-  pendingSaveAction.value = postSaveAction;
-  await submitDraftSave(postSaveAction, { goPreview: pendingGoPreview.value });
-}
-
-function handleDraftRollback(historyId: string) {
-  if (draftRollingBackId.value || draftSaving.value) return;
-
-  const entry = job.value?.draftData?.manualEditHistory?.find(
-    item => item.id === historyId
-  );
-  if (!entry) return;
-
-  rollbackTarget.value = entry;
-  rollbackDialogOpen.value = true;
-}
-
-async function submitRollback() {
-  if (!rollbackTarget.value || draftRollingBackId.value) return;
-
-  const historyId = rollbackTarget.value.id;
-  draftRollingBackId.value = historyId;
-  try {
-    await rollbackArticleDraft(
-      projectId.value,
-      jobId.value,
-      historyId,
-      "refresh_local"
-    );
-    rollbackDialogOpen.value = false;
-    rollbackTarget.value = null;
-    message("已回滚至历史版本", { type: "success" });
-    await switchDraftViewMode("preview");
-    await fetchOnce();
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : "回滚失败";
-    message(msg, { type: "error" });
-  } finally {
-    draftRollingBackId.value = null;
-  }
-}
-
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleString("zh-CN");
-}
-
-function goBack() {
-  router.push({
-    name: "SeoFactoryJobs",
-    params: { projectId: projectId.value }
-  });
 }
 </script>

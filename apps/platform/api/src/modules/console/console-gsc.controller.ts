@@ -2,20 +2,21 @@
  * Console GSC 集成管理 HTTP 入口（平台管理员统一授权与站点绑定）。
  */
 
-import { Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Controller, Get, Inject, Param, Post, Query } from '@nestjs/common';
 import type { RequestContext } from '@wm/shared-core';
 import { Role } from '@wm/shared-core';
 import { ReqCtx } from '../../core/decorators/request-context.decorator';
 import { Permissions } from '../../core/decorators/permissions.decorator';
 import { Roles } from '../../core/decorators/roles.decorator';
 import { AuditService } from '../access/audit.service';
-import { GscService } from '../../project-types/seo-factory/modules/gsc/gsc.service';
+import { CONSOLE_GSC_PORT, type ConsoleGscPort } from './console-gsc.port';
+import { parsePageLimit } from '../../core/utils/parse-page-limit.util';
 
 @Controller('api/v1/console/gsc')
 @Roles(Role.SUPER_ADMIN, Role.PLATFORM_OPERATOR)
 export class ConsoleGscController {
   constructor(
-    private readonly gscService: GscService,
+    @Inject(CONSOLE_GSC_PORT) private readonly gscService: ConsoleGscPort,
     private readonly auditService: AuditService,
   ) {}
 
@@ -51,14 +52,15 @@ export class ConsoleGscController {
   @Permissions('console:gsc:manage')
   async listSites(
     @ReqCtx() ctx: RequestContext,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
+    @Query('page') pageStr?: string,
+    @Query('limit') limitStr?: string,
     @Query('keyword') keyword?: string,
     @Query('connected') connected?: 'true' | 'false',
   ) {
+    const pagination = parsePageLimit(pageStr, limitStr);
     const result = await this.gscService.listConsoleSites({
-      page: page ? Number(page) : 1,
-      limit: limit ? Number(limit) : 20,
+      page: pagination.page,
+      limit: pagination.limit,
       keyword,
       connected,
     });

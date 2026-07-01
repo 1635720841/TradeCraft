@@ -10,6 +10,7 @@
 
 import {
   Body,
+  GoneException,
   Controller,
   Delete,
   Get,
@@ -34,6 +35,7 @@ import { ImportGscKeywordsDto } from './dto/import-gsc-keywords.dto';
 import { UpdateKeywordDto } from './dto/update-keyword.dto';
 import { BatchDeleteKeywordsDto } from './dto/batch-delete-keywords.dto';
 import { KeywordPoolService } from './keyword-pool.service';
+import { parsePageLimit } from '../../../../core/utils/parse-page-limit.util';
 import { seoFactoryRoutes } from '../../constants/seo-factory-routes';
 
 @Controller(seoFactoryRoutes('keywords'))
@@ -65,14 +67,15 @@ export class KeywordPoolController {
     @Query('gscVerified') gscVerified?: string,
   ) {
     await this.projectService.assertSeoKeywordRead(ctx.organizationId, projectId, ctx);
+    const { page: safePage, limit: safeLimit } = parsePageLimit(page, limit);
     const isQueueable = queueable === '1' || queueable === 'true';
     const excludeArchivedFlag =
       excludeArchived === '0' || excludeArchived === 'false'
         ? false
         : !status && !isQueueable;
     const result = await this.keywordPoolService.findMany(ctx.organizationId, projectId, {
-      page: page ? Number(page) : 1,
-      limit: limit ? Number(limit) : 20,
+      page: safePage,
+      limit: safeLimit,
       status,
       intent,
       clusterId,
@@ -179,15 +182,13 @@ export class KeywordPoolController {
   async generateSeeds(
     @ReqCtx() ctx: RequestContext,
     @Param('projectId') projectId: string,
-    @Body() dto: GenerateKeywordSeedsDto,
+    @Body() _dto: GenerateKeywordSeedsDto,
   ) {
     await this.projectService.assertSeoKeywordManage(ctx.organizationId, projectId, ctx);
-    const data = await this.keywordPoolService.generateSeeds(
-      ctx.organizationId,
-      projectId,
-      dto,
-    );
-    return { data, meta: { traceId: ctx.traceId } };
+    throw new GoneException({
+      code: 'ENDPOINT_DEPRECATED',
+      message: '该接口已废弃，请使用 generate-seeds/preview 与 generate-seeds/confirm',
+    });
   }
 
   @Post('enrich-metrics')

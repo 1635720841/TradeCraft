@@ -11,6 +11,7 @@
 import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import { KeywordStatus } from '@prisma/client';
 import { PrismaService } from '../../../../core/database/prisma.service';
+import { softDeleteTimestamp } from '../../../../core/prisma/prisma-soft-delete.extension';
 import { BusinessException } from '../../../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import type { AssignKeywordsToClusterDto } from './dto/assign-keywords-to-cluster.dto';
@@ -254,7 +255,10 @@ export class KeywordClusterService {
         where: { organizationId, projectId, clusterId: id },
         data: { clusterId: null },
       }),
-      this.prisma.keywordCluster.delete({ where: { id } }),
+      this.prisma.keywordCluster.update({
+        where: { id },
+        data: { deletedAt: softDeleteTimestamp() },
+      }),
     ]);
 
     return { deleted: true };

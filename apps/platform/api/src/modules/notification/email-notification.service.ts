@@ -46,8 +46,11 @@ export class EmailNotificationService {
 
     const host = process.env.SMTP_HOST?.trim();
     if (!host) {
-      this.logger.info('Notification email skipped (SMTP_HOST unset)', {
-        action: 'notification.email.skipped',
+      const nodeEnv = process.env.NODE_ENV ?? 'development';
+      const action = nodeEnv === 'production' ? 'notification.email.misconfigured' : 'notification.email.skipped';
+      const logFn = nodeEnv === 'production' ? this.logger.warn.bind(this.logger) : this.logger.info.bind(this.logger);
+      logFn('Notification email skipped (SMTP_HOST unset)', {
+        action,
         subject: input.subject,
         recipientCount: recipients.length,
       });

@@ -11,6 +11,7 @@
 import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 import { normalizeContentLanguage } from '@wm/shared-core';
+import { softDeleteTimestamp } from '../../../../core/prisma/prisma-soft-delete.extension';
 import { BusinessException } from '../../../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { PrismaService } from '../../../../core/database/prisma.service';
@@ -110,16 +111,21 @@ export class ArticleJobService {
 
     const scraperOptions = this.buildScraperOptions(dto, serpCountry);
 
-    await this.queueService.enqueueArticleJob(
-      {
-        jobId: job.id,
+    try {
+      await this.queueService.enqueueArticleJob(
+        {
+          jobId: job.id,
+          traceId,
+          organizationId,
+          projectId,
+          scraperOptions,
+        },
         traceId,
-        organizationId,
-        projectId,
-        scraperOptions,
-      },
-      traceId,
-    );
+      );
+    } catch (error) {
+      await this.compensateEnqueueFailure(job.id, '入队失败，请稍后重试');
+      throw error;
+    }
 
     this.logger.info('Article job created and enqueued', {
       traceId,
@@ -474,6 +480,8 @@ export class ArticleJobService {
       throw new BusinessException(ErrorCodes.VALIDATION_ERROR, '仅已完成任务可重新润色');
     }
 
+    await this.billingService.assertArticleQuota(organizationId, 1);
+
     const draft = job.draftData as { content?: string; paraphraseApplied?: boolean } | null;
     if (!draft?.content?.trim()) {
       throw new BusinessException(ErrorCodes.VALIDATION_ERROR, '初稿正文为空，无法重新润色');
@@ -498,16 +506,21 @@ export class ArticleJobService {
       },
     });
 
-    await this.queueService.enqueueArticleJob(
-      {
-        jobId: job.id,
-        traceId: retryTraceId,
-        organizationId,
-        projectId,
-        resumeFrom: 'paraphrasing',
-      },
-      `rerun_para_${job.id}_${Date.now()}`,
-    );
+    try {
+      await this.queueService.enqueueArticleJob(
+        {
+          jobId: job.id,
+          traceId: retryTraceId,
+          organizationId,
+          projectId,
+          resumeFrom: 'paraphrasing',
+        },
+        `rerun_para_${job.id}_${Date.now()}`,
+      );
+    } catch (error) {
+      await this.compensateEnqueueFailure(job.id, '入队失败，请稍后重试');
+      throw error;
+    }
 
     this.logger.info('Article job paraphrase rerun enqueued', {
       traceId: retryTraceId,
@@ -550,6 +563,8 @@ export class ArticleJobService {
       throw new BusinessException(ErrorCodes.VALIDATION_ERROR, '仅失败状态的任务可重试');
     }
 
+    await this.billingService.assertArticleQuota(organizationId, 1);
+
     const resumeFrom = resolveResumeStep(job);
     const retryTraceId = `tr_${uuidv4()}`;
     const retryScraperOptions = buildArticleJobScraperOptions(getArticleJobConfig(job.seoCheckData));
@@ -573,17 +588,22 @@ export class ArticleJobService {
       },
     });
 
-    await this.queueService.enqueueArticleJob(
-      {
-        jobId: job.id,
-        traceId: retryTraceId,
-        organizationId,
-        projectId,
-        resumeFrom,
-        scraperOptions: retryScraperOptions,
-      },
-      `retry_${job.id}_${Date.now()}`,
-    );
+    try {
+      await this.queueService.enqueueArticleJob(
+        {
+          jobId: job.id,
+          traceId: retryTraceId,
+          organizationId,
+          projectId,
+          resumeFrom,
+          scraperOptions: retryScraperOptions,
+        },
+        `retry_${job.id}_${Date.now()}`,
+      );
+    } catch (error) {
+      await this.compensateEnqueueFailure(job.id, '入队失败，请稍后重试');
+      throw error;
+    }
 
     this.logger.info('Article job retry enqueued', {
       traceId: retryTraceId,
@@ -629,8 +649,10 @@ export class ArticleJobService {
 
     await this.cleanupBeforeDelete(organizationId, projectId, job);
 
-    await this.prisma.articleJob.delete({
+    const deletedAt = softDeleteTimestamp();
+    await this.prisma.articleJob.update({
       where: { id: job.id },
+      data: { deletedAt },
     });
 
     this.logger.info('Article job deleted', {
@@ -871,5 +893,12 @@ export class ArticleJobService {
   private getSemrushPending(seoCheckData: unknown): SemrushCheckPending | null {
     const data = (seoCheckData ?? {}) as { semrush?: { pending?: SemrushCheckPending } };
     return data.semrush?.pending ?? null;
+  }
+
+  private async compensateEnqueueFailure(jobId: string, errorMessage: string): Promise<void> {
+    await this.prisma.articleJob.update({
+      where: { id: jobId },
+      data: { status: 'FAILED', errorMessage },
+    });
   }
 }

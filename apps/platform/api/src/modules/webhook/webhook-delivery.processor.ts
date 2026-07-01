@@ -32,6 +32,8 @@ export class WebhookDeliveryProcessor extends WorkerHost {
     const body = JSON.stringify({ event, payload, timestamp: new Date().toISOString() });
     const signature = createHmac('sha256', secret).update(body).digest('hex');
 
+    let deliveryLogged = false;
+
     try {
       const res = await fetch(url, {
         method: 'POST',
@@ -41,8 +43,14 @@ export class WebhookDeliveryProcessor extends WorkerHost {
           'X-MW-Event': event,
         },
         body,
+        redirect: 'manual',
         signal: AbortSignal.timeout(10_000),
       });
+
+      const isRedirect = res.status >= 300 && res.status < 400;
+      if (isRedirect) {
+        throw new Error(`Webhook redirect blocked (HTTP ${res.status})`);
+      }
 
       await this.prisma.webhookDeliveryLog.create({
         data: {
@@ -54,21 +62,24 @@ export class WebhookDeliveryProcessor extends WorkerHost {
           errorMessage: res.ok ? null : (await res.text().catch(() => 'HTTP error')).slice(0, 500),
         },
       });
+      deliveryLogged = true;
 
       if (!res.ok) {
         throw new Error(`Webhook HTTP ${res.status}`);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      await this.prisma.webhookDeliveryLog.create({
-        data: {
-          organizationId,
-          webhookId,
-          event,
-          success: false,
-          errorMessage: message.slice(0, 500),
-        },
-      });
+      if (!deliveryLogged) {
+        await this.prisma.webhookDeliveryLog.create({
+          data: {
+            organizationId,
+            webhookId,
+            event,
+            success: false,
+            errorMessage: message.slice(0, 500),
+          },
+        });
+      }
       this.logger.warn('Webhook delivery failed', {
         action: 'webhook.deliver.failed',
         webhookId,

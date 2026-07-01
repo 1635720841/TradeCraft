@@ -21,6 +21,7 @@ import { JwtTokenService } from './jwt-token.service';
 import type { LoginDto } from './dto/login.dto';
 import { LogtoAuthService, type LogtoIdentity } from './logto/logto-auth.service';
 import { isLocalLoginAllowed } from './logto/logto.config';
+import { buildTrialOrganizationCreateData } from '../billing/build-trial-organization.util';
 
 export interface AuthSessionPayload {
   accessToken: string;
@@ -297,7 +298,7 @@ export class AuthService {
     }
 
     const org = await this.prisma.organization.create({
-      data: { name: `${email} 的企业`, type: 'CUSTOMER' },
+      data: buildTrialOrganizationCreateData(`${email} 的企业`),
     });
 
     return this.prisma.user.create({
@@ -358,10 +359,10 @@ export class AuthService {
     }
 
     const org = await this.prisma.organization.create({
-      data: {
-        name: input.organizationName ?? `${email} 的企业`,
-        type: input.organizationType ?? 'CUSTOMER',
-      },
+      data: buildTrialOrganizationCreateData(
+        input.organizationName ?? `${email} 的企业`,
+        input.organizationType ?? 'CUSTOMER',
+      ),
     });
 
     const user = await this.prisma.user.create({

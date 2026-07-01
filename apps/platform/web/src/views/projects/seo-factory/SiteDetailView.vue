@@ -5,7 +5,25 @@
   - 不负责：项目级流程调参（ProjectSettingsView）
 -->
 <template>
-  <div v-loading="pageLoading" class="p-4 space-y-4">
+  <div v-loading="pageLoading && !loadError" class="p-4 space-y-4">
+    <el-alert
+      v-if="loadError"
+      type="error"
+      :closable="false"
+      show-icon
+      class="mb-4"
+      title="站点加载失败"
+      :description="loadError"
+    >
+      <template #default>
+        <div class="mt-2 flex gap-2">
+          <el-button type="primary" size="small" @click="loadSite">重试</el-button>
+          <el-button size="small" @click="goBack">返回站点列表</el-button>
+        </div>
+      </template>
+    </el-alert>
+
+    <template v-if="!loadError">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <div class="flex items-center gap-2">
         <el-button link type="primary" @click="goBack">← 返回站点列表</el-button>
@@ -200,6 +218,7 @@
       :site-id="site.id"
       :site-domain="site.domain"
     />
+    </template>
   </div>
 </template>
 
@@ -238,6 +257,7 @@ const { can } = useProjectSeoAccess();
 const canManageSite = computed(() => can("seo:site:manage"));
 
 const pageLoading = ref(false);
+const loadError = ref("");
 const saving = ref(false);
 const attributionExportDialogVisible = ref(false);
 const site = ref<SiteItem | null>(null);
@@ -364,12 +384,13 @@ function loadFormFromSite(item: SiteItem) {
 
 async function loadSite() {
   pageLoading.value = true;
+  loadError.value = "";
   try {
     site.value = await getSite(projectId, siteId.value);
     loadFormFromSite(site.value);
   } catch (error) {
-    message(error instanceof Error ? error.message : "加载站点失败", { type: "error" });
-    goBack();
+    loadError.value = error instanceof Error ? error.message : "加载站点失败";
+    site.value = null;
   } finally {
     pageLoading.value = false;
   }

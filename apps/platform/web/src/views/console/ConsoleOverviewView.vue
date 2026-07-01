@@ -11,7 +11,13 @@
         </div>
       </template>
 
-      <template v-if="overview">
+      <el-alert v-if="error" type="error" :title="error" show-icon class="mb-4">
+        <template #default>
+          <el-button type="primary" link @click="retryLoad">重试</el-button>
+        </template>
+      </el-alert>
+
+      <template v-if="overview && !error">
         <div>
           <div class="mb-2 font-medium">今日待办</div>
           <el-empty
@@ -72,6 +78,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { ElMessageBox } from "element-plus";
 import {
   approveConsoleBillingRequest,
   getConsoleOverview,
@@ -99,6 +106,7 @@ interface TodoItem {
 }
 
 const loading = ref(false);
+const loadError = ref<string | null>(null);
 const overview = ref<ConsoleOverview | null>(null);
 const billingRequests = ref<BillingChangeRequestItem[]>([]);
 const actingRequestId = ref<string | null>(null);
@@ -140,13 +148,20 @@ async function loadBillingRequests() {
   }
   try {
     billingRequests.value = await listConsoleBillingRequests();
-  } catch (error) {
+  } catch {
     billingRequests.value = [];
-    message((error as Error).message ?? "加载待办失败", { type: "error" });
   }
 }
 
 async function approveRequest(requestId: string) {
+  try {
+    await ElMessageBox.confirm("确认通过该计费申请？通过后将立即生效。", "通过申请", {
+      type: "warning",
+      confirmButtonText: "通过"
+    });
+  } catch {
+    return;
+  }
   actingRequestId.value = requestId;
   try {
     await approveConsoleBillingRequest(requestId);
@@ -158,26 +173,47 @@ async function approveRequest(requestId: string) {
 }
 
 async function rejectRequest(requestId: string) {
+  let reason = "";
+  try {
+    const result = await ElMessageBox.prompt("请填写拒绝原因（可选）", "拒绝申请", {
+      type: "warning",
+      confirmButtonText: "拒绝",
+      inputPlaceholder: "例如：套餐信息有误"
+    });
+    reason = result.value?.trim() ?? "";
+  } catch {
+    return;
+  }
   actingRequestId.value = requestId;
   try {
     await rejectConsoleBillingRequest(requestId);
-    message("已拒绝申请", { type: "success" });
+    message(reason ? `已拒绝：${reason}` : "已拒绝申请", { type: "success" });
     await loadAll();
   } finally {
     actingRequestId.value = null;
   }
 }
 
+const error = computed(() => loadError.value);
+
 async function loadOverview() {
   loading.value = true;
+  loadError.value = null;
   try {
     overview.value = await getConsoleOverview();
-  } catch (error) {
+  } catch (e) {
     overview.value = null;
-    message((error as Error).message ?? "加载概览失败", { type: "error" });
+    loadError.value =
+      e && typeof e === "object" && "message" in e
+        ? String((e as { message?: string }).message)
+        : "加载失败，请稍后重试";
   } finally {
     loading.value = false;
   }
+}
+
+function retryLoad() {
+  void loadAll();
 }
 
 async function loadAll() {

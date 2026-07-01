@@ -30,11 +30,13 @@ import { LinkingModule } from '../linking/linking.module';
 import { ExportModule } from '../export/export.module';
 import { GscModule } from '../gsc/gsc.module';
 import { ScraperModule } from '../scraper/scraper.module';
+import { IllustrationModule } from '../illustration/illustration.module';
 import { ArticleJobInternalLinksService } from './article-job-internal-links.service';
+import { ArticleJobImagesService } from './article-job-images.service';
 import { ArticleJobActivityModule } from './article-job-activity.module';
 
 @Module({
-  imports: [ProjectModule, AccessModule, ArticleJobActivityModule, BillingModule, SeoFactoryQueueModule, SeoCheckerModule, LlmModule, SiteModule, ExportModule, LinkingModule, GscModule, ScraperModule],
+  imports: [ProjectModule, AccessModule, ArticleJobActivityModule, BillingModule, SeoFactoryQueueModule, SeoCheckerModule, LlmModule, SiteModule, ExportModule, LinkingModule, IllustrationModule, GscModule, ScraperModule],
   controllers: [ArticleJobController, ArticleJobCollabController],
   providers: [
     ArticleJobService,
@@ -45,6 +47,7 @@ import { ArticleJobActivityModule } from './article-job-activity.module';
     ArticleJobCollabService,
     ArticleJobBriefService,
     ArticleJobInternalLinksService,
+    ArticleJobImagesService,
     ArticleJobRewriteService,
     ArticleJobDraftEditService,
     ArticleJobDraftImageService,

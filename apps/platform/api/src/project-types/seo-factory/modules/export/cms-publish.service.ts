@@ -17,6 +17,7 @@ import { fetchWithRetry } from '../../../../core/http/http-fetch';
 import { PrismaService } from '../../../../core/database/prisma.service';
 import { LoggerService } from '../../../../core/logger/logger.service';
 import { AuditService } from '../../../../modules/access/audit.service';
+import { EntitlementsService } from '../../../../modules/billing/entitlements.service';
 import { ArticleJobActivityService } from '../article-job/article-job-activity.service';
 import { canPublishArticle } from '../content-review/ymyl-detect.util';
 import {
@@ -115,6 +116,7 @@ export class CmsPublishService {
     private readonly storage: StorageService,
     private readonly shopifyFiles: ShopifyFilesService,
     private readonly auditService: AuditService,
+    private readonly entitlements: EntitlementsService,
     private readonly activityService: ArticleJobActivityService,
   ) {}
 
@@ -126,6 +128,8 @@ export class CmsPublishService {
     dto: PublishArticleJobDto = {},
     actorUserId?: string,
   ): Promise<CmsPublishRecord> {
+    await this.entitlements.assertEntitlement(organizationId, 'cmsPublishEnabled');
+
     const job = await this.loadPublishableJob(organizationId, projectId, jobId);
     const ctx = this.buildPublishContext(job, traceId, organizationId, projectId);
 

@@ -21,7 +21,7 @@ import { ConsoleAccessService } from './console-access.service';
 import { ConsoleService } from './console.service';
 import { ConsoleTenantService } from './console-tenant.service';
 import { ConsoleSiteService } from './console-site.service';
-import { GscModule } from '../../project-types/seo-factory/modules/gsc/gsc.module';
+import { ConsoleGscBridgeModule } from '../../project-types/seo-factory/modules/console-bridge/console-gsc-bridge.module';
 
 @Module({
   imports: [
@@ -29,7 +29,7 @@ import { GscModule } from '../../project-types/seo-factory/modules/gsc/gsc.modul
     AccessModule,
     BillingModule,
     OrganizationModule,
-    GscModule,
+    ConsoleGscBridgeModule,
     BullModule.registerQueue({ name: ARTICLE_JOB_QUEUE }),
     BullModule.registerQueue({ name: PLAYWRIGHT_QUEUE }),
     BullModule.registerQueue({ name: GSC_SYNC_QUEUE }),

@@ -55,6 +55,20 @@
       </div>
     </section>
 
+    <el-alert
+      v-if="contextError"
+      class="mx-4 mt-2"
+      type="error"
+      :closable="false"
+      show-icon
+      title="项目信息加载失败"
+      description="请检查网络后重试，或返回项目列表。"
+    >
+      <template #default>
+        <el-button type="primary" link class="mt-2" @click="loadContext">重试</el-button>
+      </template>
+    </el-alert>
+
     <div class="workbench-body">
       <SeoFactoryWorkbenchNav />
       <main class="workbench-content">
@@ -70,6 +84,7 @@ import { useRoute, useRouter } from "vue-router";
 import { getOrgProject } from "@/api/org/projects";
 import { getSeoFactoryProjectStats } from "@/api/seo-factory/article-job";
 import { provideProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
+import { useUserStoreHook } from "@/store/modules/user";
 import SeoFactoryWorkbenchNav from "./SeoFactoryWorkbenchNav.vue";
 import WorkbenchIcon from "./WorkbenchIcon.vue";
 
@@ -83,9 +98,11 @@ const canCreateJob = computed(() => can("seo:job:create"));
 const canManageSite = computed(() => can("seo:site:manage"));
 const projectName = ref("");
 const siteCount = ref(0);
+const contextError = ref(false);
 
 async function loadContext() {
   if (!projectId.value) return;
+  contextError.value = false;
   try {
     const [project, stats] = await Promise.all([
       getOrgProject(projectId.value),
@@ -94,12 +111,22 @@ async function loadContext() {
     projectName.value = project.name;
     siteCount.value = stats.siteCount;
   } catch {
+    contextError.value = true;
     projectName.value = "";
     siteCount.value = 0;
   }
 }
 
 function goProjects() {
+  if (window.history.length > 1) {
+    router.back();
+    return;
+  }
+  const roles = useUserStoreHook().roles ?? [];
+  if (roles.includes("admin")) {
+    router.push({ name: "OrgProjects" });
+    return;
+  }
   router.push({ name: "Welcome" });
 }
 

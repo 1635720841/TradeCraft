@@ -106,8 +106,15 @@
           />
           <ArticleJobImagesPanel
             v-else-if="pipelineTab === 'images'"
+            :project-id="projectId"
+            :job-id="jobId"
+            :target-keyword="job.targetKeyword"
+            :draft-content="job.draftData?.content"
             :article-images="job.draftData?.articleImages"
             :images-applied="job.draftData?.imagesApplied"
+            :illustration-error="job.draftData?.illustrationError"
+            :job-status="job.status"
+            @updated="emit('updated')"
           />
           <ArticleJobYmylPanel
             v-else

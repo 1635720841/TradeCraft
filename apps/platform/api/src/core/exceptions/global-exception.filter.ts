@@ -19,14 +19,17 @@ import {
 import type { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { LoggerService } from '../logger/logger.service';
+import { readRequestContext } from '../context/request-context.store';
 import { BusinessException } from './business.exception';
 import { ErrorCodes } from './error-codes';
+import { RateLimitException } from './rate-limit.exception';
 
 interface HttpExceptionBody {
   code?: string;
   message?: string | string[];
   error?: string;
   statusCode?: number;
+  retryAfterSec?: number;
 }
 
 @Injectable()
@@ -40,7 +43,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
 
     const traceId = this.resolveTraceId(request);
-    const { status, code, message } = this.resolveException(exception);
+    const reqCtx = readRequestContext(request as unknown as Record<string, unknown>);
+    const { status, code, message, retryAfterSec } = this.resolveException(exception);
 
     this.logException(exception, {
       traceId,
@@ -49,10 +53,21 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       message,
       method: request.method,
       path: request.url,
+      organizationId: reqCtx?.organizationId,
+      userId: reqCtx?.userId,
     });
 
+    if (retryAfterSec != null && retryAfterSec > 0) {
+      response.setHeader('Retry-After', String(retryAfterSec));
+    }
+
     response.status(status).json({
-      error: { code, message, traceId },
+      error: {
+        code,
+        message,
+        traceId,
+        ...(retryAfterSec != null && retryAfterSec > 0 ? { retryAfterSec } : {}),
+      },
     });
   }
 
@@ -68,7 +83,18 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     status: number;
     code: string;
     message: string;
+    retryAfterSec?: number;
   } {
+    if (exception instanceof RateLimitException) {
+      const body = exception.getResponse() as { message?: string; retryAfterSec?: number };
+      return {
+        status: exception.getStatus(),
+        code: exception.code,
+        message: body.message ?? '请求过于频繁，请稍后重试',
+        retryAfterSec: exception.retryAfterSec ?? body.retryAfterSec,
+      };
+    }
+
     if (exception instanceof BusinessException) {
       const body = exception.getResponse() as { message?: string };
       return {
@@ -90,6 +116,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             status,
             code: err.code,
             message: this.normalizeMessage(err.message) ?? exception.message,
+            retryAfterSec: err.retryAfterSec,
           };
         }
 
@@ -170,6 +197,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       message: string;
       method: string;
       path: string;
+      organizationId?: string;
+      userId?: string;
     },
   ): void {
     const payload = {
@@ -180,6 +209,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       method: ctx.method,
       path: ctx.path,
       clientMessage: ctx.message,
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
     };
 
     if (exception instanceof BusinessException) {

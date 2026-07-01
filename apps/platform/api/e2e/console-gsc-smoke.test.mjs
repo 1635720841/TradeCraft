@@ -65,6 +65,23 @@ describe('E2E console GSC smoke', () => {
     assert.equal(result.meta.pagination.page, 1);
   });
 
+  it('platform operator can list GSC sites with connected filter', async (t) => {
+    const session = requireCtx(t, consoleCtx);
+    if (!session) return;
+
+    const result = await apiRequest(
+      'GET',
+      '/api/v1/console/gsc/sites?page=1&limit=5&connected=false',
+      { token: session.accessToken },
+    );
+
+    assert.ok(Array.isArray(result.data), '应返回站点列表');
+    assert.ok(result.meta?.pagination, '应包含分页 meta');
+    for (const row of result.data) {
+      assert.equal(row.connected, false);
+    }
+  });
+
   it('org admin cannot access console GSC status', async (t) => {
     if (E2E_SKIP) {
       t.skip('E2E_SKIP=true');

@@ -916,8 +916,8 @@ export class OpenAiCompatibleAdapter implements ILLMProvider {
     const parsed = await this.chatJson<{ passed?: boolean; warnings?: string[] }>(
       userContent,
       'validateParaphrase',
-      resolveLlmSampling('default'),
-      'default',
+      resolveLlmSampling('optimize'),
+      'optimize',
     );
 
     const warnings = Array.isArray(parsed.warnings)

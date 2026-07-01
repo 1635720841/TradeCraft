@@ -1,5 +1,5 @@
 /**
- * 应用层密钥加密（AES-256-GCM，密钥由 AUTH_JWT_SECRET 派生）。
+ * 应用层密钥加密（AES-256-GCM，密钥由 SECRET_CIPHER_KEY 或 AUTH_JWT_SECRET 派生）。
  *
  * 边界：
  * - 不负责：KMS / 信封加密（后续可替换实现）
@@ -16,17 +16,20 @@ const IV_LENGTH = 12;
 const PREFIX = 'v1';
 
 function resolveCipherKey(): Buffer {
-  const secret = process.env.AUTH_JWT_SECRET?.trim();
+  const cipherKey = process.env.SECRET_CIPHER_KEY?.trim();
+  const jwtSecret = process.env.AUTH_JWT_SECRET?.trim();
   const nodeEnv = process.env.NODE_ENV ?? 'development';
+  const secret = cipherKey || jwtSecret;
 
   if (!secret) {
     if (nodeEnv === 'production') {
-      throw new Error('生产环境必须设置 AUTH_JWT_SECRET 以加密敏感凭证');
+      throw new Error('生产环境必须设置 SECRET_CIPHER_KEY（或过渡期 AUTH_JWT_SECRET）以加密敏感凭证');
     }
     return scryptSync('dev-secret-cipher-key', 'wm-platform', KEY_LENGTH);
   }
 
-  return scryptSync(secret, 'wm-platform-secret-cipher', KEY_LENGTH);
+  const salt = cipherKey ? 'wm-platform-secret-cipher-v2' : 'wm-platform-secret-cipher';
+  return scryptSync(secret, salt, KEY_LENGTH);
 }
 
 /** 加密明文密钥，输出 v1:iv:tag:ciphertext（base64url） */
@@ -43,13 +46,17 @@ export function encryptSecret(plain: string): string {
   return [PREFIX, iv.toString('base64url'), tag.toString('base64url'), encrypted.toString('base64url')].join(':');
 }
 
-/** 解密 encryptSecret 输出；若输入为 legacy 明文则原样返回（迁移过渡期） */
+/** 解密 encryptSecret 输出；若输入为 legacy 明文则原样返回（TODO(2026-09,#gsc-token-migrate) 迁移截止后拒绝明文） */
 export function decryptSecret(stored: string): string {
   if (!stored) {
     throw new Error('decryptSecret: 密文不能为空');
   }
 
   if (!stored.startsWith(`${PREFIX}:`)) {
+    const nodeEnv = process.env.NODE_ENV ?? 'development';
+    if (nodeEnv === 'production') {
+      throw new Error('decryptSecret: 生产环境拒绝明文 legacy 密文，请先运行迁移脚本');
+    }
     return stored;
   }
 

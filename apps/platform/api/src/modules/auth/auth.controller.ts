@@ -37,7 +37,6 @@ export class AuthController {
   async login(@Body() dto: LoginDto) {
     const session = await this.authService.login(dto);
     return {
-      success: true,
       data: session,
       meta: { traceId: `tr_auth_${uuidv4()}` },
     };
@@ -49,7 +48,6 @@ export class AuthController {
   async refresh(@Body() dto: RefreshTokenDto) {
     const session = await this.authService.refresh(dto.refreshToken);
     return {
-      success: true,
       data: session,
       meta: { traceId: `tr_auth_${uuidv4()}` },
     };
@@ -60,7 +58,6 @@ export class AuthController {
   async logtoConfig() {
     const cfg = readLogtoConfig();
     return {
-      success: true,
       data: {
         enabled: isLogtoEnabled(),
         endpoint: cfg?.endpoint ?? null,
@@ -82,7 +79,6 @@ export class AuthController {
       dto.inviteToken,
     );
     return {
-      success: true,
       data: session,
       meta: { traceId: `tr_auth_${uuidv4()}` },
     };
@@ -97,7 +93,15 @@ export class AuthController {
 
   @Public()
   @Get('invite/accept')
-  async acceptInvite(@Query('token') token: string) {
+  async acceptInviteGet(@Query('token') token: string) {
+    const data = await this.memberInviteService.acceptToken(token);
+    return { data, meta: { traceId: `tr_auth_${uuidv4()}` } };
+  }
+
+  @Public()
+  @Post('invite/accept')
+  @HttpCode(HttpStatus.OK)
+  async acceptInvitePost(@Body('token') token: string) {
     const data = await this.memberInviteService.acceptToken(token);
     return { data, meta: { traceId: `tr_auth_${uuidv4()}` } };
   }

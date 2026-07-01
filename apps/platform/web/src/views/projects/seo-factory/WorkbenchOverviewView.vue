@@ -35,52 +35,7 @@
     />
 
     <div class="overview-layout">
-      <section v-loading="loading" class="overview-panel">
-        <header class="overview-panel__head">
-          <div>
-            <span class="overview-panel__kicker">优先处理</span>
-            <h2 class="overview-panel__title">今日待办</h2>
-            <p class="overview-panel__desc">
-              把会阻塞发文、审核和搜索表现的数据放在这里，运营先处理这些。
-            </p>
-          </div>
-          <el-tag size="small" :type="todoItems.length ? 'warning' : 'success'">
-            {{ todoItems.length ? `${todoItems.length} 项待处理` : "产线健康" }}
-          </el-tag>
-        </header>
-        <div class="overview-panel__body">
-          <el-empty
-            v-if="todoItems.length === 0"
-            description="暂无紧急待办，可新建任务或查看列表"
-            :image-size="72"
-          />
-          <div v-else class="todo-list">
-            <div v-for="item in todoItems" :key="item.id" class="todo-item">
-              <div class="todo-item__text">
-                <el-tag :type="item.tagType" size="small">{{ item.tagLabel }}</el-tag>
-                <span>{{ item.text }}</span>
-              </div>
-              <div class="todo-item__actions">
-                <el-button
-                  v-if="item.secondaryAction"
-                  size="small"
-                  @click="item.secondaryAction"
-                >
-                  {{ item.secondaryActionLabel }}
-                </el-button>
-                <el-button
-                  size="small"
-                  :type="item.buttonType"
-                  :loading="item.loading"
-                  @click="item.action"
-                >
-                  {{ item.actionLabel }}
-                </el-button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      <WorkbenchTodoPanel :loading="loading" :items="todoItems" />
 
       <section v-if="stats?.siteCount === 0" class="overview-panel">
         <header class="overview-panel__head">
@@ -99,7 +54,7 @@
               :closable="false"
               show-icon
               title="第一步：创建站点"
-              description="填写域名与公司卖点后，才能提交文章生成任务。CMS 与搜索表现请在「设置」中配置。"
+              description="填写域名与公司卖点后，才能提交文章生成任务。CMS 与搜索表现请在「站点 → 发布集成 / 搜索表现」中配置。"
             />
             <el-button type="primary" class="quick-action" @click="goSites">
               <WorkbenchIcon name="globe" :size="14" class="mr-1" />
@@ -110,83 +65,17 @@
       </section>
     </div>
 
-    <section class="overview-panel">
-      <header class="overview-panel__head">
-        <div>
-          <span class="overview-panel__kicker">内容流水线</span>
-          <h2 class="overview-panel__title">内容流水线</h2>
-          <p class="overview-panel__desc">
-            从大纲确认、生成、审核到发布，把当前产能和阻塞点一眼看清。
-          </p>
-        </div>
-      </header>
-      <div class="overview-panel__body">
-        <div class="pipeline-strip">
-          <button
-            v-for="step in pipelineSteps"
-            :key="step.id"
-            type="button"
-            class="pipeline-step"
-            :class="{ 'pipeline-step--active': step.count > 0 }"
-            @click="step.action"
-          >
-            <span class="pipeline-step__count">{{ step.count }}</span>
-            <span class="pipeline-step__label">{{ step.label }}</span>
-          </button>
-        </div>
-      </div>
-    </section>
+    <WorkbenchPipelineStrip :steps="pipelineSteps" />
 
     <div class="overview-layout">
-      <section v-loading="clustersLoading" class="overview-panel">
-        <header class="overview-panel__head">
-          <div>
-            <span class="overview-panel__kicker">专题排产</span>
-            <h2 class="overview-panel__title">
-              {{ clusterHighlights.length ? "专题排产" : "选题机会" }}
-            </h2>
-            <p class="overview-panel__desc">
-              按专题管理文章矩阵，优先处理待写数量最多的内容组。
-            </p>
-          </div>
-          <el-button link type="primary" @click="goTopicClusters">全部专题</el-button>
-        </header>
-        <div class="overview-panel__body">
-          <div v-if="clusterHighlights.length" class="cluster-list">
-            <div
-              v-for="cluster in clusterHighlights"
-              :key="cluster.id"
-              class="cluster-card cluster-card--clickable"
-              role="button"
-              tabindex="0"
-              @click="goTopicCluster(cluster.id)"
-              @keydown.enter="goTopicCluster(cluster.id)"
-            >
-              <div class="cluster-card__head">
-                <span class="cluster-card__name">{{ cluster.name }}</span>
-                <el-tag v-if="(cluster.pendingCount ?? 0) > 0" size="small" type="warning">
-                  待写 {{ cluster.pendingCount }}
-                </el-tag>
-                <el-tag v-else size="small" type="success">已完成</el-tag>
-              </div>
-              <el-progress
-                :percentage="cluster.progressPercent ?? 0"
-                :stroke-width="8"
-                :status="(cluster.progressPercent ?? 0) >= 100 ? 'success' : undefined"
-              />
-            </div>
-          </div>
-          <template v-else-if="stats && stats.keywordQueueableCount > 0">
-            <p class="mb-3 text-sm mw-text-body">
-              {{ stats.keywordQueueableCount }} 个关键词待写，建议先加入专题再批量创建任务。
-            </p>
-            <el-button type="primary" size="small" @click="goKeywordsQueueable">
-              查看待写
-            </el-button>
-          </template>
-          <el-empty v-else description="暂无主题排产数据" :image-size="72" />
-        </div>
-      </section>
+      <TopicClusterGrid
+        :loading="clustersLoading"
+        :clusters="clusterHighlights"
+        :keyword-queueable-count="stats?.keywordQueueableCount ?? 0"
+        @select="goTopicCluster"
+        @go-all="goTopicClusters"
+        @go-queueable="goKeywordsQueueable"
+      />
 
       <section class="overview-panel overview-guide">
         <header class="overview-panel__head">
@@ -242,15 +131,18 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { getSeoFactoryProjectStats, rerunArticleOptimization } from "@/api/seo-factory/article-job";
+import { listSites } from "@/api/seo-factory/site";
 import { importGscKeywords } from "@/api/seo-factory/keyword";
 import { listKeywordClusters, type KeywordClusterItem } from "@/api/seo-factory/keyword-cluster";
-import { listSites } from "@/api/seo-factory/site";
 import type { SeoFactoryProjectStats, SiteItem } from "@/api/seo-factory/types";
 import { WORDPRESS_CMS_UI_ENABLED } from "@/constants/feature-flags";
 import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
 import { useProjectSetupChecklist } from "@/composables/seo-factory/useProjectSetupChecklist";
 import SetupChecklistPanel from "@/components/SetupChecklistPanel.vue";
 import WorkbenchIcon from "./components/WorkbenchIcon.vue";
+import TopicClusterGrid from "./components/TopicClusterGrid.vue";
+import WorkbenchTodoPanel from "./components/WorkbenchTodoPanel.vue";
+import WorkbenchPipelineStrip from "./components/WorkbenchPipelineStrip.vue";
 import { message } from "@/utils/message";
 
 defineOptions({ name: "WorkbenchOverviewView" });
@@ -645,7 +537,21 @@ function goTopicCluster(clusterId: string) {
   });
 }
 
-function goGsc() {
+async function goGsc() {
+  try {
+    const sites = await listSites(projectId);
+    const target = sites[0];
+    if (target) {
+      router.push({
+        name: "SeoFactorySiteDetail",
+        params: { projectId, siteId: target.id },
+        query: { tab: "search" }
+      });
+      return;
+    }
+  } catch {
+    // 回退站点列表
+  }
   router.push({ name: "SeoFactorySites", params: { projectId } });
 }
 

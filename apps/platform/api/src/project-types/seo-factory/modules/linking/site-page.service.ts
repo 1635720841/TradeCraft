@@ -14,6 +14,7 @@ import { BusinessException } from '../../../../core/exceptions/business.exceptio
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { PrismaService } from '../../../../core/database/prisma.service';
 import { LoggerService } from '../../../../core/logger/logger.service';
+import { assertSiteScope } from '../../utils/assert-site-scope.util';
 import { SiteArticleCrawlerService } from '../site/site-article-crawler.service';
 import {
   DEFAULT_SITE_PAGE_LIBRARY_SYNC_LIMIT,
@@ -63,7 +64,7 @@ export class SitePageService {
     siteId: string,
     options: { page?: number; limit?: number; includeInactive?: boolean } = {},
   ) {
-    await this.assertSiteExists(organizationId, projectId, siteId);
+    await assertSiteScope(this.prisma, organizationId, projectId, siteId);
 
     const page = Math.max(options.page ?? 1, 1);
     const limit = Math.min(Math.max(options.limit ?? 20, 1), SITE_PAGE_LIST_MAX_LIMIT);
@@ -95,7 +96,7 @@ export class SitePageService {
     siteId: string,
     limit = DEFAULT_SITE_PAGE_LIBRARY_SYNC_LIMIT,
   ): Promise<SitePageSyncStats> {
-    await this.assertSiteExists(organizationId, projectId, siteId);
+    await assertSiteScope(this.prisma, organizationId, projectId, siteId);
 
     const syncLimit = Math.min(Math.max(limit, 1), MAX_SITE_PAGE_LIBRARY_SYNC_LIMIT);
     const allEntries = await this.siteArticleCrawler.fetchAllSitemapEntriesForSite(
@@ -240,7 +241,7 @@ export class SitePageService {
     pageId: string,
     primaryKeyword?: string | null,
   ) {
-    await this.assertSiteExists(organizationId, projectId, siteId);
+    await assertSiteScope(this.prisma, organizationId, projectId, siteId);
 
     const page = await this.prisma.sitePage.findFirst({
       where: { id: pageId, organizationId, projectId, siteId },
@@ -296,16 +297,6 @@ export class SitePageService {
         pageType: row.pageType,
         businessValue: row.businessValue,
       }));
-  }
-
-  private async assertSiteExists(organizationId: string, projectId: string, siteId: string) {
-    const site = await this.prisma.site.findFirst({
-      where: { id: siteId, organizationId, projectId },
-      select: { id: true },
-    });
-    if (!site) {
-      throw new BusinessException(ErrorCodes.SITE_NOT_FOUND, '站点不存在');
-    }
   }
 }
 

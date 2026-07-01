@@ -17,7 +17,7 @@ import { Injectable } from '@nestjs/common';
 import type { IImageProvider, ImageResult } from '@wm/provider-interfaces';
 import { BusinessException } from '../../../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
-import { fetchWithRetry } from '../../../../core/http/http-fetch';
+import { buildProxyHint, fetchWithRetry } from '../../../../core/http/http-fetch';
 import { LoggerService } from '../../../../core/logger/logger.service';
 import {
   extractPollingUrl,
@@ -52,18 +52,31 @@ export class BflImageAdapter implements IImageProvider {
     const endpoint = (process.env.BFL_IMAGE_ENDPOINT ?? 'flux-2-klein-4b').replace(/^\/+|\/+$/g, '');
     const createUrl = `${baseUrl}/v1/${endpoint}`;
 
-    const pollingUrl = await this.submitGeneration(createUrl, apiKey, trimmedPrompt);
-    const imageUrl = await this.pollUntilReady(pollingUrl, apiKey);
+    try {
+      const pollingUrl = await this.submitGeneration(createUrl, apiKey, trimmedPrompt);
+      const imageUrl = await this.pollUntilReady(pollingUrl, apiKey);
 
-    this.logger.info('BFL image generated', {
-      action: 'bfl.image_generated',
-      endpoint,
-    });
+      this.logger.info('BFL image generated', {
+        action: 'bfl.image_generated',
+        endpoint,
+      });
 
-    return {
-      url: imageUrl,
-      alt: trimmedPrompt.slice(0, 120),
-    };
+      return {
+        url: imageUrl,
+        alt: trimmedPrompt.slice(0, 120),
+      };
+    } catch (error) {
+      if (error instanceof BusinessException) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : '未知错误';
+      const cause =
+        error instanceof Error && error.cause instanceof Error ? error.cause.message : '';
+      const proxyHint = buildProxyHint(error);
+      const errMsg = `BFL 生图调用失败：${message}${cause ? `（${cause}）` : ''}${proxyHint}`;
+      this.logger.error(errMsg, { action: 'bfl.generate_failed' });
+      throw new BusinessException(ErrorCodes.EXTERNAL_API_ERROR, errMsg);
+    }
   }
 
   private async submitGeneration(
@@ -96,10 +109,9 @@ export class BflImageAdapter implements IImageProvider {
 
       if (!response.ok) {
         const detail = await response.text().catch(() => '');
-        throw new BusinessException(
-          ErrorCodes.EXTERNAL_API_ERROR,
-          `BFL 生图提交失败：HTTP ${response.status}${detail ? ` — ${detail.slice(0, 200)}` : ''}`,
-        );
+        const errMsg = `BFL 生图提交失败：HTTP ${response.status}${detail ? ` — ${detail.slice(0, 200)}` : ''}`;
+        this.logger.error(errMsg, { action: 'bfl.submit_failed', status: response.status });
+        throw new BusinessException(ErrorCodes.EXTERNAL_API_ERROR, errMsg);
       }
 
       const body = (await response.json()) as BflCreateResponse;
@@ -154,17 +166,18 @@ export class BflImageAdapter implements IImageProvider {
         }
 
         if (isTerminalFailureStatus(body.status)) {
-          throw new BusinessException(
-            ErrorCodes.EXTERNAL_API_ERROR,
-            `BFL 生图失败：${body.status ?? 'Unknown'}`,
-          );
+          const errMsg = `BFL 生图失败：${body.status ?? 'Unknown'}`;
+          this.logger.error(errMsg, { action: 'bfl.poll_failed', status: body.status });
+          throw new BusinessException(ErrorCodes.EXTERNAL_API_ERROR, errMsg);
         }
       } finally {
         clearTimeout(timeout);
       }
     }
 
-    throw new BusinessException(ErrorCodes.EXTERNAL_API_ERROR, 'BFL 生图轮询超时');
+    const errMsg = 'BFL 生图轮询超时（约 2 分钟）';
+    this.logger.error(errMsg, { action: 'bfl.poll_timeout', pollingUrl });
+    throw new BusinessException(ErrorCodes.EXTERNAL_API_ERROR, errMsg);
   }
 }
 

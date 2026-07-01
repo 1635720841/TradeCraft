@@ -87,6 +87,13 @@ dictLabel(projectStatusDict, row.status);
 ElMessage.error(error.message ?? '操作失败，请稍后重试');
 ```
 
+- 全局 HTTP 拦截器已 toast 时，请求配置 `skipGlobalErrorToast: true`，由页面自行展示错误
+- 禁止同一 API 失败弹出两次错误提示
+
+## 列表空状态
+
+- 列表页无数据时必须使用 `el-empty`，并提供主操作 CTA（如「新建项目」）
+
 ## API 层
 
 ```typescript

@@ -49,7 +49,20 @@
         </el-tag>
       </div>
 
-      <el-table :data="projects" stripe :row-class-name="rowClassName" @row-click="onRowClick">
+      <el-empty
+        v-if="!loading && projects.length === 0"
+        description="暂无项目，创建后可邀请成员协作"
+      >
+        <el-button v-if="canCreate" type="primary" @click="openCreate">新建项目</el-button>
+      </el-empty>
+
+      <el-table
+        v-else
+        :data="projects"
+        stripe
+        :row-class-name="rowClassName"
+        @row-click="onRowClick"
+      >
         <el-table-column prop="name" label="项目名称" min-width="160" />
         <el-table-column v-if="canCreate || canUpdate" prop="projectType" label="类型" width="120" />
         <el-table-column label="我的访问" width="110">
@@ -103,33 +116,57 @@
         </el-table-column>
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
-            <el-button
-              v-if="row.canManage"
-              type="primary"
-              link
-              @click.stop="openManage(row)"
-            >
-              管理
-            </el-button>
-            <el-button v-else type="primary" link @click.stop="openPreview(row)">
-              查看
-            </el-button>
-            <el-button
-              v-if="row.projectType === 'seo-factory' && row.canEnter"
-              type="primary"
-              link
-              @click.stop="enterProject(row.id)"
-            >
-              进入
-            </el-button>
-            <el-button
-              v-if="row.canManage && canUpdate"
-              type="danger"
-              link
-              @click.stop="handleDeleteProject(row)"
-            >
-              删除
-            </el-button>
+            <div class="hidden sm:inline-flex sm:flex-wrap sm:items-center sm:gap-1">
+              <el-button
+                v-if="projectRow(row).canManage"
+                type="primary"
+                link
+                @click.stop="openManage(projectRow(row))"
+              >
+                管理
+              </el-button>
+              <el-button v-else type="primary" link @click.stop="openPreview(projectRow(row))">
+                查看
+              </el-button>
+              <el-button
+                v-if="projectRow(row).projectType === 'seo-factory' && projectRow(row).canEnter"
+                type="primary"
+                link
+                @click.stop="enterProject(projectRow(row).id)"
+              >
+                进入
+              </el-button>
+              <el-button
+                v-if="projectRow(row).canManage && canUpdate"
+                type="danger"
+                link
+                @click.stop="handleDeleteProject(projectRow(row))"
+              >
+                删除
+              </el-button>
+            </div>
+            <el-dropdown class="sm:hidden" trigger="click" @command="(cmd) => onProjectRowCommand(cmd, projectRow(row))">
+              <el-button type="primary" link @click.stop>操作</el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item v-if="projectRow(row).canManage" command="manage">管理</el-dropdown-item>
+                  <el-dropdown-item v-else command="preview">查看</el-dropdown-item>
+                  <el-dropdown-item
+                    v-if="projectRow(row).projectType === 'seo-factory' && projectRow(row).canEnter"
+                    command="enter"
+                  >
+                    进入
+                  </el-dropdown-item>
+                  <el-dropdown-item
+                    v-if="projectRow(row).canManage && canUpdate"
+                    command="delete"
+                    divided
+                  >
+                    删除
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
         </el-table-column>
       </el-table>
@@ -292,7 +329,7 @@
                   type="primary"
                   link
                   size="small"
-                  @click="openMemberPerm(row)"
+                  @click="openMemberPerm(memberRow(row))"
                 >
                   权限
                 </el-button>
@@ -301,7 +338,7 @@
                   type="danger"
                   link
                   size="small"
-                  @click="removeMember(row)"
+                  @click="removeMember(memberRow(row))"
                 >
                   移除
                 </el-button>
@@ -470,6 +507,7 @@ import { usePermissionGrantExpand } from "@/composables/usePermissionGrantExpand
 import { dictLabel, dictTagType } from "@/utils/dict";
 import { hasPerms } from "@/utils/auth";
 import { message } from "@/utils/message";
+import { tableRow } from "@/utils/table-row";
 import { confirmDestructiveDelete } from "@/utils/confirm-destructive-delete";
 import { invalidateProjectAccessCache } from "@/router/guards/project-access";
 
@@ -513,6 +551,14 @@ const permissionLabelMap = computed(() =>
 );
 
 const canCreate = computed(() => hasPerms("project:create"));
+
+function projectRow(row: unknown): OrgProjectItem {
+  return tableRow<OrgProjectItem>(row);
+}
+
+function memberRow(row: unknown): OrgProjectMember {
+  return tableRow<OrgProjectMember>(row);
+}
 const canUpdate = computed(() => hasPerms("project:update"));
 
 const summary = computed(() => {
@@ -585,6 +631,14 @@ function onRowClick(row: OrgProjectItem) {
   } else {
     void openPreview(row);
   }
+}
+
+function onProjectRowCommand(command: string | number | object, row: OrgProjectItem) {
+  const cmd = String(command);
+  if (cmd === "manage") void openManage(row);
+  else if (cmd === "preview") void openPreview(row);
+  else if (cmd === "enter") void enterProject(row.id);
+  else if (cmd === "delete") void handleDeleteProject(row);
 }
 
 async function openPreview(row: OrgProjectItem) {
@@ -825,6 +879,11 @@ async function loadAccessRequests() {
 }
 
 async function onApproveRequest(id: string) {
+  try {
+    await ElMessageBox.confirm("确认批准该成员的访问申请？", "批准访问", { type: "warning" });
+  } catch {
+    return;
+  }
   await approveAccessRequest(id, "executor");
   message("已批准访问申请", { type: "success" });
   await loadAccessRequests();
@@ -832,23 +891,28 @@ async function onApproveRequest(id: string) {
 }
 
 async function onRejectRequest(id: string) {
+  try {
+    await ElMessageBox.confirm("确认拒绝该访问申请？", "拒绝访问", { type: "warning" });
+  } catch {
+    return;
+  }
   await rejectAccessRequest(id);
   message("已拒绝", { type: "info" });
   await loadAccessRequests();
 }
 
 async function handleRouteQuery() {
-  const openManage = route.query.openManage;
-  const openPerm = route.query.openPerm;
+  const openManageId = route.query.openManage;
+  const openPermId = route.query.openPerm;
   const preset = route.query.preset;
-  if (typeof openManage === "string") {
-    const row = projects.value.find(p => p.id === openManage);
+  if (typeof openManageId === "string") {
+    const row = projects.value.find(p => p.id === openManageId);
     if (row) await openManage(row);
-  } else if (typeof openPerm === "string") {
-    const row = projects.value.find(p => p.id === openPerm);
+  } else if (typeof openPermId === "string") {
+    const row = projects.value.find(p => p.id === openPermId);
     if (row) {
       await openManage(row);
-      const self = detail.value?.members.find(m => m.userId === userStore.userId);
+      const self = detail.value?.members.find(m => m.email === userStore.username);
       if (self) {
         await openMemberPerm(self);
         if (typeof preset === "string") {

@@ -2,7 +2,7 @@
  * Console 健康页：队列与 Provider 轮询加载。
  */
 
-import { onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import {
   getConsoleProviderHealth,
   getConsoleQueueHealth,
@@ -16,15 +16,26 @@ import { dictLabel } from "@/utils/dict";
 
 const POLL_INTERVAL_MS = 15000;
 
+function extractErrorMessage(error: unknown): string {
+  return error && typeof error === "object" && "message" in error
+    ? String((error as { message?: string }).message)
+    : "加载失败，请稍后重试";
+}
+
 export function useConsoleHealthPoll() {
   const loadingQueues = ref(false);
   const loadingJobs = ref(false);
   const loadingProviders = ref(false);
+  const loadError = ref<string | null>(null);
   const queues = ref<Array<QueueHealthItem & { queueLabel?: string }>>([]);
   const queueJobs = ref<ConsoleQueueJobItem[]>([]);
   const providers = ref<ProviderHealthItem[]>([]);
   const jobState = ref<"waiting" | "active" | "delayed" | "failed" | "all">("all");
   const jobQueue = ref("");
+
+  const loading = computed(
+    () => loadingQueues.value || loadingJobs.value || loadingProviders.value
+  );
 
   let pollTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -36,6 +47,9 @@ export function useConsoleHealthPoll() {
         ...item,
         queueLabel: dictLabel(consoleQueueDict, item.name) || item.name
       }));
+    } catch (error) {
+      loadError.value = extractErrorMessage(error);
+      throw error;
     } finally {
       loadingQueues.value = false;
     }
@@ -50,6 +64,9 @@ export function useConsoleHealthPoll() {
         limit: 100
       });
       queueJobs.value = data.items ?? [];
+    } catch (error) {
+      loadError.value = extractErrorMessage(error);
+      throw error;
     } finally {
       loadingJobs.value = false;
     }
@@ -60,20 +77,31 @@ export function useConsoleHealthPoll() {
     try {
       const providerData = await getConsoleProviderHealth();
       providers.value = providerData.providers ?? [];
+    } catch (error) {
+      loadError.value = extractErrorMessage(error);
+      throw error;
     } finally {
       loadingProviders.value = false;
     }
   }
 
   async function loadAll() {
-    await Promise.all([loadQueues(), loadJobs(), loadProviders()]);
+    loadError.value = null;
+    const results = await Promise.allSettled([loadQueues(), loadJobs(), loadProviders()]);
+    const failed = results.find((result) => result.status === "rejected");
+    if (failed?.status === "rejected") {
+      loadError.value = extractErrorMessage(failed.reason);
+    }
+  }
+
+  async function retry() {
+    await loadAll();
   }
 
   function startPolling() {
+    stopPolling();
     pollTimer = setInterval(() => {
-      void loadQueues();
-      void loadJobs();
-      void loadProviders();
+      void loadAll();
     }, POLL_INTERVAL_MS);
   }
 
@@ -94,9 +122,11 @@ export function useConsoleHealthPoll() {
   });
 
   return {
+    loading,
     loadingQueues,
     loadingJobs,
     loadingProviders,
+    loadError,
     queues,
     queueJobs,
     providers,
@@ -105,6 +135,7 @@ export function useConsoleHealthPoll() {
     loadQueues,
     loadJobs,
     loadProviders,
-    loadAll
+    loadAll,
+    retry
   };
 }

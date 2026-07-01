@@ -2,7 +2,7 @@
  * 租户计费变更申请 DTO。
  */
 
-import { IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 
 export enum BillingRequestType {
   RENEW = 'RENEW',
@@ -14,11 +14,12 @@ export class CreateBillingRequestDto {
   @IsEnum(BillingRequestType)
   type!: BillingRequestType;
 
-  @IsOptional()
+  @ValidateIf((o) => o.type === BillingRequestType.UPGRADE)
   @IsString()
+  @IsNotEmpty({ message: '升级申请须指定目标套餐' })
   targetPlanId?: string;
 
-  @IsOptional()
+  @ValidateIf((o) => o.type === BillingRequestType.TOPUP)
   @IsInt()
   @Min(1)
   @Max(100000)

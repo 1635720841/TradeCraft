@@ -25,12 +25,20 @@ export const MENU_CATALOG: MenuDefinition[] = [
     sortOrder: 10,
   },
   {
+    id: 'org:integrations',
+    title: '集成与 Webhook',
+    routePath: '/org/integrations',
+    permissionId: 'org:integration:manage',
+    targetRoles: [Role.ADMIN, Role.SUPER_ADMIN],
+    sortOrder: 11,
+  },
+  {
     id: 'org:members',
     title: '成员与权限',
     routePath: '/org/members',
     permissionId: 'org:member:list',
     targetRoles: [Role.ADMIN, Role.SUPER_ADMIN],
-    sortOrder: 11,
+    sortOrder: 12,
   },
   {
     id: 'org:projects',
@@ -38,7 +46,7 @@ export const MENU_CATALOG: MenuDefinition[] = [
     routePath: '/org/projects',
     permissionId: 'project:read',
     targetRoles: [Role.ADMIN, Role.SUPER_ADMIN, Role.MEMBER],
-    sortOrder: 12,
+    sortOrder: 13,
   },
   {
     id: 'org:billing',
@@ -46,7 +54,7 @@ export const MENU_CATALOG: MenuDefinition[] = [
     routePath: '/org/billing',
     permissionId: 'org:billing:read',
     targetRoles: [Role.ADMIN, Role.SUPER_ADMIN, Role.MEMBER],
-    sortOrder: 13,
+    sortOrder: 14,
   },
   {
     id: 'org:audit',
@@ -54,7 +62,7 @@ export const MENU_CATALOG: MenuDefinition[] = [
     routePath: '/org/audit',
     permissionId: 'org:audit:read',
     targetRoles: [Role.ADMIN, Role.SUPER_ADMIN],
-    sortOrder: 14,
+    sortOrder: 15,
   },
   {
     id: 'console:overview',
@@ -97,14 +105,6 @@ export const MENU_CATALOG: MenuDefinition[] = [
     sortOrder: 24,
   },
   {
-    id: 'console:gsc',
-    title: '搜索表现',
-    routePath: '/console/gsc',
-    permissionId: 'console:gsc:manage',
-    targetRoles: CONSOLE_OPS_ROLES,
-    sortOrder: 25,
-  },
-  {
     id: 'console:labs',
     title: '项目诊断',
     routePath: '/console/labs/diagnostics',
@@ -134,6 +134,7 @@ export const DEFAULT_ADMIN_MENU_IDS = [
   'org:profile',
   'org:members',
   'org:projects',
+  'org:integrations',
   'org:billing',
   'org:audit',
 ];
@@ -145,7 +146,6 @@ export const DEFAULT_PLATFORM_OPERATOR_MENU_IDS = [
   'console:tenants',
   'console:sites',
   'console:health',
-  'console:gsc',
   'console:labs',
   'console:audit',
 ];

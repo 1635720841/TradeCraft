@@ -15,7 +15,7 @@
   >
     <el-table-column type="selection" width="48" />
     <el-table-column prop="targetKeyword" label="目标关键词" min-width="160" show-overflow-tooltip />
-    <el-table-column label="站点" width="120" show-overflow-tooltip>
+    <el-table-column label="站点" width="220" show-overflow-tooltip>
       <template #default="{ row }">
         {{ (row as ArticleJobItem).siteDomain || "-" }}
       </template>

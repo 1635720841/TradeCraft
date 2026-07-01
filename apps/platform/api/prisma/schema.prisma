@@ -45,18 +45,19 @@ model Organization {
   type                 OrganizationType   @default(CUSTOMER)
   status               OrganizationStatus @default(ACTIVE)
   name                 String
-  planId               String?
+  planId               String?            @default("trial")
   plan                 SubscriptionPlan?  @relation(fields: [planId], references: [id])
   planName             String             @default("trial")
   monthlyArticleQuota  Int                @default(100)
   articleQuotaBonus    Int                @default(0)
   subscriptionStatus   SubscriptionStatus @default(TRIAL)
   billingCycle         BillingCycle       @default(MONTHLY)
-  currentPeriodStart   DateTime?
-  currentPeriodEnd     DateTime?
+  currentPeriodStart   DateTime           @default(now())
+  currentPeriodEnd     DateTime
   users                User[]
   projects             Project[]
   usageLogs            CreditUsage[]
+  quotaTopUps          ArticleQuotaTopUp[]
   auditLogs            AuditLog[]
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
@@ -74,6 +75,18 @@ model SubscriptionPlan {
   organizations       Organization[]
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
+}
+
+/// 控制台加购配额审计记录
+model ArticleQuotaTopUp {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  amount         Int
+  note           String?      @db.VarChar(200)
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, createdAt])
 }
 
 /// 平台权限目录
@@ -367,9 +380,11 @@ model Project {
   members         ProjectMember[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
+  deletedAt       DateTime?
 
   @@index([organizationId])
   @@index([organizationId, status])
+  @@index([organizationId, deletedAt])
 }
 
 enum ProjectMemberRole {
@@ -424,6 +439,7 @@ model CreditUsage {
   breakdown      Json?
   createdAt      DateTime     @default(now())
 
+  @@unique([traceId, serviceType])
   @@index([organizationId, createdAt])
 }
 
@@ -458,8 +474,10 @@ model Site {
   keywords         KeywordEntry[]
   gscConnection    SiteGscConnection?
   createdAt      DateTime     @default(now())
+  deletedAt      DateTime?
 
   @@index([organizationId, projectId])
+  @@index([organizationId, projectId, deletedAt])
 }
 
 /// 站点页面库：供 M8 内链匹配（同站点已索引页面）
@@ -481,9 +499,12 @@ model SitePage {
   source         String       @default("sitemap")
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
 
   @@unique([siteId, url])
+  @@index([siteId, active])
   @@index([organizationId, projectId, siteId])
+  @@index([organizationId, projectId, deletedAt])
 }
 
 enum SitePageType {
@@ -523,12 +544,14 @@ model ArticleJob {
   errorMessage   String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
   comments       ArticleJobComment[]
   assignees      ArticleJobAssignee[]
   activities     ArticleJobActivity[]
 
   @@index([organizationId, projectId, status])
   @@index([organizationId, projectId, createdAt])
+  @@index([organizationId, projectId, deletedAt])
 }
 
 model ArticleJobComment {
@@ -621,9 +644,11 @@ model KeywordCluster {
   keywords          KeywordEntry[] @relation("ClusterKeywords")
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
+  deletedAt         DateTime?
 
   @@unique([projectId, name])
   @@index([organizationId, projectId])
+  @@index([organizationId, projectId, deletedAt])
   @@index([pillarKeywordId])
 }
 
@@ -652,11 +677,13 @@ model KeywordEntry {
   lastJobId           String?
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
+  deletedAt           DateTime?
 
   @@unique([projectId, keyword])
   @@index([organizationId, projectId, status])
   @@index([organizationId, projectId, priorityScore])
   @@index([organizationId, projectId, clusterId])
+  @@index([organizationId, projectId, deletedAt])
 }
 
 /// 平台级 Google Search Console OAuth 凭证（代运营统一授权）

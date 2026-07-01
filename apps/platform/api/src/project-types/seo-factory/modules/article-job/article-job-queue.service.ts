@@ -32,7 +32,12 @@ export class ArticleJobQueueService {
     bullJobId: string,
   ): Promise<void> {
     await this.orgQueueLimiter.assertCanEnqueue(payload.organizationId);
-    await this.articleJobQueue.add('generate', payload, { jobId: bullJobId });
+    try {
+      await this.articleJobQueue.add('generate', payload, { jobId: bullJobId, attempts: 3 });
+    } catch (error) {
+      await this.orgQueueLimiter.rollbackRateSlot(payload.organizationId);
+      throw error;
+    }
   }
 
   async removeQueueJobsForArticleJob(

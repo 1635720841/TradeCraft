@@ -199,3 +199,23 @@ describe('ProjectService tenant isolation', () => {
     await assertBusinessError(service.assertAccessible(ORG_B, PROJECT_A), ErrorCodes.NOT_FOUND);
   });
 });
+
+function resolveBypassTenantScope(path, handlerBypass) {
+  return path.startsWith('/api/v1/console') || handlerBypass === true;
+}
+
+describe('AuthGuard bypassTenantScope', () => {
+  it('only bypasses for console routes or explicit decorator', () => {
+    assert.equal(resolveBypassTenantScope('/api/v1/console/gsc/status', false), true);
+    assert.equal(resolveBypassTenantScope('/api/v1/console/tenants', false), true);
+    assert.equal(resolveBypassTenantScope('/api/v1/console/sites', false), true);
+    assert.equal(resolveBypassTenantScope('/api/v1/org/audit-logs', false), false);
+    assert.equal(resolveBypassTenantScope('/api/v1/org/projects', false), false);
+    assert.equal(resolveBypassTenantScope('/api/v1/org/projects', true), true);
+  });
+
+  it('does not bypass tenant project routes without decorator', () => {
+    assert.equal(resolveBypassTenantScope('/api/v1/org/projects/p1/article-jobs', false), false);
+    assert.equal(resolveBypassTenantScope('/api/v1/org/projects/p1/sites/s1/pages', false), false);
+  });
+});

@@ -7,6 +7,8 @@
 
 import { normalizeContentLanguage } from '@wm/shared-core';
 
+import { normalizeBrokenMarkdownUrls } from './paraphrase-media.util';
+
 export interface ParaphraseSafetyInput {
   keyword: string;
   originalContent: string;
@@ -16,6 +18,10 @@ export interface ParaphraseSafetyInput {
   recommendedKeywords?: string[];
   /** 分块润色非首段时跳过「关键词须在前 200 字符」检查 */
   skipKeywordHeadCheck?: boolean;
+  /** 篇幅比例下限（默认 0.85） */
+  lengthRatioMin?: number;
+  /** 篇幅比例上限（默认 1.15） */
+  lengthRatioMax?: number;
 }
 
 export interface ParaphraseSafetyResult {
@@ -28,24 +34,34 @@ const SPEC_PATTERN =
 
 function extractMarkdownLinkUrls(content: string): string[] {
   const urls: string[] = [];
+  const normalized = normalizeBrokenMarkdownUrls(content);
   const pattern = /\[[^\]]*\]\(([^)]+)\)/g;
-  let match = pattern.exec(content);
+  let match = pattern.exec(normalized);
   while (match) {
     urls.push(match[1].trim());
-    match = pattern.exec(content);
+    match = pattern.exec(normalized);
   }
   return urls;
 }
 
 function extractImageUrls(content: string): string[] {
   const urls: string[] = [];
+  const normalized = normalizeBrokenMarkdownUrls(content);
   const pattern = /!\[[^\]]*\]\(([^)]+)\)/g;
-  let match = pattern.exec(content);
+  let match = pattern.exec(normalized);
   while (match) {
     urls.push(match[1].trim());
-    match = pattern.exec(content);
+    match = pattern.exec(normalized);
   }
   return urls;
+}
+
+function normalizeUrlForCompare(url: string): string {
+  return url.replace(/\s+/g, '').trim();
+}
+
+function hasNormalizedUrl(urlSet: Set<string>, url: string): boolean {
+  return urlSet.has(normalizeUrlForCompare(url));
 }
 
 function countHeadings(content: string, level: 2 | 3): number {
@@ -134,17 +150,17 @@ export function checkParaphraseSafety(input: ParaphraseSafetyInput): ParaphraseS
   }
 
   const originalUrls = extractMarkdownLinkUrls(original);
-  const paraphrasedUrls = new Set(extractMarkdownLinkUrls(paraphrased));
+  const paraphrasedUrlSet = new Set(extractMarkdownLinkUrls(paraphrased).map(normalizeUrlForCompare));
   for (const url of originalUrls) {
-    if (!paraphrasedUrls.has(url)) {
+    if (!hasNormalizedUrl(paraphrasedUrlSet, url)) {
       issues.push(`内链 URL 丢失：${url}`);
     }
   }
 
   const originalImages = extractImageUrls(original);
-  const paraphrasedImages = new Set(extractImageUrls(paraphrased));
+  const paraphrasedImageSet = new Set(extractImageUrls(paraphrased).map(normalizeUrlForCompare));
   for (const url of originalImages) {
-    if (!paraphrasedImages.has(url)) {
+    if (!hasNormalizedUrl(paraphrasedImageSet, url)) {
       issues.push(`配图 URL 丢失：${url}`);
     }
   }
@@ -185,9 +201,11 @@ export function checkParaphraseSafety(input: ParaphraseSafetyInput): ParaphraseS
 
   const originalLen = measureContentLength(original, input.contentLanguage);
   const paraphrasedLen = measureContentLength(paraphrased, input.contentLanguage);
+  const lengthRatioMin = input.lengthRatioMin ?? 0.85;
+  const lengthRatioMax = input.lengthRatioMax ?? 1.15;
   if (originalLen > 0) {
     const ratio = paraphrasedLen / originalLen;
-    if (ratio < 0.85 || ratio > 1.15) {
+    if (ratio < lengthRatioMin || ratio > lengthRatioMax) {
       issues.push(`篇幅变化过大（${Math.round(ratio * 100)}%）`);
     }
   }

@@ -35,7 +35,7 @@
       class="mb-4 rounded-lg border mw-border-card p-3"
     >
       <div class="mb-2 text-sm font-medium mw-text-body">{{ section.label }}</div>
-      <el-checkbox-group :model-value="selectedGrantIds" @change="emit('grant-change', $event)">
+      <el-checkbox-group :model-value="selectedGrantIds" @change="onGrantChange">
         <div class="grid grid-cols-1 gap-2">
           <el-checkbox
             v-for="perm in section.items"
@@ -53,6 +53,7 @@
 </template>
 
 <script setup lang="ts">
+import type { CheckboxValueType } from "element-plus";
 import type { PermissionDefinition } from "@/api/console/index";
 
 defineOptions({ name: "ConsolePermissionGrantPanel" });
@@ -75,4 +76,12 @@ const emit = defineEmits<{
   save: [];
   "grant-change": [ids: string[]];
 }>();
+
+function onGrantChange(value: CheckboxValueType | CheckboxValueType[]) {
+  const list = Array.isArray(value) ? value : [value];
+  emit(
+    "grant-change",
+    list.map((item) => String(item))
+  );
+}
 </script>

@@ -1,5 +1,9 @@
 import { $t } from "@/plugins/i18n";
-import { ensureProjectRouteAccess } from "../guards/project-access";
+import {
+  ensureProjectEnterable,
+  ensureProjectRouteAccess,
+  ensureProjectRouteAccessResult
+} from "../guards/project-access";
 import { storageLocal } from "@pureadmin/utils";
 import { userKey } from "@/utils/auth";
 import { resolveConsoleEntryPath, resolveOrgEntryPath } from "../utils";
@@ -7,7 +11,7 @@ import { resolveConsoleEntryPath, resolveOrgEntryPath } from "../utils";
 const Layout = () => import("@/layout/index.vue");
 
 function legacyOrgOrConsoleRedirect(orgPath: string) {
-  const userInfo = storageLocal().getItem(userKey);
+  const userInfo = storageLocal().getItem<{ roles?: string[]; visibleMenuKeys?: string[] }>(userKey);
   const roles = userInfo?.roles ?? [];
   if (roles.includes("platform_operator")) {
     return resolveConsoleEntryPath(userInfo?.visibleMenuKeys);
@@ -91,7 +95,7 @@ export default [
   {
     path: "/platform/projects",
     redirect: () => {
-      const userInfo = storageLocal().getItem(userKey);
+      const userInfo = storageLocal().getItem<{ roles?: string[]; visibleMenuKeys?: string[] }>(userKey);
       const roles = userInfo?.roles ?? [];
       if (roles.includes("admin")) return "/org/projects";
       if (roles.includes("platform_operator") || roles.includes("super_admin")) {
@@ -103,9 +107,24 @@ export default [
   },
   {
     path: "/platform/projects/:projectId",
-    redirect: to => ({
-      path: `/projects/${to.params.projectId}/seo-factory/overview`
-    }),
+    beforeEnter: async (to, _from, next) => {
+      const projectId = Array.isArray(to.params.projectId)
+        ? to.params.projectId[0]
+        : to.params.projectId;
+      if (!projectId) {
+        next({ path: "/error/404" });
+        return;
+      }
+      const canEnter = await ensureProjectEnterable(projectId);
+      if (!canEnter) {
+        next({ path: "/error/403", query: { projectId, reason: "project_access" } });
+        return;
+      }
+      next({
+        path: `/projects/${projectId}/seo-factory/overview`
+      });
+    },
+    component: () => import("@/views/error/redirect-placeholder.vue"),
     meta: { title: "项目详情", showLink: false }
   },
   {
@@ -143,12 +162,12 @@ export default [
       hideFooter: true
     },
     beforeEnter: async (to) => {
-      const allowed = await ensureProjectRouteAccess(to);
-      if (!allowed) {
-        const projectId = to.params.projectId;
-        const id = Array.isArray(projectId) ? projectId[0] : projectId;
-        return { path: "/error/403", query: id ? { projectId: id } : {} };
-      }
+      const result = await ensureProjectRouteAccessResult(to);
+      if (result === "ok") return;
+      const projectId = to.params.projectId;
+      const id = Array.isArray(projectId) ? projectId[0] : projectId;
+      const reason = result === "seo_permission" ? "seo_permission" : "project_access";
+      return { path: "/error/403", query: id ? { projectId: id, reason } : { reason } };
     },
     children: [
       {
@@ -252,39 +271,6 @@ export default [
               seoPermission: "seo:job:read",
               showLink: false
             }
-          },
-          {
-            path: "settings/score-lab",
-            name: "SeoFactoryScoreLab",
-            redirect: (to) => ({
-              path: "/console/labs/score-calibration",
-              query: { projectId: to.params.projectId as string }
-            }),
-            meta: {
-              title: "评分校准实验室",
-              seoPermission: "seo:site:manage",
-              showLink: false
-            }
-          },
-          {
-            path: "content-score",
-            name: "SeoFactoryContentScore",
-            redirect: (to) => ({
-              path: "/console/labs/content-score",
-              query: { projectId: to.params.projectId as string }
-            }),
-            meta: {
-              title: "内容评分",
-              seoPermission: "seo:site:manage",
-              showLink: false
-            }
-          },
-          {
-            path: "settings/content-score-trial",
-            redirect: (to) => ({
-              name: "SeoFactoryContentScore",
-              params: { projectId: to.params.projectId }
-            })
           },
           {
             path: "settings",

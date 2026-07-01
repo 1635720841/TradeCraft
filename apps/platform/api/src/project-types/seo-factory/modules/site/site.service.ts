@@ -12,12 +12,14 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../core/database/prisma.service';
 import { RedisService } from '../../../../core/redis/redis.service';
+import { softDeleteTimestamp } from '../../../../core/prisma/prisma-soft-delete.extension';
 import { BusinessException } from '../../../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { AuditService } from '../../../../modules/access/audit.service';
 import type { CreateSiteDto } from './dto/create-site.dto';
 import type { UpdateSiteDto } from './dto/update-site.dto';
 import {
+  encryptCmsConfigForStorage,
   mergeWordPressCmsConfig,
   mergeShopifyCmsConfig,
   parseShopifyCmsConfig,
@@ -44,6 +46,10 @@ import {
   mergeSiteSerpResearchSettings,
   type SiteSerpResearchSettings,
 } from '../../constants/serp-research-settings';
+import {
+  mergeSiteAutopilotSettings,
+  type SiteAutopilotSettings,
+} from '../../constants/site-autopilot-settings';
 import type { ListShopifyBlogsDto } from './dto/list-shopify-blogs.dto';
 import { findKeywordConflicts } from '../keyword-pool/keyword-cannibalization.util';
 import { SiteCmsService } from './site-cms.service';
@@ -201,10 +207,12 @@ export class SiteService {
       null,
       null,
     );
+    this.assertAutopilotPublishConfig(cms.cmsType, dto.autopilot);
     const settings = this.buildSettingsForWrite(
       dto.workflow,
       withDefaultSiteUtmProfile(domain, dto.contentProfile),
       dto.serpResearch,
+      dto.autopilot,
       parseSiteSettings(null),
     );
 
@@ -333,13 +341,21 @@ export class SiteService {
       dto.workflow !== undefined ||
       dto.contentProfile !== undefined ||
       dto.serpResearch !== undefined ||
+      dto.autopilot !== undefined ||
       dto.ownerUserId !== undefined
     ) {
       const existing = parseSiteSettings(current.settings);
+      const mergedAutopilot =
+        dto.autopilot !== undefined
+          ? mergeSiteAutopilotSettings(existing.autopilot, dto.autopilot)
+          : existing.autopilot;
+      const nextCmsType = dto.cmsType === undefined ? current.cmsType : dto.cmsType;
+      this.assertAutopilotPublishConfig(nextCmsType, mergedAutopilot);
       const baseSettings = this.buildSettingsForWrite(
         dto.workflow,
         dto.contentProfile,
         dto.serpResearch,
+        dto.autopilot,
         existing,
       ) as Record<string, unknown>;
       if (dto.ownerUserId !== undefined) {
@@ -377,10 +393,12 @@ export class SiteService {
     workflow: CreateSiteDto['workflow'] | undefined,
     contentProfile: CreateSiteDto['contentProfile'] | undefined,
     serpResearch: CreateSiteDto['serpResearch'] | undefined,
+    autopilot: CreateSiteDto['autopilot'] | undefined,
     existing: ReturnType<typeof parseSiteSettings>,
   ): Prisma.InputJsonValue {
     const nextProfile = this.mergeContentProfile(existing.contentProfile, contentProfile);
     const nextSerpResearch = this.mergeSerpResearch(existing.serpResearch, serpResearch);
+    const nextAutopilot = mergeSiteAutopilotSettings(existing.autopilot, autopilot);
 
     return {
       requireBriefApproval:
@@ -425,7 +443,22 @@ export class SiteService {
           : {}),
       ...(nextProfile ? { contentProfile: nextProfile } : {}),
       ...(nextSerpResearch ? { serpResearch: nextSerpResearch } : {}),
+      ...(nextAutopilot ? { autopilot: nextAutopilot } : {}),
     } as unknown as Prisma.InputJsonValue;
+  }
+
+  private assertAutopilotPublishConfig(
+    cmsType: string | null | undefined,
+    autopilot: SiteAutopilotSettings | undefined,
+  ): void {
+    if (!autopilot?.enabled) return;
+    if (!autopilot.publishMode || autopilot.publishMode === 'none') return;
+    if (!cmsType) {
+      throw new BusinessException(
+        ErrorCodes.VALIDATION_ERROR,
+        '开启自动推送前请先在站点中配置 WordPress 或 Shopify',
+      );
+    }
   }
 
   private mergeSerpResearch(
@@ -461,7 +494,10 @@ export class SiteService {
         const merged = mergeWordPressCmsConfig(wordpress, existingWordPress);
         return {
           cmsType: 'wordpress',
-          cmsConfig: merged as unknown as Prisma.InputJsonValue,
+          cmsConfig: encryptCmsConfigForStorage(
+            'wordpress',
+            merged as unknown as Record<string, unknown>,
+          ) as unknown as Prisma.InputJsonValue,
         };
       } catch {
         throw new BusinessException(ErrorCodes.VALIDATION_ERROR, 'WordPress Application Password 不能为空');
@@ -477,7 +513,10 @@ export class SiteService {
         this.assertShopifyConfig(merged);
         return {
           cmsType: 'shopify',
-          cmsConfig: merged as unknown as Prisma.InputJsonValue,
+          cmsConfig: encryptCmsConfigForStorage(
+            'shopify',
+            merged as unknown as Record<string, unknown>,
+          ) as unknown as Prisma.InputJsonValue,
         };
       } catch (error) {
         if (error instanceof BusinessException) throw error;
@@ -550,6 +589,7 @@ export class SiteService {
       },
       contentProfile: parsed.contentProfile,
       serpResearch: parsed.serpResearch,
+      autopilot: parsed.autopilot ?? null,
       gsc: buildSiteGscListSummary(gscEnabled, site.gscConnection),
       createdAt: site.createdAt,
     };
@@ -626,15 +666,23 @@ export class SiteService {
       where: { organizationId, projectId, siteId },
     });
 
+    const deletedAt = softDeleteTimestamp();
     await this.prisma.$transaction(async (tx) => {
       if (jobCount > 0) {
-        await tx.articleJob.deleteMany({ where: { organizationId, projectId, siteId } });
+        await tx.articleJob.updateMany({
+          where: { organizationId, projectId, siteId, deletedAt: null },
+          data: { deletedAt },
+        });
       }
+      await tx.sitePage.updateMany({
+        where: { siteId, deletedAt: null },
+        data: { deletedAt },
+      });
       await tx.keywordEntry.updateMany({
         where: { organizationId, projectId, siteId },
         data: { siteId: null },
       });
-      await tx.site.delete({ where: { id: siteId } });
+      await tx.site.update({ where: { id: siteId }, data: { deletedAt } });
     });
 
     if (actor) {

@@ -1,6 +1,6 @@
 // 全局路由类型声明
 
-import type { RouteComponent, RouteLocationNormalized } from "vue-router";
+import type { RouteComponent, RouteLocationNormalized, NavigationGuard } from "vue-router";
 import type { FunctionalComponent } from "vue";
 
 declare global {
@@ -13,7 +13,7 @@ declare global {
    */
   interface CustomizeRouteMeta {
     /** 菜单名称（兼容国际化、非国际化，如何用国际化的写法就必须在根目录的`locales`文件夹下对应添加） `必填` */
-    title: string;
+    title?: string;
     /** 菜单图标 `可选` */
     icon?: string | FunctionalComponent;
     /** 菜单名称右侧的额外图标 */
@@ -66,6 +66,10 @@ declare global {
     loaded?: boolean;
     /** 内容区铺满视口高度且禁止外层滚动（工作台首页等） */
     fillViewport?: boolean;
+    /** 菜单升序排序，值越高排的越后（只针对顶级路由）`可选` */
+    rank?: number;
+    /** 可见菜单 key 白名单（平台权限裁剪）`可选` */
+    visibleMenuKeys?: string[];
     /** 隐藏布局页脚 */
     hideFooter?: boolean;
   }
@@ -79,7 +83,9 @@ declare global {
     /** 路由名字（对应不要重复，和当前组件的`name`保持一致）`必填` */
     name?: string;
     /** 路由重定向 `可选` */
-    redirect?: string;
+    redirect?: string | (() => string);
+    /** 路由进入前守卫 `可选` */
+    beforeEnter?: NavigationGuard | NavigationGuard[];
     /** 按需加载组件 `可选` */
     component?: RouteComponent;
     meta?: CustomizeRouteMeta;
@@ -98,19 +104,10 @@ declare global {
     /** `Layout`组件 `可选` */
     component?: RouteComponent;
     /** 路由重定向 `可选` */
-    redirect?: string;
-    meta?: {
-      /** 菜单名称（兼容国际化、非国际化，如何用国际化的写法就必须在根目录的`locales`文件夹下对应添加）`必填` */
-      title: string;
-      /** 菜单图标 `可选` */
-      icon?: string | FunctionalComponent;
-      /** 是否在菜单中显示（默认`true`）`可选` */
-      showLink?: boolean;
-      /** 菜单升序排序，值越高排的越后（只针对顶级路由）`可选` */
-      rank?: number;
-      /** 页面级别权限设置 `可选` */
-      roles?: Array<string>;
-    };
+    redirect?: string | (() => string);
+    /** 路由进入前守卫 `可选` */
+    beforeEnter?: NavigationGuard | NavigationGuard[];
+    meta?: CustomizeRouteMeta;
     /** 子路由配置项 */
     children?: Array<RouteChildrenConfigsTable>;
   }

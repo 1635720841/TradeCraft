@@ -3,6 +3,7 @@
  *
  * 边界：
  * - 不负责：站点 CRUD（SiteService）
+ * - 站点 Token 由 secret-cipher 加密存储，解析时自动解密
  *
  * 入口：
  * - SiteCmsService

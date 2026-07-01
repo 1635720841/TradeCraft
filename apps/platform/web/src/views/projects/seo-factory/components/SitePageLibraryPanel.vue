@@ -56,12 +56,12 @@
       <el-table-column label="主关键词" min-width="160">
         <template #default="{ row }">
           <el-input
-            :model-value="row.primaryKeyword ?? ''"
+            :model-value="(row as SitePageItem).primaryKeyword ?? ''"
             size="small"
             placeholder="页面主词"
             maxlength="200"
-            :disabled="!row.active"
-            @blur="(event: FocusEvent) => savePrimaryKeyword(row, (event.target as HTMLInputElement).value)"
+            :disabled="!(row as SitePageItem).active"
+            @blur="(event: FocusEvent) => savePrimaryKeyword(row as SitePageItem, (event.target as HTMLInputElement).value)"
           />
         </template>
       </el-table-column>

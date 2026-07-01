@@ -107,7 +107,7 @@ function goScoreLab(projectId: string) {
 }
 
 function goGsc(domain: string) {
-  void router.push({ path: "/console/gsc", query: { keyword: domain } });
+  void router.push({ path: "/console/sites", query: { keyword: domain } });
 }
 
 async function loadProjects() {

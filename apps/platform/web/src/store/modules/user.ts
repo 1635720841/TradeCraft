@@ -8,11 +8,13 @@ import {
   storageLocal
 } from "../utils";
 import {
+  type AuthSession,
   type UserResult,
   type RefreshTokenResult,
   type AuthAccessMeta,
   getAuthProfile,
   getLogin,
+  hasAuthSession,
   refreshTokenApi
 } from "@/api/user";
 import { useMultiTagsStoreHook } from "./multiTags";
@@ -112,7 +114,7 @@ export const useUserStore = defineStore("pure-user", {
       return new Promise<UserResult>((resolve, reject) => {
         getLogin(data)
           .then(async data => {
-            if (data?.success) {
+            if (hasAuthSession(data)) {
               setToken(data.data);
               await this.syncAuthProfile();
             }
@@ -124,7 +126,7 @@ export const useUserStore = defineStore("pure-user", {
       });
     },
     /** Logto / 外部 Auth 回调后写入会话 */
-    async applySession(session: UserResult["data"]) {
+    async applySession(session: AuthSession) {
       setToken(session);
       await this.syncAuthProfile();
     },
@@ -188,10 +190,12 @@ export const useUserStore = defineStore("pure-user", {
       return new Promise<RefreshTokenResult>((resolve, reject) => {
         refreshTokenApi(data)
           .then(data => {
-            if (data) {
+            if (data?.data?.accessToken) {
               setToken(data.data);
               resolve(data);
+              return;
             }
+            reject(new Error("刷新令牌失败"));
           })
           .catch(error => {
             reject(error);

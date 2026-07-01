@@ -7,7 +7,11 @@
       <div class="flex flex-wrap items-center justify-between gap-2">
         <span class="font-medium">全部 Prompt 版本</span>
         <div class="flex flex-wrap items-center gap-2">
-          <el-radio-group :model-value="usageFilter" size="small" @update:model-value="emit('update:usageFilter', $event)">
+          <el-radio-group
+            :model-value="usageFilter"
+            size="small"
+            @update:model-value="onUsageFilterChange"
+          >
             <el-radio-button value="all">全部</el-radio-button>
             <el-radio-button value="active">线上使用中</el-radio-button>
             <el-radio-button value="legacy">历史归档</el-radio-button>
@@ -92,7 +96,7 @@
 </template>
 
 <script setup lang="ts">
-import type { PromptTemplateItem } from "@/api/platform/prompt";
+import type { PromptTemplateItem } from "@/api/console/prompt";
 import type { PromptUsageCategory } from "@/constants/prompt-usage";
 import { usageTagLabel, usageTagType } from "@/constants/prompt-usage";
 
@@ -121,6 +125,10 @@ const emit = defineEmits<{
   "page-change": [page: number];
   "size-change": [];
 }>();
+
+function onUsageFilterChange(value: string | number | boolean | undefined) {
+  emit("update:usageFilter", String(value) as "all" | PromptUsageCategory);
+}
 
 function formatTime(iso: string) {
   return new Date(iso).toLocaleString("zh-CN");

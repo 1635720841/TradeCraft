@@ -86,13 +86,28 @@
             <el-table-column v-if="canImpersonate" label="运营操作" width="100" fixed="right">
               <template #default="{ row }">
                 <el-button
+                  class="hidden sm:inline-flex"
                   link
                   type="primary"
-                  :loading="impersonatingUserId === row.id"
-                  @click="handleImpersonate(row)"
+                  :loading="impersonatingUserId === memberRow(row).id"
+                  @click="handleImpersonate(memberRow(row))"
                 >
                   代登录
                 </el-button>
+                <el-dropdown
+                  class="sm:hidden"
+                  trigger="click"
+                  @command="() => handleImpersonate(memberRow(row))"
+                >
+                  <el-button link type="primary" :loading="impersonatingUserId === memberRow(row).id">
+                    操作
+                  </el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item command="impersonate">代登录</el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
               </template>
             </el-table-column>
           </el-table>
@@ -118,13 +133,28 @@
               <el-table-column v-if="canImpersonate" label="运营操作" width="100" fixed="right">
                 <template #default="{ row }">
                   <el-button
+                    class="hidden sm:inline-flex"
                     link
                     type="primary"
-                    :loading="impersonatingUserId === row.id"
-                    @click="handleImpersonate(row)"
+                    :loading="impersonatingUserId === memberRow(row).id"
+                    @click="handleImpersonate(memberRow(row))"
                   >
                     代登录
                   </el-button>
+                  <el-dropdown
+                    class="sm:hidden"
+                    trigger="click"
+                    @command="() => handleImpersonate(memberRow(row))"
+                  >
+                    <el-button link type="primary" :loading="impersonatingUserId === memberRow(row).id">
+                      操作
+                    </el-button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="impersonate">代登录</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
                 </template>
               </el-table-column>
             </el-table>
@@ -207,6 +237,7 @@ import { hasPerms } from "@/utils/auth";
 import { startImpersonation } from "@/utils/impersonation";
 import { formatPeriodWindow } from "@/utils/period";
 import { message } from "@/utils/message";
+import { tableRow } from "@/utils/table-row";
 import TenantEditDialog from "./components/TenantEditDialog.vue";
 import TenantTopUpDialog from "./components/TenantTopUpDialog.vue";
 import ConsoleTenantSitesPanel from "./components/ConsoleTenantSitesPanel.vue";
@@ -268,6 +299,10 @@ async function loadAudit() {
 
 async function onTenantUpdated() {
   await Promise.all([loadTenant(), loadAudit()]);
+}
+
+function memberRow(row: unknown): TenantMember {
+  return tableRow<TenantMember>(row);
 }
 
 async function handleImpersonate(member: TenantMember) {

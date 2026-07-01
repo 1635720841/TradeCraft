@@ -110,7 +110,7 @@
 <script setup lang="ts">
 import { reactive, watch } from "vue";
 import { ElMessageBox } from "element-plus";
-import type { PromptRuntimeSlot, PromptRuntimeSlotId, PromptTemplateItem } from "@/api/platform/prompt";
+import type { PromptRuntimeSlot, PromptRuntimeSlotId, PromptTemplateItem } from "@/api/console/prompt";
 import { versionsForSlot } from "@/constants/prompt-usage";
 
 defineOptions({ name: "PromptRuntimeBoard" });

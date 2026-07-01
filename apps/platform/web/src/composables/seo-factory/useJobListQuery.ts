@@ -174,9 +174,11 @@ export function useJobListQuery(projectId: string) {
   }
 
   function startPolling() {
-    if (pollTimer) return;
+    stopPolling();
+    if (document.hidden) return;
     polling.value = true;
     pollTimer = setInterval(() => {
+      if (document.hidden) return;
       if (hasActiveJobs.value) {
         void fetchJobs(false);
       }
@@ -315,14 +317,24 @@ export function useJobListQuery(projectId: string) {
     }
   );
 
+  function onVisibilityChange() {
+    if (document.hidden) {
+      stopPolling();
+      return;
+    }
+    syncPolling();
+  }
+
   onMounted(() => {
     syncListFilterFromRoute();
     syncKeywordFromRoute();
+    document.addEventListener("visibilitychange", onVisibilityChange);
     void loadSites();
     void fetchJobs();
   });
 
   onUnmounted(() => {
+    document.removeEventListener("visibilitychange", onVisibilityChange);
     stopPolling();
   });
 

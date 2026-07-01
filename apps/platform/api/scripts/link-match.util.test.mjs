@@ -75,6 +75,90 @@ describe('injectInternalLinks', () => {
     assert.equal(result.links[0]?.pageType, 'PRODUCT');
   });
 
+  it('inserts at least SWA_MIN_INTERNAL_LINKS for short articles', () => {
+    const content = [
+      '## Overview',
+      '',
+      'Industrial valve systems improve manufacturing throughput and safety for modern plants.',
+      '',
+      '## Selection',
+      '',
+      'Choose industrial valve models that match pressure ratings and material requirements.',
+      '',
+      '## Maintenance',
+      '',
+      'Regular industrial valve maintenance prevents downtime and extends service life.',
+    ].join('\n');
+
+    const pages = [
+      {
+        url: 'https://acme.com/products/industrial-valve',
+        title: 'Industrial Valve',
+        summary: 'Valve products for factories',
+        keywords: ['industrial valve', 'manufacturing'],
+        pageType: 'PRODUCT',
+        businessValue: 0.9,
+      },
+      {
+        url: 'https://acme.com/services/valve-installation',
+        title: 'Valve Installation',
+        summary: 'Professional valve installation services',
+        keywords: ['industrial valve', 'installation'],
+        pageType: 'SERVICE',
+        businessValue: 0.85,
+      },
+      {
+        url: 'https://acme.com/blog/valve-maintenance',
+        title: 'Valve Maintenance Guide',
+        summary: 'Maintenance tips for industrial valves',
+        keywords: ['industrial valve', 'maintenance'],
+        pageType: 'BLOG',
+        businessValue: 0.7,
+      },
+    ];
+
+    const result = injectInternalLinks(content, pages);
+    assert.ok(result.links.length >= 2, `expected >=2 links, got ${result.links.length}`);
+  });
+
+  it('does not treat markdown images as existing internal links', () => {
+    const content = [
+      '## Overview',
+      '',
+      '![Industrial valve diagram](https://cdn.example.com/valve.png)',
+      '',
+      'Industrial valve suppliers help factories improve reliability and safety.',
+      '',
+      '## Maintenance',
+      '',
+      '![Maintenance checklist](https://cdn.example.com/checklist.png)',
+      '',
+      'Regular industrial valve maintenance prevents downtime and extends service life.',
+    ].join('\n');
+
+    const pages = [
+      {
+        url: 'https://acme.com/products/industrial-valve',
+        title: 'Industrial Valve',
+        summary: 'Valve products for factories',
+        keywords: ['industrial valve', 'supplier'],
+        pageType: 'PRODUCT',
+        businessValue: 0.9,
+      },
+      {
+        url: 'https://acme.com/blog/valve-maintenance',
+        title: 'Valve Maintenance Guide',
+        summary: 'Maintenance tips for industrial valves',
+        keywords: ['industrial valve', 'maintenance'],
+        pageType: 'BLOG',
+        businessValue: 0.7,
+      },
+    ];
+
+    const result = injectInternalLinks(content, pages);
+    assert.ok(result.links.length >= 2, `expected >=2 links, got ${result.links.length}`);
+  });
+
   it('returns original content when page library is empty', () => {
     const content = 'Short article without enough context.';
     const result = injectInternalLinks(content, []);

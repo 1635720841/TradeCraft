@@ -5,7 +5,7 @@ import LayFooter from "../lay-footer/index.vue";
 import { useTags } from "@/layout/hooks/useTag";
 import { useGlobal, isNumber } from "@pureadmin/utils";
 import BackTopIcon from "@/assets/svg/back_top.svg?component";
-import { h, computed, Transition, defineComponent } from "vue";
+import { h, computed, Transition, defineComponent, type CSSProperties } from "vue";
 import { useRoute, type RouteLocationNormalizedLoaded } from "vue-router";
 import { usePermissionStoreHook } from "@/store/modules/permission";
 import {
@@ -64,7 +64,7 @@ const getMainWidth = computed(() => {
       : "100%";
 });
 
-const getScrollWrapStyle = computed(() => ({
+const getScrollWrapStyle = computed((): CSSProperties => ({
   display: "flex",
   flexWrap: "wrap",
   width: fillViewport.value ? "100%" : undefined,
@@ -157,7 +157,7 @@ const transitionMain = defineComponent({
                 display: 'flex',
                 flex: 'auto',
                 overflow: 'hidden',
-                'flex-direction': 'column'
+                flexDirection: 'column'
               }"
             >
               <el-backtop

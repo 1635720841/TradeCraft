@@ -13,6 +13,7 @@ import { ArticleJobModule } from './modules/article-job/article-job.module';
 import { ArticleScoreModule } from './modules/article-score/article-score.module';
 import { ExportModule } from './modules/export/export.module';
 import { GscModule } from './modules/gsc/gsc.module';
+import { AutopilotModule } from './modules/autopilot/autopilot.module';
 import { ScoreCalibrationModule } from './modules/score-calibration/score-calibration.module';
 import { KeywordPoolModule } from './modules/keyword-pool/keyword-pool.module';
 import { LinkingModule } from './modules/linking/linking.module';
@@ -20,6 +21,7 @@ import { SiteModule } from './modules/site/site.module';
 import { WorkflowModule } from './modules/workflow/workflow.module';
 import { ArticleJobProcessor } from './processors/article-job.processor';
 import { GscSyncProcessor } from './processors/gsc-sync.processor';
+import { AutopilotProcessor } from './processors/autopilot.processor';
 import { PlaywrightQueueModule } from './playwright-queue.module';
 import { SeoFactoryProvidersModule } from './providers/seo-factory-providers.module';
 import { SeoFactoryQueueModule } from './seo-factory-queue.module';
@@ -38,8 +40,9 @@ import { SeoFactoryQueueJobEnrichmentService } from './modules/console-bridge/se
     ExportModule,
     KeywordPoolModule,
     GscModule,
+    AutopilotModule,
     ScoreCalibrationModule,
   ],
-  providers: [ArticleJobProcessor, GscSyncProcessor, SeoFactoryQueueJobEnrichmentService],
+  providers: [ArticleJobProcessor, GscSyncProcessor, AutopilotProcessor, SeoFactoryQueueJobEnrichmentService],
 })
 export class SeoFactoryModule {}

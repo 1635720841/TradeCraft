@@ -16,7 +16,11 @@
       <el-button type="primary" :loading="saving" @click="emit('save')">保存覆盖</el-button>
     </div>
 
-    <el-checkbox-group v-if="menuConfig" :model-value="enabledMenuIds" @change="emit('update:enabledMenuIds', $event)">
+    <el-checkbox-group
+      v-if="menuConfig"
+      :model-value="enabledMenuIds"
+      @change="onEnabledMenuIdsChange"
+    >
       <div class="space-y-2">
         <el-checkbox v-for="menu in menuConfig.menus" :key="menu.id" :value="menu.id">
           {{ menu.title }}
@@ -28,6 +32,7 @@
 </template>
 
 <script setup lang="ts">
+import type { CheckboxValueType } from "element-plus";
 import type { UserMenuConfig } from "@/api/console/index";
 
 defineOptions({ name: "ConsoleMenuOverridePanel" });
@@ -43,4 +48,12 @@ const emit = defineEmits<{
   save: [];
   "update:enabledMenuIds": [ids: string[]];
 }>();
+
+function onEnabledMenuIdsChange(value: CheckboxValueType | CheckboxValueType[]) {
+  const list = Array.isArray(value) ? value : [value];
+  emit(
+    "update:enabledMenuIds",
+    list.map((item) => String(item))
+  );
+}
 </script>

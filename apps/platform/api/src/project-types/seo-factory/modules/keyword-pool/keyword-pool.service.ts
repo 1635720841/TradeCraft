@@ -22,6 +22,7 @@ import {
   type ILLMProvider,
 } from '@wm/provider-interfaces';
 import { PrismaService } from '../../../../core/database/prisma.service';
+import { softDeleteTimestamp } from '../../../../core/prisma/prisma-soft-delete.extension';
 import { BusinessException } from '../../../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { LoggerService } from '../../../../core/logger/logger.service';
@@ -760,7 +761,10 @@ export class KeywordPoolService {
   async remove(organizationId: string, projectId: string, id: string) {
     const entry = await this.findOne(organizationId, projectId, id);
 
-    await this.prisma.keywordEntry.delete({ where: { id } });
+    await this.prisma.keywordEntry.update({
+      where: { id },
+      data: { deletedAt: softDeleteTimestamp() },
+    });
 
     return { id: entry.id, keyword: entry.keyword, deleted: true as const };
   }
@@ -783,8 +787,9 @@ export class KeywordPoolService {
       throw new BusinessException(ErrorCodes.KEYWORD_NOT_FOUND, '部分关键词不存在或无权访问');
     }
 
-    const result = await this.prisma.keywordEntry.deleteMany({
-      where: { id: { in: uniqueIds }, organizationId, projectId },
+    const result = await this.prisma.keywordEntry.updateMany({
+      where: { id: { in: uniqueIds }, organizationId, projectId, deletedAt: null },
+      data: { deletedAt: softDeleteTimestamp() },
     });
 
     return { deleted: result.count };

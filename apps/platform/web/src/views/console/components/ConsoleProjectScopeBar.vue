@@ -11,7 +11,10 @@
         <el-select
           v-model="organizationId"
           filterable
+          remote
+          reserve-keyword
           clearable
+          :remote-method="onTenantSearch"
           :loading="tenantsLoading"
           placeholder="选择企业"
           style="width: 220px"
@@ -57,6 +60,10 @@ import { useConsoleProjectScope } from "@/composables/console/useConsoleProjectS
 
 defineOptions({ name: "ConsoleProjectScopeBar" });
 
+const emit = defineEmits<{
+  searchTenants: [keyword: string];
+}>();
+
 const {
   tenantsLoading,
   projectsLoading,
@@ -71,6 +78,11 @@ const {
   onTenantChange,
   onProjectChange
 } = useConsoleProjectScope();
+
+function onTenantSearch(keyword: string) {
+  emit("searchTenants", keyword);
+  void loadTenants(keyword);
+}
 
 onMounted(async () => {
   syncFromRoute();

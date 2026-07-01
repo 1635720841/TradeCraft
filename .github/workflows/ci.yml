@@ -55,6 +55,9 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Lint
+        run: pnpm lint
+
       - name: Web unit tests
         run: pnpm --filter @wm/platform-web test
 
@@ -64,6 +67,10 @@ jobs:
       - name: API unit tests
         working-directory: apps/platform/api
         run: pnpm test
+
+      - name: API full script tests
+        working-directory: apps/platform/api
+        run: pnpm test:all
 
       - name: Prepare database
         working-directory: apps/platform/api

@@ -18,6 +18,15 @@ const SEMRUSH_MARKDOWN_SECTION_MAX_CHARS = 110;
 const SEMRUSH_MARKDOWN_SECTION_MAX_WORDS = 16;
 const SEMRUSH_MARKDOWN_PARAGRAPH_MAX_WORDS = 65;
 
+/** 独立成行的 Markdown 配图/链接，不参与长句拆分与超长段检测 */
+function isMarkdownMediaLine(trimmed: string): boolean {
+  return (
+    /^!\[[^\]]*\]\([^)]+\)\s*$/.test(trimmed) ||
+    /^\[[^\]]+\]\([^)]+\)\s*$/.test(trimmed) ||
+    /^⟦MEDIA:\d+⟧\s*$/.test(trimmed)
+  );
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -429,6 +438,9 @@ function splitLongProseLine(line: string): string[] {
   if (/^(#{1,6}\s+|[-*]\s+|\d+\.\s+|\|)/.test(trimmed)) {
     return [line];
   }
+  if (isMarkdownMediaLine(trimmed)) {
+    return [line];
+  }
   const sentences = trimmed.match(/[^.!?]+[.!?]+(?:["']|$)?|[^.!?]+$/g)?.map((item) => item.trim()).filter(Boolean) ?? [];
   if (
     countWords(trimmed) <= SEMRUSH_MARKDOWN_PARAGRAPH_MAX_WORDS &&
@@ -585,6 +597,7 @@ export function detectSemrushStructureErrors(content: string): string[] {
       const trimmed = line.trim();
       return (
         !/^(#{1,6}\s+|[-*]\s+|\d+\.\s+|\|)/.test(trimmed) &&
+        !isMarkdownMediaLine(trimmed) &&
         (countWords(trimmed) > SEMRUSH_MARKDOWN_PARAGRAPH_MAX_WORDS ||
           (trimmed.match(/[.!?]+/g)?.length ?? 0) > 3)
       );

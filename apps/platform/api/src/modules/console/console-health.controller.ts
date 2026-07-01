@@ -9,6 +9,7 @@ import { ReqCtx } from '../../core/decorators/request-context.decorator';
 import { Permissions } from '../../core/decorators/permissions.decorator';
 import { Roles } from '../../core/decorators/roles.decorator';
 import { ConsoleHealthService } from './console-health.service';
+import { parsePageLimit } from '../../core/utils/parse-page-limit.util';
 
 @Controller('api/v1/console/health')
 @Roles(Role.SUPER_ADMIN, Role.PLATFORM_OPERATOR)
@@ -30,10 +31,11 @@ export class ConsoleHealthController {
     @Query('queue') queue?: string,
     @Query('limit') limit?: string,
   ) {
+    const { limit: safeLimit } = parsePageLimit('1', limit, { page: 1, limit: 50 });
     const data = await this.healthService.getQueueJobs({
       state,
       queue: queue?.trim() || undefined,
-      limit: limit ? Number(limit) : undefined,
+      limit: safeLimit,
     });
     return { data, meta: { traceId: ctx.traceId } };
   }

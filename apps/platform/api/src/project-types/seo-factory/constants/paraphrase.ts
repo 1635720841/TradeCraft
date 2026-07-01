@@ -8,3 +8,16 @@ export const PARAPHRASE_CHUNK_MIN_H2 = 3;
 
 /** 润色后本地预检分允许的最大下降值 */
 export const PARAPHRASE_LOCAL_SCORE_MAX_DROP = 5;
+
+/** 分块润色：正文（去标题/配图后）低于此字符数则跳过 LLM */
+export const PARAPHRASE_MIN_PROSE_CHARS = 350;
+
+/** 分块润色：篇幅门禁（比全文更严） */
+export const PARAPHRASE_CHUNK_LENGTH_MIN = 0.92;
+export const PARAPHRASE_CHUNK_LENGTH_MAX = 1.08;
+
+/** 分块成功率低于此比例则整篇放弃润色（保留 Semrush 稿） */
+export const PARAPHRASE_MIN_CHUNK_SUCCESS_RATIO = 0.25;
+
+/** 全文改动低于此比例且程序化门禁通过时，跳过 LLM 语义复检 */
+export const PARAPHRASE_MAX_CHANGE_RATIO_FOR_VALIDATE_SKIP = 0.12;

@@ -14,6 +14,7 @@ import { UpdateProjectMemberDto } from './dto/update-project-member.dto';
 import { ProjectAdminService } from './project-admin.service';
 import { ProjectService } from './project.service';
 import { AccessRequestService } from './access-request.service';
+import { parsePageLimit } from '../../core/utils/parse-page-limit.util';
 import { listPermissionPresets } from './project-permission-presets';
 
 @Controller('api/v1/org/projects')
@@ -46,10 +47,11 @@ export class OrgProjectController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
+    const { page: safePage, limit: safeLimit } = parsePageLimit(page, limit);
     const result = await this.projectAdminService.listManagedProjects(
       ctx,
-      page ? Number(page) : 1,
-      limit ? Number(limit) : 20,
+      safePage,
+      safeLimit,
     );
     return {
       data: result.items,

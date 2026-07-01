@@ -26,7 +26,7 @@ import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { debounce } from "@pureadmin/utils";
 import { useEventListener } from "@vueuse/core";
-import { getLogtoConfig, type LogtoConfigResult } from "@/api/user";
+import { getLogtoConfig, hasAuthSession, type LogtoConfigResult } from "@/api/user";
 import { initRouter, resolveEntryPath } from "@/router/utils";
 import { useUserStoreHook } from "@/store/modules/user";
 import { storageLocal } from "@pureadmin/utils";
@@ -72,7 +72,7 @@ onMounted(async () => {
 
   try {
     const res = await getLogtoConfig();
-    if (res?.success && res.data?.enabled) {
+    if (res?.data?.enabled) {
       logtoConfig.value = res.data;
     }
   } catch {
@@ -105,7 +105,7 @@ const onLogin = async () => {
       password: ruleForm.password
     })
     .then(res => {
-      if (res.success) {
+      if (hasAuthSession(res)) {
         persistRemember();
         return initRouter().then(() => {
           disabled.value = true;

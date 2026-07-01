@@ -4,6 +4,7 @@
 
 import { http } from "@/utils/http";
 import type { WmApiResponse } from "@/api/platform/types";
+import type { ConsoleSiteRowBase } from "./site-row";
 
 export interface PlatformGscStatus {
   oauthConfigured: boolean;
@@ -13,25 +14,19 @@ export interface PlatformGscStatus {
   propertyCount: number | null;
 }
 
-export interface ConsoleGscSiteRow {
-  siteId: string;
-  domain: string;
-  organizationId: string;
-  organizationName: string;
-  projectId: string;
-  projectName: string;
+export interface ConsoleGscSiteRow extends ConsoleSiteRowBase {
   connected: boolean;
   managedByPlatform: boolean;
   propertyUrl: string | null;
   lastSyncAt: string | null;
   lastSyncError: string | null;
-  gscEnabled: boolean;
 }
 
 export async function getConsoleGscStatus(): Promise<PlatformGscStatus> {
   const res = await http.request<WmApiResponse<PlatformGscStatus>>(
     "get",
-    "/api/v1/console/gsc/status"
+    "/api/v1/console/gsc/status",
+    { skipGlobalErrorToast: true }
   );
   return res.data;
 }
@@ -39,7 +34,8 @@ export async function getConsoleGscStatus(): Promise<PlatformGscStatus> {
 export async function getConsoleGscConnectUrl(): Promise<{ authUrl: string }> {
   const res = await http.request<WmApiResponse<{ authUrl: string }>>(
     "get",
-    "/api/v1/console/gsc/connect-url"
+    "/api/v1/console/gsc/connect-url",
+    { skipGlobalErrorToast: true }
   );
   return res.data;
 }
@@ -47,7 +43,8 @@ export async function getConsoleGscConnectUrl(): Promise<{ authUrl: string }> {
 export async function disconnectConsoleGsc(): Promise<{ disconnected: boolean }> {
   const res = await http.request<WmApiResponse<{ disconnected: boolean }>>(
     "post",
-    "/api/v1/console/gsc/disconnect"
+    "/api/v1/console/gsc/disconnect",
+    { skipGlobalErrorToast: true }
   );
   return res.data;
 }
@@ -67,7 +64,7 @@ export async function listConsoleGscSites(options?: {
   const res = await http.request<WmApiResponse<ConsoleGscSiteRow[]>>(
     "get",
     "/api/v1/console/gsc/sites",
-    { params }
+    { params, skipGlobalErrorToast: true }
   );
   const pagination = (res.meta as { pagination?: { page: number; limit: number; total: number } })
     ?.pagination;
@@ -87,7 +84,7 @@ export async function autoConnectAllConsoleGscSites(): Promise<{
 }> {
   const res = await http.request<
     WmApiResponse<{ connected: number; failed: number; skipped: number; total: number }>
-  >("post", "/api/v1/console/gsc/auto-connect-all");
+  >("post", "/api/v1/console/gsc/auto-connect-all", { skipGlobalErrorToast: true });
   return res.data;
 }
 
@@ -97,7 +94,8 @@ export async function connectConsoleGscSite(siteId: string): Promise<{
 }> {
   const res = await http.request<WmApiResponse<{ connected: boolean; reason?: string }>>(
     "post",
-    `/api/v1/console/gsc/sites/${siteId}/connect`
+    `/api/v1/console/gsc/sites/${siteId}/connect`,
+    { skipGlobalErrorToast: true }
   );
   return res.data;
 }
@@ -105,7 +103,8 @@ export async function connectConsoleGscSite(siteId: string): Promise<{
 export async function disconnectConsoleGscSite(siteId: string): Promise<{ disconnected: boolean }> {
   const res = await http.request<WmApiResponse<{ disconnected: boolean }>>(
     "post",
-    `/api/v1/console/gsc/sites/${siteId}/disconnect`
+    `/api/v1/console/gsc/sites/${siteId}/disconnect`,
+    { skipGlobalErrorToast: true }
   );
   return res.data;
 }
@@ -113,7 +112,8 @@ export async function disconnectConsoleGscSite(siteId: string): Promise<{ discon
 export async function syncConsoleGscSite(siteId: string): Promise<{ summary: unknown }> {
   const res = await http.request<WmApiResponse<{ summary: unknown }>>(
     "post",
-    `/api/v1/console/gsc/sites/${siteId}/sync`
+    `/api/v1/console/gsc/sites/${siteId}/sync`,
+    { skipGlobalErrorToast: true }
   );
   return res.data;
 }

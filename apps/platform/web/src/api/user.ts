@@ -1,38 +1,37 @@
 import { http } from "@/utils/http";
+import type { WmApiResponse } from "@/api/types";
 
-export type UserResult = {
-  success: boolean;
-  data: {
-    /** 头像 */
-    avatar: string;
-    /** 用户名 */
-    username: string;
-    /** 昵称 */
-    nickname: string;
-    /** 当前登录用户的角色 */
-    roles: Array<string>;
-    /** 按钮级别权限 */
-    permissions: Array<string>;
-    /** `token` */
-    accessToken: string;
-    /** 用于调用刷新`accessToken`的接口时所需的`token` */
-    refreshToken: string;
-    /** `accessToken`的过期时间（格式'xxxx/xx/xx xx:xx:xx'） */
-    expires: Date;
-  };
-};
+/** 登录 / 刷新令牌会话载荷（与后端 AuthSessionPayload 对齐） */
+export interface AuthSession {
+  /** 头像 */
+  avatar: string;
+  /** 用户名 */
+  username: string;
+  /** 昵称 */
+  nickname: string;
+  /** 当前登录用户的角色 */
+  roles: Array<string>;
+  /** 按钮级别权限 */
+  permissions: Array<string>;
+  /** `token` */
+  accessToken: string;
+  /** 用于调用刷新`accessToken`的接口时所需的`token` */
+  refreshToken: string;
+  /** `accessToken` 过期时间（ISO 字符串） */
+  expires: string;
+}
 
-export type RefreshTokenResult = {
-  success: boolean;
-  data: {
-    /** `token` */
-    accessToken: string;
-    /** 用于调用刷新`accessToken`的接口时所需的`token` */
-    refreshToken: string;
-    /** `accessToken`的过期时间（格式'xxxx/xx/xx xx:xx:xx'） */
-    expires: Date;
-  };
-};
+export type UserResult = WmApiResponse<AuthSession>;
+
+export type RefreshTokenResult = WmApiResponse<
+  Pick<AuthSession, "accessToken" | "refreshToken" | "expires">
+>;
+
+export function hasAuthSession(
+  res: UserResult | RefreshTokenResult | null | undefined
+): res is UserResult | RefreshTokenResult {
+  return Boolean(res?.data?.accessToken);
+}
 
 /** 登录 */
 export const getLogin = (data?: object) => {
@@ -79,16 +78,13 @@ export const getAuthProfile = () => {
   return http.request<AuthProfileResult>("get", "/api/v1/auth/me");
 };
 
-export type LogtoConfigResult = {
-  success: boolean;
-  data: {
-    enabled: boolean;
-    endpoint: string | null;
-    appId: string | null;
-    redirectUri: string | null;
-    authorizeUrl: string | null;
-  };
-};
+export type LogtoConfigResult = WmApiResponse<{
+  enabled: boolean;
+  endpoint: string | null;
+  appId: string | null;
+  redirectUri: string | null;
+  authorizeUrl: string | null;
+}>;
 
 /** Logto 登录配置（公开） */
 export const getLogtoConfig = () => {

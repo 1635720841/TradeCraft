@@ -5,19 +5,13 @@
 import { http } from "@/utils/http";
 import type { WmApiResponse } from "@/api/platform/types";
 import type { SiteGscListSummary } from "@/api/seo-factory/types";
+import type { ConsoleSiteRowBase } from "./site-row";
 
-export interface ConsoleSiteOverviewRow {
-  siteId: string;
-  domain: string;
-  organizationId: string;
-  organizationName: string;
-  projectId: string;
-  projectName: string;
+export interface ConsoleSiteOverviewRow extends ConsoleSiteRowBase {
   projectStatus: string;
   cmsType: string | null;
   cmsConfigured: boolean;
   profileReady: boolean;
-  gscEnabled: boolean;
   gsc: SiteGscListSummary;
   jobCount: number;
   createdAt: string;

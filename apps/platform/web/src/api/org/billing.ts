@@ -85,7 +85,10 @@ export async function createBillingRequest(payload: {
   topUpAmount?: number;
   message?: string;
 }) {
-  await http.request("post", "/api/v1/org/billing/requests", { data: payload });
+  await http.request("post", "/api/v1/org/billing/requests", {
+    data: payload,
+    skipGlobalErrorToast: true
+  });
 }
 
 export interface BillingRequestItem {

@@ -8,6 +8,7 @@ import { Role } from '@wm/shared-core';
 import { ReqCtx } from '../../core/decorators/request-context.decorator';
 import { Permissions } from '../../core/decorators/permissions.decorator';
 import { Roles } from '../../core/decorators/roles.decorator';
+import { parsePageLimit } from '../../core/utils/parse-page-limit.util';
 import { PermissionService } from '../access/permission.service';
 import { AddQuotaTopUpDto } from '../billing/dto/add-quota-topup.dto';
 import { ConsoleService } from './console.service';
@@ -42,13 +43,14 @@ export class ConsoleController {
   @Permissions('console:tenant:list')
   async listTenants(
     @ReqCtx() ctx: RequestContext,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
+    @Query('page') pageStr?: string,
+    @Query('limit') limitStr?: string,
     @Query('keyword') keyword?: string,
   ) {
+    const { page, limit } = parsePageLimit(pageStr, limitStr);
     const result = await this.consoleTenantService.listTenants(
-      page ? Number(page) : 1,
-      limit ? Number(limit) : 20,
+      page,
+      limit,
       keyword,
     );
     return {
@@ -89,9 +91,10 @@ export class ConsoleController {
     @Query('profileReady') profileReady?: 'true' | 'false',
     @Query('gscConnected') gscConnected?: 'true' | 'false',
   ) {
+    const pagination = parsePageLimit(page, limit);
     const result = await this.consoleSiteService.listOverview({
-      page: page ? Number(page) : 1,
-      limit: limit ? Number(limit) : 20,
+      page: pagination.page,
+      limit: pagination.limit,
       keyword,
       organizationId,
       projectId,
@@ -174,9 +177,10 @@ export class ConsoleController {
     @Query('keyword') keyword?: string,
     @Query('scope') scope?: string,
   ) {
+    const { page: safePage, limit: safeLimit } = parsePageLimit(page, limit, { page: 1, limit: 50 });
     const result = await this.consoleAccessService.listUsers(
-      page ? Number(page) : 1,
-      limit ? Number(limit) : 50,
+      safePage,
+      safeLimit,
       keyword,
       scope,
     );
@@ -259,9 +263,10 @@ export class ConsoleController {
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
   ) {
+    const { page: safePage, limit: safeLimit } = parsePageLimit(page, limit, { page: 1, limit: 50 });
     const result = await this.consoleService.listAuditLogs(
-      page ? Number(page) : 1,
-      limit ? Number(limit) : 50,
+      safePage,
+      safeLimit,
       organizationId,
       actorUserId,
       actorKeyword,

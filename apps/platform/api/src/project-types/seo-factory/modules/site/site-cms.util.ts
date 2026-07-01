@@ -3,7 +3,15 @@
  *
  * 边界：
  * - 不负责：HTTP 发布（CmsPublishService）
+ *
+ * 敏感字段（accessToken / applicationPassword）入库前经 secret-cipher 加密。
  */
+
+import {
+  decryptSecret,
+  encryptSecret,
+  isEncryptedSecret,
+} from '../../../../core/crypto/secret-cipher.util';
 
 export type CmsType = 'wordpress' | 'shopify';
 
@@ -74,6 +82,57 @@ export function getShopifyApiVersion(): string {
   return process.env.SHOPIFY_API_VERSION?.trim() || '2024-10';
 }
 
+const WORDPRESS_SECRET_FIELD = 'applicationPassword';
+const SHOPIFY_SECRET_FIELD = 'accessToken';
+
+function readCmsSecretField(raw: Record<string, unknown>, field: string): string {
+  const stored = typeof raw[field] === 'string' ? raw[field].trim() : '';
+  if (!stored) {
+    return '';
+  }
+  return decryptSecret(stored);
+}
+
+function hasCmsSecretField(raw: Record<string, unknown>, field: string): boolean {
+  const stored = typeof raw[field] === 'string' ? raw[field].trim() : '';
+  return Boolean(stored);
+}
+
+/** 将 CMS 配置中的明文密钥加密后写入数据库 */
+export function encryptCmsConfigForStorage(
+  cmsType: string,
+  cmsConfig: Record<string, unknown>,
+): Record<string, unknown> {
+  const out = { ...cmsConfig };
+
+  if (cmsType === 'wordpress') {
+    const plain = readCmsSecretField(out, WORDPRESS_SECRET_FIELD);
+    if (plain && !isEncryptedSecret(typeof out[WORDPRESS_SECRET_FIELD] === 'string' ? out[WORDPRESS_SECRET_FIELD] : '')) {
+      out[WORDPRESS_SECRET_FIELD] = encryptSecret(plain);
+    }
+  }
+
+  if (cmsType === 'shopify') {
+    const plain = readCmsSecretField(out, SHOPIFY_SECRET_FIELD);
+    if (plain && !isEncryptedSecret(typeof out[SHOPIFY_SECRET_FIELD] === 'string' ? out[SHOPIFY_SECRET_FIELD] : '')) {
+      out[SHOPIFY_SECRET_FIELD] = encryptSecret(plain);
+    }
+  }
+
+  return out;
+}
+
+/** 迁移脚本：加密 Site.cmsConfig 中的明文密钥 */
+export function encryptStoredCmsConfig(
+  cmsType: string | null | undefined,
+  cmsConfig: unknown,
+): Record<string, unknown> | null {
+  if (!cmsType || !cmsConfig || typeof cmsConfig !== 'object') {
+    return null;
+  }
+  return encryptCmsConfigForStorage(cmsType, cmsConfig as Record<string, unknown>);
+}
+
 export function parseWordPressCmsConfig(
   cmsType: string | null | undefined,
   cmsConfig: unknown,
@@ -85,8 +144,7 @@ export function parseWordPressCmsConfig(
   const raw = cmsConfig as Record<string, unknown>;
   const baseUrl = typeof raw.baseUrl === 'string' ? raw.baseUrl.trim().replace(/\/+$/, '') : '';
   const username = typeof raw.username === 'string' ? raw.username.trim() : '';
-  const applicationPassword =
-    typeof raw.applicationPassword === 'string' ? raw.applicationPassword.trim() : '';
+  const applicationPassword = readCmsSecretField(raw, WORDPRESS_SECRET_FIELD);
 
   if (!baseUrl || !username || !applicationPassword) {
     return null;
@@ -108,7 +166,7 @@ export function parseShopifyCmsConfig(
   const raw = cmsConfig as Record<string, unknown>;
   const shopDomain =
     typeof raw.shopDomain === 'string' ? normalizeShopifyDomain(raw.shopDomain) : '';
-  const accessToken = typeof raw.accessToken === 'string' ? raw.accessToken.trim() : '';
+  const accessToken = readCmsSecretField(raw, SHOPIFY_SECRET_FIELD);
   const blogId = typeof raw.blogId === 'string' ? raw.blogId.trim() : '';
   const productId = typeof raw.productId === 'string' ? raw.productId.trim() : '';
   const publishTarget: ShopifyPublishTarget =
@@ -155,9 +213,7 @@ export function sanitizeCmsForResponse(
         productId: typeof parsed.productId === 'string' ? parsed.productId : '',
         publishTarget: parsed.publishTarget === 'product' ? 'product' : 'blog',
         defaultPublished: parsed.defaultPublished === true,
-        hasAccessToken: Boolean(
-          typeof parsed.accessToken === 'string' && parsed.accessToken.trim(),
-        ),
+        hasAccessToken: hasCmsSecretField(parsed, SHOPIFY_SECRET_FIELD),
       },
     };
   }
@@ -177,9 +233,7 @@ export function sanitizeCmsForResponse(
       baseUrl: typeof parsed.baseUrl === 'string' ? parsed.baseUrl : '',
       username: typeof parsed.username === 'string' ? parsed.username : '',
       defaultStatus: parsed.defaultStatus === 'publish' ? 'publish' : 'draft',
-      hasApplicationPassword: Boolean(
-        typeof parsed.applicationPassword === 'string' && parsed.applicationPassword.trim(),
-      ),
+      hasApplicationPassword: hasCmsSecretField(parsed, WORDPRESS_SECRET_FIELD),
     },
   };
 }

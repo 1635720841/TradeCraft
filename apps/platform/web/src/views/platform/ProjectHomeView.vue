@@ -24,6 +24,7 @@
       </article>
 
       <aside v-if="profile" class="mw-home__quota-card" aria-label="企业运营概览">
+        <QuotaSummaryCard :quota="profile.quota" class="mb-3" />
         <el-alert
           v-if="quotaLowAlert"
           class="mb-3"
@@ -287,8 +288,11 @@
             </div>
           </button>
 
-          <p
-            v-if="!loading && otherProjects.length && !showOtherProjects"
+        <!-- <p v-if="displayProjects.length" class="mw-home__empty mt-2">
+          <router-link to="/org/projects" class="mw-home__quota-link">项目管理 →</router-link>
+        </p> -->
+
+        <p v-if="!loading && otherProjects.length && !showOtherProjects"
             class="mw-home__empty"
           >
             <button type="button" class="mw-home__quota-link" @click="showOtherProjects = true">
@@ -378,6 +382,7 @@ import { formatPeriodEnd } from "@/utils/period";
 import { message } from "@/utils/message";
 import HomeIcon from "./components/home/HomeIcon.vue";
 import SetupChecklistPanel from "@/components/SetupChecklistPanel.vue";
+import QuotaSummaryCard from "@/components/org/QuotaSummaryCard.vue";
 import { useOrgAdminSetupChecklist } from "@/composables/useOrgAdminSetupChecklist";
 import heroIllustration from "@/assets/img/0982809c-735d-484a-9681-f6e39a0140da.png";
 import "./styles/merwise-home.css";
@@ -473,10 +478,15 @@ const otherProjects = computed(() =>
 
 const displayProjects = computed(() => {
   const primary = enterableProjects.value;
+  const applyable = otherProjects.value.filter(item => canApplyAccess(item));
+  const rest = otherProjects.value.filter(item => !canApplyAccess(item));
   if (showOtherProjects.value) {
-    return [...primary, ...otherProjects.value];
+    return [...primary, ...applyable, ...rest];
   }
-  return primary.length > 0 ? primary : otherProjects.value;
+  if (primary.length > 0) {
+    return [...primary, ...applyable];
+  }
+  return [...applyable, ...rest];
 });
 
 const firstEnterableProject = computed(() => enterableProjects.value[0]);

@@ -68,17 +68,29 @@ export class ArticleJobBatchService {
     await this.billingService.assertArticleQuota(organizationId, keywords.length);
 
     const jobs = [];
-    for (const targetKeyword of keywords) {
-      jobs.push(
-        await this.articleJobService.create(organizationId, projectId, {
+    const createdJobIds: string[] = [];
+    try {
+      for (const targetKeyword of keywords) {
+        const job = await this.articleJobService.create(organizationId, projectId, {
           siteId: dto.siteId,
           targetKeyword,
           contentLanguage: dto.contentLanguage,
           serpArticleLimit: scraperOptions.serpArticleLimit,
           serpArticlesOnly: scraperOptions.serpArticlesOnly,
           serpCountry: dto.serpCountry ?? scraperOptions.serpCountry,
-        }),
-      );
+        });
+        createdJobIds.push(job.id);
+        jobs.push(job);
+      }
+    } catch (error) {
+      this.logger.warn('Batch article job creation aborted mid-loop', {
+        organizationId,
+        projectId,
+        action: 'article_job.create_batch.partial',
+        created: createdJobIds.length,
+        requested: keywords.length,
+      });
+      throw error;
     }
 
     this.logger.info('Batch article jobs created', {

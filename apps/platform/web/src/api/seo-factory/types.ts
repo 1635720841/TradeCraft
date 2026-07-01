@@ -2,6 +2,8 @@
  * seo-factory 插件 API 类型。
  */
 
+export type { WmApiResponse } from "@/api/types";
+
 export type KeywordConflictReason = "exact" | "substring" | "similar";
 
 export interface KeywordCannibalizationWarning {
@@ -11,18 +13,6 @@ export interface KeywordCannibalizationWarning {
   keyword: string;
   status: string;
   reason: KeywordConflictReason;
-}
-
-export interface WmApiResponse<T> {
-  data: T;
-  meta?: {
-    traceId?: string;
-    pagination?: {
-      page: number;
-      limit: number;
-      total: number;
-    };
-  };
 }
 
 export interface SerpOrganicScrapedMeta {
@@ -130,7 +120,7 @@ export interface ArticleJobOptimizeRound {
   /** Semrush 轮回滚时候选稿本地分 */
   candidateLocalScoreAfter?: number;
   /** 回滚原因 */
-  rollbackReason?: "score_regressed" | "predicted_semrush_regressed" | "keyword_coverage_regressed" | "local_below_threshold" | "both";
+  rollbackReason?: "score_regressed" | "predicted_semrush_regressed" | "keyword_coverage_regressed" | "local_below_threshold" | "both" | "target_keyword_regressed";
 }
 
 export type ArticleJobRewriteMode = "suggestions" | "instruction";
@@ -174,7 +164,7 @@ export interface ArticleJobInternalLink {
 export interface ArticleJobArticleImage {
   alt: string;
   url: string;
-  source: "bfl";
+  source: "bfl" | "upload" | "url";
   insertAfterHeading?: string;
 }
 
@@ -250,6 +240,7 @@ export interface ArticleJobDraftData {
   internalLinksApplied?: boolean;
   articleImages?: ArticleJobArticleImage[];
   imagesApplied?: boolean;
+  illustrationError?: string | null;
   rewritePending?: ArticleJobRewritePending;
   rewriteCandidate?: ArticleJobRewriteCandidate;
   rewriteHistory?: ArticleJobRewriteHistoryEntry[];
@@ -561,6 +552,8 @@ export interface ArticleJobQuillbotResult {
   skipped?: boolean;
   passed?: boolean;
   usedOriginal?: boolean;
+  /** 正文已达标，无需句式润色（成功态，非失败回退） */
+  polishUnneeded?: boolean;
   completedAt?: string;
   promptVersion?: string;
   validatePromptVersion?: string;
@@ -703,6 +696,21 @@ export interface SiteWorkflowSettings {
   semrushRetryExtraRounds?: number;
 }
 
+export type AutopilotKeywordSource = "priority_pool" | "gsc_opportunity" | "both";
+export type AutopilotPublishMode = "none" | "draft" | "publish";
+
+/** 站点自动生产配置（按站点，存于 settings.autopilot） */
+export interface SiteAutopilotSettings {
+  enabled?: boolean;
+  articlesPerRun?: number;
+  keywordSource?: AutopilotKeywordSource;
+  publishMode?: AutopilotPublishMode;
+  /** 运行星期（0=周日 … 6=周六，UTC） */
+  runDaysOfWeek?: number[];
+  /** 运行时刻（0–23，UTC） */
+  runHourUtc?: number;
+}
+
 /** 管理员配置的搜索结果 / 竞品分析策略（按站点） */
 export interface SiteSerpResearchSettings {
   /** Google 搜索国家（Serper gl），默认 US */
@@ -756,6 +764,7 @@ export interface SiteItem {
   workflow?: SiteWorkflowSettings;
   contentProfile?: SiteContentProfile;
   serpResearch?: SiteSerpResearchSettings;
+  autopilot?: SiteAutopilotSettings | null;
   gsc?: SiteGscListSummary;
   createdAt: string;
 }
@@ -801,6 +810,7 @@ export interface CreateSitePayload {
   workflow?: SiteWorkflowSettings;
   contentProfile?: SiteContentProfile;
   serpResearch?: SiteSerpResearchSettings;
+  autopilot?: SiteAutopilotSettings;
 }
 
 export interface UpdateSitePayload {
@@ -815,6 +825,7 @@ export interface UpdateSitePayload {
   workflow?: SiteWorkflowSettings;
   contentProfile?: SiteContentProfile;
   serpResearch?: SiteSerpResearchSettings;
+  autopilot?: SiteAutopilotSettings;
   ownerUserId?: string | null;
 }
 

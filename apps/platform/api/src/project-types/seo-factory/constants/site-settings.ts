@@ -10,8 +10,12 @@ import {
   parseSitePageLibrarySettings,
   type SitePageLibrarySettings,
 } from './page-library-settings';
+import {
+  parseSiteAutopilotSettings,
+  type SiteAutopilotSettings,
+} from './site-autopilot-settings';
 
-export type { SiteSerpResearchSettings, SitePageLibrarySettings };
+export type { SiteSerpResearchSettings, SitePageLibrarySettings, SiteAutopilotSettings };
 
 export interface SiteContentProfile {
   industry?: string;
@@ -35,6 +39,7 @@ export interface SiteSettings extends SiteWorkflowSettings {
   contentProfile?: SiteContentProfile;
   serpResearch?: SiteSerpResearchSettings;
   pageLibrary?: SitePageLibrarySettings;
+  autopilot?: SiteAutopilotSettings;
 }
 
 const STRING_PROFILE_KEYS = [
@@ -110,6 +115,7 @@ export function parseSiteSettings(settings: unknown): SiteSettings {
     contentProfile: parseSiteContentProfile(raw.contentProfile),
     serpResearch: parseSiteSerpResearchSettings(raw.serpResearch),
     pageLibrary: parseSitePageLibrarySettings(raw.pageLibrary),
+    autopilot: parseSiteAutopilotSettings(raw.autopilot),
   };
 }
 
