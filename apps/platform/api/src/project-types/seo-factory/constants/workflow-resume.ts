@@ -1,6 +1,7 @@
 /** 工作流步骤：SERP → Brief → 初稿 → 内链 → 配图 → Semrush 优化 → QuillBot → YMYL 审查 */
 import type { JobStatus } from '@prisma/client';
 import { WORKFLOW_STEPS, type WorkflowStep } from '@wm/shared-core';
+import { getWorkflowStepJobStatus } from '../modules/workflow/workflow-step.registry';
 import { countEffectiveMarkdownImages } from '../modules/illustration/article-image.util';
 import { SEMRUSH_PASS_THRESHOLD } from './seo-score';
 import { SWA_MIN_IMAGES } from './swa-content';
@@ -21,6 +22,10 @@ export interface WorkflowMeta {
 
 /** 从断点步骤映射任务状态（恢复续跑时避免长时间显示 QUEUED）。 */
 export function jobStatusForResumeStep(step: WorkflowResumeStep): JobStatus {
+  const fromRegistry = getWorkflowStepJobStatus(step);
+  if (fromRegistry) {
+    return fromRegistry as JobStatus;
+  }
   switch (step) {
     case 'serp':
       return 'QUEUED';

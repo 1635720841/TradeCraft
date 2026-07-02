@@ -17,6 +17,7 @@ import { BusinessException } from '../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../core/exceptions/error-codes';
 import { LoggerService } from '../../core/logger/logger.service';
 import { daysRemaining, isSubscriptionActive } from './subscription.util';
+import { listBillingMeterPorts } from '../../core/billing/billing-meter.registry';
 
 const ARTICLE_SERVICE_TYPE = 'ARTICLE';
 const ARTICLE_PROVIDER = 'platform';
@@ -75,7 +76,7 @@ export class BillingService {
         data: {
           organizationId: payload.organizationId,
           projectId: payload.projectId,
-          projectType: 'seo-factory',
+          projectType: payload.projectType ?? 'seo-factory',
           serviceType: ARTICLE_SERVICE_TYPE,
           provider: ARTICLE_PROVIDER,
           tokensOrCount: 1,
@@ -229,7 +230,7 @@ export class BillingService {
       return periodStart < min ? periodStart : min;
     }, periodByOrg.get(orgs[0].id)!.periodStart);
 
-    const [usageRows, inFlightGroups] = await Promise.all([
+    const [usageRows, inFlightByOrg] = await Promise.all([
       this.prisma.creditUsage.findMany({
         where: {
           organizationId: { in: uniqueIds },
@@ -238,19 +239,8 @@ export class BillingService {
         },
         select: { organizationId: true, createdAt: true },
       }),
-      this.prisma.articleJob.groupBy({
-        by: ['organizationId'],
-        where: {
-          organizationId: { in: uniqueIds },
-          status: { notIn: ['COMPLETED', 'FAILED'] },
-        },
-        _count: { _all: true },
-      }),
+      this.countInFlightByOrganizations(uniqueIds),
     ]);
-
-    const inFlightMap = new Map(
-      inFlightGroups.map((row) => [row.organizationId, row._count._all]),
-    );
 
     for (const org of orgs) {
       const { periodStart, periodEnd } = periodByOrg.get(org.id)!;
@@ -261,7 +251,7 @@ export class BillingService {
           row.createdAt >= periodStart &&
           row.createdAt < periodEnd,
       ).length;
-      const inFlightJobs = inFlightMap.get(org.id) ?? 0;
+      const inFlightJobs = inFlightByOrg.get(org.id) ?? 0;
       const reservedTotal = usedThisMonth + inFlightJobs;
       const remaining = Math.max(0, periodQuota - reservedTotal);
 
@@ -298,6 +288,25 @@ export class BillingService {
         `本账期文章配额不足（已用 ${summary.reservedTotal}/${summary.periodQuota}，本次需 ${safeCount} 篇）`,
       );
     }
+  }
+
+  private async countInFlightByOrganizations(
+    organizationIds: string[],
+  ): Promise<Map<string, number>> {
+    const result = new Map<string, number>();
+    const ports = listBillingMeterPorts();
+    await Promise.all(
+      organizationIds.map(async (organizationId) => {
+        let total = 0;
+        for (const port of ports) {
+          for (const meter of port.meters()) {
+            total += await port.countInFlightUsage(organizationId, meter.id);
+          }
+        }
+        result.set(organizationId, total);
+      }),
+    );
+    return result;
   }
 
   private resolvePeriodRange(org: {

@@ -52,7 +52,7 @@
       />
 
       <JobDetailCallout
-        v-if="gscUnderperformHint"
+        v-if="gscUnderperformHint && !nextStep"
         type="warning"
         icon="ri:line-chart-line"
         title="搜索表现偏弱"

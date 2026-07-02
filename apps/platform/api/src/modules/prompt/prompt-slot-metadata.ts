@@ -136,8 +136,8 @@ export const PROMPT_SLOT_METADATA: PromptSlotMetadata[] = [
   {
     id: 'quillbot',
     label: '表达润色',
-    shortLabel: 'M7 润色',
-    workflowStep: 'M7',
+    shortLabel: '润色',
+    workflowStep: 'M6b 润色',
     trigger: 'Semrush 优化完成后自动执行',
     uiLocation: 'SEO 任务详情 → 初稿预览',
     placeholders: [
@@ -159,8 +159,8 @@ export const PROMPT_SLOT_METADATA: PromptSlotMetadata[] = [
   {
     id: 'quillbotValidate',
     label: '表达润色复检',
-    shortLabel: 'M7 复检',
-    workflowStep: 'M7',
+    shortLabel: '润色复检',
+    workflowStep: 'M6b 润色复检',
     trigger: '表达润色完成后自动执行',
     uiLocation: 'SEO 任务详情 → 初稿预览',
     placeholders: ['{{keyword}}', '{{originalContent}}', '{{paraphrasedContent}}'],

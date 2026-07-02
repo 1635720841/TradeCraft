@@ -340,7 +340,12 @@
         </el-form-item>
         <el-form-item label="项目类型" prop="projectType">
           <el-select v-model="createForm.projectType" class="w-full">
-            <el-option label="SEO 内容工厂" value="seo-factory" />
+            <el-option
+              v-for="item in creatableProjectTypes"
+              :key="item.type"
+              :label="item.label"
+              :value="item.type"
+            />
           </el-select>
         </el-form-item>
       </el-form>
@@ -365,7 +370,9 @@ import {
 import {
   createOrgProject,
   listOrgProjects,
-  type OrgProjectItem
+  listProjectTypeCatalog,
+  type OrgProjectItem,
+  type ProjectTypeDescriptor
 } from "@/api/org/projects";
 import { createProjectAccessRequest } from "@/api/org/access";
 import {
@@ -375,6 +382,12 @@ import {
 import { projectMyAccessStatusDict, projectStatusDict } from "@/constants/dicts/platform";
 import { useUserStoreHook } from "@/store/modules/user";
 import { dictLabel } from "@/utils/dict";
+import {
+  navigateToProjectWorkbench,
+  resolveProjectTypeHint,
+  resolveProjectTypeLabel,
+  buildProjectEnterPathFromCatalog
+} from "@/utils/project-navigation";
 import {
   memberAvatarTone,
   memberDisplayName
@@ -407,13 +420,17 @@ const createFormRef = ref<FormInstance>();
 const showOtherProjects = ref(false);
 const applyingProjectId = ref<string | null>(null);
 const projects = ref<OrgProjectItem[]>([]);
+const projectTypeCatalog = ref<ProjectTypeDescriptor[]>([]);
+const creatableProjectTypes = computed(() =>
+  projectTypeCatalog.value.filter((item) => item.workbenchReady)
+);
 const profile = ref<OrganizationProfile | null>(null);
 const production = ref<OrgProductionSummary | null>(null);
 const productionLoading = ref(false);
 
 const createForm = reactive({
   name: "",
-  projectType: "seo-factory" as const
+  projectType: "seo-factory" as string
 });
 
 const createRules: FormRules = {
@@ -509,21 +526,17 @@ const displayProjects = computed(() => {
 const firstEnterableProject = computed(() => enterableProjects.value[0]);
 
 function goWorkbenchOverview() {
-  const pid = firstEnterableProject.value?.id;
-  if (!pid) return;
-  router.push({ name: "SeoFactoryOverview", params: { projectId: pid } });
+  const project = firstEnterableProject.value;
+  if (!project?.enterPath) return;
+  navigateToProjectWorkbench(router, project.enterPath);
 }
 
 function projectTypeLabel(type: string) {
-  if (type === "seo-factory") return "SEO 内容工厂";
-  return type;
+  return resolveProjectTypeLabel(type, projectTypeCatalog.value);
 }
 
 function projectTypeHint(type: string) {
-  if (type === "seo-factory") {
-    return "站点配置、关键词排产、文章生成与发布检查";
-  }
-  return "企业内容生产项目";
+  return resolveProjectTypeHint(type, projectTypeCatalog.value);
 }
 
 function formatDate(iso: string) {
@@ -627,7 +640,7 @@ function goProjectManage() {
 
 function openCreateDialog() {
   createForm.name = "";
-  createForm.projectType = "seo-factory";
+  createForm.projectType = creatableProjectTypes.value[0]?.type ?? "seo-factory";
   createVisible.value = true;
 }
 
@@ -645,8 +658,9 @@ async function submitCreate() {
       message("企业项目创建成功", { type: "success" });
       createVisible.value = false;
       await Promise.all([fetchProjects(), loadProfile()]);
-      if (project.projectType === "seo-factory" && project.canEnter) {
-        enterProject(project);
+      const created = projects.value.find((item) => item.id === project.id) ?? project;
+      if (created.canEnter && (created.enterPath || creatableProjectTypes.value.some((t) => t.type === created.projectType))) {
+        enterProject(created);
       }
     } finally {
       creating.value = false;
@@ -659,12 +673,20 @@ function goBilling() {
 }
 
 function enterProject(row: OrgProjectItem) {
-  router.push({ name: "SeoFactoryOverview", params: { projectId: row.id } });
+  if (row.enterPath) {
+    navigateToProjectWorkbench(router, row.enterPath);
+    return;
+  }
+  const path = buildProjectEnterPathFromCatalog(row.id, row.projectType, projectTypeCatalog.value);
+  if (path) navigateToProjectWorkbench(router, path);
 }
 
 onMounted(() => {
   void loadProfile();
   void fetchProjects();
   void fetchProduction();
+  void listProjectTypeCatalog().then((types) => {
+    projectTypeCatalog.value = types;
+  });
 });
 </script>

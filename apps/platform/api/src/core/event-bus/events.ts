@@ -12,7 +12,9 @@ export interface ArticleCompletedPayload {
   traceId: string;
   organizationId: string;
   projectId: string;
+  projectType: string;
   jobId: string;
+  meterId?: string;
 }
 
 /** 大纲待人工确认 */
@@ -99,6 +101,17 @@ export interface ArticleCommentAddedPayload {
 
 /** 计费变更申请 */
 export const BILLING_REQUEST_CREATED_EVENT = 'billing_request.created';
+
+/** 项目创建完成（供插件初始化） */
+export const PROJECT_CREATED_EVENT = 'project.created';
+
+export interface ProjectCreatedPayload {
+  organizationId: string;
+  projectId: string;
+  projectType: string;
+  creatorUserId: string;
+  traceId?: string;
+}
 
 export interface BillingRequestCreatedPayload {
   organizationId: string;

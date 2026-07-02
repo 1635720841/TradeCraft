@@ -8,6 +8,7 @@ import { listArticleJobs } from "@/api/seo-factory/article-job";
 import { listSites } from "@/api/seo-factory/site";
 import type { ArticleJobItem, SiteItem } from "@/api/seo-factory/types";
 import { JOB_TERMINAL_STATUSES } from "@/constants/dicts/seo-factory";
+import { runLoad } from "@/composables/run-load";
 
 export type JobListStage =
   | "all"
@@ -25,6 +26,9 @@ export function useJobListQuery(projectId: string) {
   const router = useRouter();
 
   const loading = ref(false);
+  const error = ref<string | null>(null);
+  const sitesError = ref<string | null>(null);
+  const pollingPausedByError = ref(false);
   const polling = ref(false);
   const jobs = ref<ArticleJobItem[]>([]);
   const page = ref(1);
@@ -141,31 +145,58 @@ export function useJobListQuery(projectId: string) {
   }
 
   async function fetchJobs(showLoading = true) {
-    if (showLoading) loading.value = true;
-    try {
-      const res = await listArticleJobs(projectId, page.value, limit.value, {
-        briefPending: outlinePendingFilter.value,
-        reviewPending: reviewPendingFilter.value,
-        generating: generatingFilter.value,
-        cmsPublishFailed: publishFailedFilter.value,
-        cmsPublishPending: publishPendingFilter.value,
-        seoNotReady: seoNotReadyFilter.value,
-        staleDraft: staleDraftFilter.value,
-        assignedToMe: assignedToMeFilter.value,
-        siteOwner: siteOwnerMeFilter.value ? "me" : undefined,
-        status: failedFilter.value ? "FAILED" : undefined,
-        siteId: filterSiteId.value || undefined,
-        keyword: keywordSearch.value.trim() || undefined
-      });
-      jobs.value = res.data ?? [];
-      total.value = res.meta?.pagination?.total ?? jobs.value.length;
-    } finally {
-      if (showLoading) loading.value = false;
+    const ok = await runLoad(
+      async () => {
+        const res = await listArticleJobs(projectId, page.value, limit.value, {
+          briefPending: outlinePendingFilter.value,
+          reviewPending: reviewPendingFilter.value,
+          generating: generatingFilter.value,
+          cmsPublishFailed: publishFailedFilter.value,
+          cmsPublishPending: publishPendingFilter.value,
+          seoNotReady: seoNotReadyFilter.value,
+          staleDraft: staleDraftFilter.value,
+          assignedToMe: assignedToMeFilter.value,
+          siteOwner: siteOwnerMeFilter.value ? "me" : undefined,
+          status: failedFilter.value ? "FAILED" : undefined,
+          siteId: filterSiteId.value || undefined,
+          keyword: keywordSearch.value.trim() || undefined
+        });
+        return res;
+      },
+      {
+        setLoading: (value) => {
+          if (showLoading) loading.value = value;
+        },
+        setError: (value) => {
+          error.value = value;
+        },
+        onSuccess: (res) => {
+          jobs.value = res.data ?? [];
+          total.value = res.meta?.pagination?.total ?? jobs.value.length;
+          pollingPausedByError.value = false;
+        },
+        showLoading,
+        fallbackMessage: "任务列表加载失败"
+      }
+    );
+    if (!ok) {
+      pollingPausedByError.value = true;
+      stopPolling();
+    } else {
       syncPolling();
     }
   }
 
+  async function retryFetchJobs() {
+    pollingPausedByError.value = false;
+    await fetchJobs();
+  }
+
   function syncPolling() {
+    if (pollingPausedByError.value || error.value) {
+      stopPolling();
+      return;
+    }
     if (hasActiveJobs.value) {
       startPolling();
     } else {
@@ -293,12 +324,25 @@ export function useJobListQuery(projectId: string) {
   }
 
   async function loadSites() {
-    sitesLoading.value = true;
-    try {
-      sites.value = await listSites(projectId);
-    } finally {
-      sitesLoading.value = false;
-    }
+    await runLoad(
+      () => listSites(projectId),
+      {
+        setLoading: (value) => {
+          sitesLoading.value = value;
+        },
+        setError: (value) => {
+          sitesError.value = value;
+        },
+        onSuccess: (result) => {
+          sites.value = result;
+        },
+        fallbackMessage: "站点列表加载失败"
+      }
+    );
+  }
+
+  async function retryLoadSites() {
+    await loadSites();
   }
 
   watch(
@@ -340,6 +384,8 @@ export function useJobListQuery(projectId: string) {
 
   return {
     loading,
+    error,
+    sitesError,
     polling,
     jobs,
     page,
@@ -355,6 +401,8 @@ export function useJobListQuery(projectId: string) {
     siteOwnerMeAlert,
     siteOwnerMeFilter,
     fetchJobs,
+    retryFetchJobs,
+    retryLoadSites,
     startPolling,
     stopPolling,
     onSizeChange,

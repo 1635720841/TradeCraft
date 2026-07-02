@@ -21,6 +21,17 @@ export const DEFAULT_AUTOPILOT_RUN_DAYS = [0, 1, 2, 3, 4, 5, 6] as const;
 /** 默认 09:00 北京时间（UTC+8 → UTC 1） */
 export const DEFAULT_AUTOPILOT_RUN_HOUR_UTC = 1;
 
+export const AUTOPILOT_LAST_RUN_STATUSES = ['enqueued', 'skipped', 'failed'] as const;
+export type AutopilotLastRunStatus = (typeof AUTOPILOT_LAST_RUN_STATUSES)[number];
+
+export interface SiteAutopilotLastRun {
+  at: string;
+  status: AutopilotLastRunStatus;
+  reason?: string;
+  jobsEnqueued?: number;
+  jobIds?: string[];
+}
+
 export interface SiteAutopilotSettings {
   /** 总开关：开启后按周期自动选词并入队生成 */
   enabled?: boolean;
@@ -34,6 +45,8 @@ export interface SiteAutopilotSettings {
   runDaysOfWeek?: number[];
   /** 运行时刻（0–23，UTC） */
   runHourUtc?: number;
+  /** 最近一次自动生产运行快照（系统写入，用户 PATCH 不可覆盖） */
+  lastRun?: SiteAutopilotLastRun;
 }
 
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {
@@ -64,6 +77,32 @@ function parsePublishMode(value: unknown): AutopilotPublishMode {
     : 'none';
 }
 
+function parseLastRun(value: unknown): SiteAutopilotLastRun | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  const status = record.status;
+  if (!AUTOPILOT_LAST_RUN_STATUSES.includes(status as AutopilotLastRunStatus)) {
+    return undefined;
+  }
+  const at = typeof record.at === 'string' ? record.at : '';
+  if (!at) return undefined;
+
+  const parsed: SiteAutopilotLastRun = {
+    at,
+    status: status as AutopilotLastRunStatus,
+  };
+  if (typeof record.reason === 'string' && record.reason.trim()) {
+    parsed.reason = record.reason.trim();
+  }
+  if (typeof record.jobsEnqueued === 'number' && Number.isFinite(record.jobsEnqueued)) {
+    parsed.jobsEnqueued = Math.max(0, Math.trunc(record.jobsEnqueued));
+  }
+  if (Array.isArray(record.jobIds)) {
+    parsed.jobIds = record.jobIds.filter((item): item is string => typeof item === 'string');
+  }
+  return parsed;
+}
+
 export function parseSiteAutopilotSettings(raw: unknown): SiteAutopilotSettings | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
 
@@ -81,6 +120,11 @@ export function parseSiteAutopilotSettings(raw: unknown): SiteAutopilotSettings 
     runDaysOfWeek: parseRunDaysOfWeek(record.runDaysOfWeek),
     runHourUtc: clampInt(record.runHourUtc, 0, 23, DEFAULT_AUTOPILOT_RUN_HOUR_UTC),
   };
+
+  const lastRun = parseLastRun(record.lastRun);
+  if (lastRun) {
+    parsed.lastRun = lastRun;
+  }
 
   return parsed;
 }
@@ -149,5 +193,25 @@ export function mergeSiteAutopilotSettings(
     merged.runHourUtc = clampInt(patch.runHourUtc, 0, 23, DEFAULT_AUTOPILOT_RUN_HOUR_UTC);
   }
 
+  if (existing?.lastRun) {
+    merged.lastRun = existing.lastRun;
+  }
+
   return merged;
+}
+
+export function buildAutopilotLastRun(result: {
+  status: AutopilotLastRunStatus;
+  reason?: string;
+  created?: number;
+  jobIds?: string[];
+}): SiteAutopilotLastRun {
+  const snapshot: SiteAutopilotLastRun = {
+    at: new Date().toISOString(),
+    status: result.status,
+  };
+  if (result.reason) snapshot.reason = result.reason;
+  if (typeof result.created === 'number') snapshot.jobsEnqueued = result.created;
+  if (result.jobIds?.length) snapshot.jobIds = result.jobIds;
+  return snapshot;
 }

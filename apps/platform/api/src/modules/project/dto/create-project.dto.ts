@@ -1,4 +1,5 @@
-import { IsDateString, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsDateString, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsCreatableProjectType } from '../validators/is-creatable-project-type.validator';
 
 export class CreateProjectDto {
   @IsString()
@@ -7,7 +8,7 @@ export class CreateProjectDto {
   name!: string;
 
   @IsString()
-  @IsIn(['seo-factory'])
+  @IsCreatableProjectType()
   projectType!: string;
 
   @IsOptional()

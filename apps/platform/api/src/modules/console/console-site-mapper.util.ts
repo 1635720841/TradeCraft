@@ -3,11 +3,13 @@
  */
 
 import { resolvePlanEntitlements } from '../billing/plan-entitlements.constants';
-import { siteHasWritingProfile } from '../../project-types/seo-factory/constants/site-settings';
-import {
-  buildSiteGscListSummary,
-  type SiteGscListSummary,
-} from '../../project-types/seo-factory/modules/gsc/gsc-site-status.util';
+import { getConsoleSiteEnrichmentPort } from '../../core/console/console-site-enrichment.registry';
+
+export interface ConsoleSiteGscSummary {
+  status: string;
+  lastSyncAt: string | null;
+  lastSyncError: string | null;
+}
 
 export interface ConsoleSiteOverviewRow {
   siteId: string;
@@ -21,7 +23,7 @@ export interface ConsoleSiteOverviewRow {
   cmsConfigured: boolean;
   profileReady: boolean;
   gscEnabled: boolean;
-  gsc: SiteGscListSummary;
+  gsc: ConsoleSiteGscSummary;
   jobCount: number;
   createdAt: string;
 }
@@ -31,6 +33,7 @@ export type ConsoleSiteOverviewSource = {
   domain: string;
   organizationId: string;
   projectId: string;
+  projectType?: string;
   cmsType: string | null;
   cmsConfig: unknown;
   settings: unknown;
@@ -38,6 +41,7 @@ export type ConsoleSiteOverviewSource = {
   project: {
     name: string;
     status: string;
+    projectType?: string;
     organization: { name: string; planName: string };
   };
   gscConnection: {
@@ -50,10 +54,21 @@ export type ConsoleSiteOverviewSource = {
 };
 
 export function mapConsoleSiteOverviewRow(site: ConsoleSiteOverviewSource): ConsoleSiteOverviewRow {
-  const gscEnabled = resolvePlanEntitlements(site.project.organization.planName).gscEnabled;
+  const projectType = site.projectType ?? site.project.projectType ?? 'seo-factory';
+  const port = getConsoleSiteEnrichmentPort(projectType);
+  const enrichment = port?.enrichSite({
+    settings: site.settings,
+    gscConnection: site.gscConnection,
+    organizationPlanName: site.project.organization.planName,
+  });
+
+  const gscEnabled =
+    enrichment?.gscEnabled ??
+    resolvePlanEntitlements(site.project.organization.planName).gscEnabled;
   const cmsConfigured = Boolean(
     site.cmsType?.trim() && site.cmsConfig && typeof site.cmsConfig === 'object',
   );
+
   return {
     siteId: site.id,
     domain: site.domain,
@@ -64,10 +79,15 @@ export function mapConsoleSiteOverviewRow(site: ConsoleSiteOverviewSource): Cons
     projectStatus: site.project.status,
     cmsType: site.cmsType,
     cmsConfigured,
-    profileReady: siteHasWritingProfile(site.settings),
+    profileReady: enrichment?.profileReady ?? false,
     gscEnabled,
-    gsc: buildSiteGscListSummary(gscEnabled, site.gscConnection),
+    gsc: enrichment?.gsc ?? {
+      status: gscEnabled ? 'unbound' : 'not_enabled',
+      lastSyncAt: null,
+      lastSyncError: null,
+    },
     jobCount: site._count.jobs,
     createdAt: site.createdAt.toISOString(),
   };
 }
+

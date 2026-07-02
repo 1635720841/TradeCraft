@@ -1,5 +1,5 @@
 /**
- * Semrush 查分适配器（占位）：P2 RPA 实现前，按环境变量决定是否跳过。
+ * Semrush 查分适配器（占位 / M6 optimizing）：RPA 实现前按环境变量决定是否跳过。
  *
  * 边界：
  * - 不负责：本地轻量评分（shared-core scoreLocalSeo）

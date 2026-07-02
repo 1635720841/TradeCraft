@@ -55,7 +55,7 @@ BullMQ 入队
 → M8:   内链植入            linking（SitePage 页面库）
 → M9:   IImageProvider      BFL 配图
 → M6:   ISeoCheckerProvider  Semrush ≥9.0 循环优化
-→ QuillBot: IParaphraseProvider  paraphrasing（QUILLBOT_DISABLED 可跳过）
+→ QuillBot: IParaphraseProvider  paraphrasing（M6b，无独立 M 号；`WORKFLOW_M_MAPPING` 为单一真相源）
 → M7:   YMYL 审查           ymyl（requires_human_review）
 → M10:  export              HTML/JSON-LD → 本地/S3
 → 事件 article.completed → M11 计费 → COMPLETED
@@ -67,6 +67,7 @@ BullMQ 入队
 - 编排器 `workflow/` 只调度，各步骤独立 Module
 - 主流程完成只抛事件，计费/通知由 EventEmitter2 监听
 - Prompt 禁止硬编码在 TS，存 `.md` 或数据库
+- **M 编号映射**：`packages/shared-core/src/seo/workflow-m-mapping.ts`（`WORKFLOW_M_MAPPING`）
 
 ## 事件驱动
 

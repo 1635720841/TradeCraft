@@ -1,5 +1,5 @@
 /**
- * QuillBot 原创表达优化服务（M7）：Semrush 后润色 + 程序化/AI 复检。
+ * QuillBot 原创表达优化服务（paraphrasing / M6b）：Semrush 后润色 + 程序化/AI 复检。
  *
  * 边界：
  * - 不负责：Semrush 循环优化（SeoCheckerService）

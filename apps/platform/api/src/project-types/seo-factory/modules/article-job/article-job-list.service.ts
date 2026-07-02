@@ -10,7 +10,7 @@
 
 import { Injectable } from '@nestjs/common';
 import { JobStatus, Prisma } from '@prisma/client';
-import { evaluateReleaseReadiness } from '@wm/shared-core';
+import { evaluateReleaseReadiness, safeParseSeoCheckData } from '@wm/shared-core';
 import { ACTIVE_JOB_STATUSES } from '../../constants/article-job-status';
 import { BusinessException } from '../../../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
@@ -661,7 +661,7 @@ export class ArticleJobListService {
       row.site.cmsType === 'shopify'
         ? parseShopifyCmsConfig('shopify', row.site.cmsConfig)
         : null;
-    const seoCheckData = row.seoCheckData as {
+    const seoCheckData = safeParseSeoCheckData(row.seoCheckData) as {
       ymylReview?: { requires_human_review?: boolean; reviewedAt?: string };
       workflowProgress?: {
         phase?: string;

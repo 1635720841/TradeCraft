@@ -20,11 +20,12 @@ import {
 import { runAfterCommit } from '../../../../core/event-bus/run-after-commit';
 import { LoggerService } from '../../../../core/logger/logger.service';
 import {
+  buildAutopilotLastRun,
   isAutopilotDueNow,
   resolveSiteAutopilotSettings,
   type SiteAutopilotSettings,
 } from '../../constants/site-autopilot-settings';
-import { siteHasWritingProfile } from '../../constants/site-settings';
+import { parseSiteSettings, siteHasWritingProfile } from '../../constants/site-settings';
 import { canPublishArticle } from '../content-review/ymyl-detect.util';
 import { CmsPublishService } from '../export/cms-publish.service';
 import { GscService } from '../gsc/gsc.service';
@@ -80,6 +81,7 @@ export class AutopilotService {
           reason: message,
         };
       });
+      await this.persistLastRun(site.id, site.settings, result);
       results.push(result);
     }
 
@@ -201,6 +203,34 @@ export class AutopilotService {
       jobId: payload.jobId,
       siteId: job.siteId,
       publishMode: autopilot.publishMode,
+    });
+  }
+
+  private async persistLastRun(
+    siteId: string,
+    settings: unknown,
+    result: Pick<AutopilotRunSiteResult, 'status' | 'reason' | 'created' | 'jobIds'>,
+  ): Promise<void> {
+    const parsed = parseSiteSettings(settings);
+    const autopilot: SiteAutopilotSettings = {
+      ...resolveSiteAutopilotSettings(settings),
+      ...parsed.autopilot,
+      lastRun: buildAutopilotLastRun(result),
+    };
+
+    const base =
+      settings && typeof settings === 'object'
+        ? { ...(settings as Record<string, unknown>) }
+        : {};
+
+    await this.prisma.site.update({
+      where: { id: siteId },
+      data: {
+        settings: {
+          ...base,
+          autopilot,
+        } as object,
+      },
     });
   }
 

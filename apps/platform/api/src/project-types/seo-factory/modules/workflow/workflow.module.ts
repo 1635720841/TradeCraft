@@ -1,8 +1,5 @@
 /**
  * 工作流编排模块。
- *
- * 边界：
- * - 不负责：队列消费（ArticleJobProcessor）
  */
 
 import { Module } from '@nestjs/common';
@@ -15,6 +12,7 @@ import { ParaphraseModule } from '../paraphrase/paraphrase.module';
 import { ScraperModule } from '../scraper/scraper.module';
 import { SeoCheckerModule } from '../seo-checker/seo-checker.module';
 import { WorkflowService } from './workflow.service';
+import { WorkflowStepRegistrationService } from './workflow-step-registration.service';
 
 @Module({
   imports: [
@@ -27,7 +25,7 @@ import { WorkflowService } from './workflow.service';
     IllustrationModule,
     ExportModule,
   ],
-  providers: [WorkflowService],
+  providers: [WorkflowService, WorkflowStepRegistrationService],
   exports: [WorkflowService],
 })
 export class WorkflowModule {}

@@ -11,11 +11,7 @@
         </div>
       </template>
 
-      <el-alert v-if="error" type="error" :title="error" show-icon class="mb-4">
-        <template #default>
-          <el-button type="primary" link @click="retryLoad">重试</el-button>
-        </template>
-      </el-alert>
+      <AsyncErrorAlert :message="error" title="运营概览加载失败" @retry="retryLoad" />
 
       <template v-if="overview && !error">
         <div>
@@ -91,6 +87,7 @@ import { billingChangeRequestTypeDict } from "@/constants/dicts/platform";
 import { hasPerms } from "@/utils/auth";
 import { dictLabel, dictTagType } from "@/utils/dict";
 import { message } from "@/utils/message";
+import AsyncErrorAlert from "@/components/feedback/AsyncErrorAlert.vue";
 
 defineOptions({ name: "ConsoleOverviewView" });
 

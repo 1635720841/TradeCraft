@@ -8,7 +8,7 @@ import { BusinessException } from '../../../../core/exceptions/business.exceptio
 import { ErrorCodes } from '../../../../core/exceptions/error-codes';
 import { PrismaService } from '../../../../core/database/prisma.service';
 import { LoggerService } from '../../../../core/logger/logger.service';
-import { enforceArticleH1Boundary, validateAndFixSemrushStructure } from '@wm/shared-core';
+import { enforceArticleH1Boundary, validateAndFixSemrushStructure, withLocalCheck, withSemrushResult } from '@wm/shared-core';
 import {
   resolveSiteSeoScoreConfig,
   hasExplicitSiteSeoScoreSettings,
@@ -146,16 +146,12 @@ export class SeoCheckerLifecycleService {
       articleTitle: refreshArticleTitle,
     });
 
-    const prevCheck = (job.seoCheckData ?? {}) as Record<string, unknown>;
-
     await this.prisma.articleJob.update({
       where: { id: ctx.jobId },
       data: {
         localSeoScore: localResult.score,
         seoCheckData: {
-          ...prevCheck,
-          scoreThresholds: buildScoreThresholdsSnapshot(scoreConfig),
-          local: {
+          ...withLocalCheck(job.seoCheckData, {
             score: localResult.score,
             breakdown: localResult.breakdown,
             suggestions: localResult.suggestions,
@@ -164,7 +160,8 @@ export class SeoCheckerLifecycleService {
             predictedSemrush: gateEvaluation.prediction?.predictedSemrush,
             gateMode: localGate.mode,
             refreshedAt: new Date().toISOString(),
-          },
+          }),
+          scoreThresholds: buildScoreThresholdsSnapshot(scoreConfig),
         } as object,
       },
     });
@@ -636,16 +633,18 @@ export class SeoCheckerLifecycleService {
       data: {
         status: plan.status,
         errorMessage: plan.manualSemrushInterrupted ? null : reason,
-        seoCheckData: {
-          ...seoCheckBase,
-          workflowProgress: plan.manualSemrushInterrupted ? null : prevCheck.workflowProgress ?? null,
-          semrush: {
+        seoCheckData: withSemrushResult(
+          {
+            ...seoCheckBase,
+            workflowProgress: plan.manualSemrushInterrupted ? null : prevCheck.workflowProgress ?? null,
+          },
+          {
             ...semrushRest,
             lastManualCheckError: reason,
             lastManualCheckEndedAt: new Date().toISOString(),
             recoveredOrphanOptimizing: true,
           },
-        } as object,
+        ) as object,
       },
     });
 

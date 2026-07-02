@@ -3,6 +3,7 @@
  */
 
 import { ref, type Ref } from "vue";
+import { extractErrorMessage } from "@/utils/error-message";
 
 export interface UseAsyncDataOptions<T> {
   /** 无数据时是否算 empty（默认 data 为 null/undefined 或数组长度为 0） */
@@ -52,10 +53,7 @@ export function useAsyncData<T>(
     } catch (e) {
       data.value = null;
       isEmpty.value = false;
-      error.value =
-        e && typeof e === "object" && "message" in e
-          ? String((e as { message?: string }).message)
-          : "加载失败，请稍后重试";
+      error.value = extractErrorMessage(e);
     } finally {
       loading.value = false;
     }

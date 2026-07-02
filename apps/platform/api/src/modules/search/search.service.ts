@@ -6,9 +6,11 @@ import { Injectable } from '@nestjs/common';
 import { Role } from '@wm/shared-core';
 import type { RequestContext } from '@wm/shared-core';
 import { PrismaService } from '../../core/database/prisma.service';
+import { listProjectSearchPorts } from '../../core/search/project-search.registry';
+import { buildProjectEnterPath } from '../project/project-navigation.util';
 
 export interface SearchResultGroup {
-  type: 'project' | 'member' | 'job' | 'site' | 'menu';
+  type: 'project' | 'member' | 'job' | 'site' | 'menu' | 'demo' | string;
   label: string;
   items: Array<{
     id: string;
@@ -49,7 +51,7 @@ export class SearchService {
           id: p.id,
           title: p.name,
           subtitle: p.projectType,
-          path: `/projects/${p.id}/${p.projectType}/overview`,
+          path: buildProjectEnterPath(p.id, p.projectType) ?? `/projects/${p.id}`,
         })),
       });
     }
@@ -83,58 +85,48 @@ export class SearchService {
 
     const accessibleProjectIds = await this.listAccessibleProjectIds(ctx);
     if (accessibleProjectIds.length > 0) {
-      const [jobs, sites] = await Promise.all([
-        this.prisma.articleJob.findMany({
-          where: {
-            organizationId: ctx.organizationId,
-            projectId: { in: accessibleProjectIds },
-            OR: [
-              { targetKeyword: { contains: q, mode: 'insensitive' } },
-              { id: q.length >= 8 ? q : undefined },
-            ],
-          },
-          select: { id: true, projectId: true, targetKeyword: true },
-          take: perType,
-          orderBy: { updatedAt: 'desc' },
-        }),
-        this.prisma.site.findMany({
-          where: {
-            organizationId: ctx.organizationId,
-            projectId: { in: accessibleProjectIds },
-            domain: { contains: q, mode: 'insensitive' },
-          },
-          select: { id: true, projectId: true, domain: true },
-          take: perType,
-        }),
-      ]);
+      const projectsByType = await this.groupAccessibleProjectsByType(
+        ctx.organizationId,
+        accessibleProjectIds,
+      );
 
-      if (jobs.length > 0) {
-        groups.push({
-          type: 'job',
-          label: '文章任务',
-          items: jobs.map((j) => ({
-            id: j.id,
-            title: j.targetKeyword,
-            subtitle: j.id.slice(0, 8),
-            path: `/projects/${j.projectId}/seo-factory/jobs/${j.id}`,
-          })),
-        });
-      }
-
-      if (sites.length > 0) {
-        groups.push({
-          type: 'site',
-          label: '站点',
-          items: sites.map((s) => ({
-            id: s.id,
-            title: s.domain,
-            path: `/projects/${s.projectId}/seo-factory/sites`,
-          })),
-        });
+      for (const port of listProjectSearchPorts()) {
+        const projectIds = projectsByType.get(port.projectType) ?? [];
+        if (projectIds.length === 0) continue;
+        const portGroups = await port.searchInProjects(
+          { organizationId: ctx.organizationId, userId: ctx.userId },
+          q,
+          projectIds,
+          perType,
+        );
+        for (const group of portGroups) {
+          groups.push({
+            type: group.type,
+            label: group.label,
+            items: group.items,
+          });
+        }
       }
     }
 
     return groups;
+  }
+
+  private async groupAccessibleProjectsByType(
+    organizationId: string,
+    projectIds: string[],
+  ): Promise<Map<string, string[]>> {
+    const rows = await this.prisma.project.findMany({
+      where: { organizationId, id: { in: projectIds }, status: 'ACTIVE' },
+      select: { id: true, projectType: true },
+    });
+    const map = new Map<string, string[]>();
+    for (const row of rows) {
+      const list = map.get(row.projectType) ?? [];
+      list.push(row.id);
+      map.set(row.projectType, list);
+    }
+    return map;
   }
 
   private async listAccessibleProjectIds(ctx: RequestContext): Promise<string[]> {

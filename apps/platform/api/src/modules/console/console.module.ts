@@ -13,6 +13,7 @@ import { AuthModule } from '../auth/auth.module';
 import { AccessModule } from '../access/access.module';
 import { BillingModule } from '../billing/billing.module';
 import { OrganizationModule } from '../organization/organization.module';
+import { ConsoleBridgeHostModule } from '../../core/console/console-bridge-host.module';
 import { ConsoleController } from './console.controller';
 import { ConsoleGscController } from './console-gsc.controller';
 import { ConsoleHealthController } from './console-health.controller';
@@ -21,15 +22,14 @@ import { ConsoleAccessService } from './console-access.service';
 import { ConsoleService } from './console.service';
 import { ConsoleTenantService } from './console-tenant.service';
 import { ConsoleSiteService } from './console-site.service';
-import { ConsoleGscBridgeModule } from '../../project-types/seo-factory/modules/console-bridge/console-gsc-bridge.module';
 
 @Module({
   imports: [
+    ConsoleBridgeHostModule,
     AuthModule,
     AccessModule,
     BillingModule,
     OrganizationModule,
-    ConsoleGscBridgeModule,
     BullModule.registerQueue({ name: ARTICLE_JOB_QUEUE }),
     BullModule.registerQueue({ name: PLAYWRIGHT_QUEUE }),
     BullModule.registerQueue({ name: GSC_SYNC_QUEUE }),

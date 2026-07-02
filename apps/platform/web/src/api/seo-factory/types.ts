@@ -2,6 +2,8 @@
  * seo-factory 插件 API 类型。
  */
 
+export type { ArticleJobSeoCheckData as SharedSeoCheckDataBase } from "@wm/shared-core";
+
 export type { WmApiResponse } from "@/api/types";
 
 export type KeywordConflictReason = "exact" | "substring" | "similar";
@@ -701,6 +703,16 @@ export interface SiteWorkflowSettings {
 export type AutopilotKeywordSource = "priority_pool" | "gsc_opportunity" | "both";
 export type AutopilotPublishMode = "none" | "draft" | "publish";
 
+export type AutopilotLastRunStatus = "enqueued" | "skipped" | "failed";
+
+export interface SiteAutopilotLastRun {
+  at: string;
+  status: AutopilotLastRunStatus;
+  reason?: string;
+  jobsEnqueued?: number;
+  jobIds?: string[];
+}
+
 /** 站点自动生产配置（按站点，存于 settings.autopilot） */
 export interface SiteAutopilotSettings {
   enabled?: boolean;
@@ -711,6 +723,8 @@ export interface SiteAutopilotSettings {
   runDaysOfWeek?: number[];
   /** 运行时刻（0–23，UTC） */
   runHourUtc?: number;
+  /** 最近一次自动生产运行快照（系统写入） */
+  lastRun?: SiteAutopilotLastRun;
 }
 
 /** 管理员配置的搜索结果 / 竞品分析策略（按站点） */

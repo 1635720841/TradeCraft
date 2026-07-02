@@ -56,6 +56,36 @@ describe('site-autopilot-settings', () => {
     assert.equal(merged?.publishMode, 'draft');
   });
 
+  it('mergeSiteAutopilotSettings preserves lastRun from existing', () => {
+    const merged = mergeSiteAutopilotSettings(
+      {
+        enabled: true,
+        lastRun: {
+          at: '2026-07-01T01:00:00.000Z',
+          status: 'enqueued',
+          jobsEnqueued: 2,
+        },
+      },
+      { articlesPerRun: 3 },
+    );
+    assert.equal(merged?.articlesPerRun, 3);
+    assert.equal(merged?.lastRun?.status, 'enqueued');
+    assert.equal(merged?.lastRun?.jobsEnqueued, 2);
+  });
+
+  it('parseSiteAutopilotSettings reads lastRun snapshot', () => {
+    const parsed = parseSiteAutopilotSettings({
+      enabled: true,
+      lastRun: {
+        at: '2026-07-01T01:00:00.000Z',
+        status: 'failed',
+        reason: 'quota exceeded',
+      },
+    });
+    assert.equal(parsed?.lastRun?.status, 'failed');
+    assert.equal(parsed?.lastRun?.reason, 'quota exceeded');
+  });
+
   it('isAutopilotDueNow matches UTC day and hour', () => {
     const settings = {
       autopilot: {

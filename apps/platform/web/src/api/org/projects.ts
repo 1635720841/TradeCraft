@@ -18,6 +18,14 @@ export interface OrgProjectMemberPreview {
   email: string;
 }
 
+export interface ProjectTypeDescriptor {
+  type: string;
+  label: string;
+  workbenchReady: boolean;
+  description: string;
+  routePrefix: string;
+}
+
 export interface OrgProjectItem {
   id: string;
   name: string;
@@ -33,6 +41,9 @@ export interface OrgProjectItem {
   myAccessStatus: ProjectMyAccessStatus;
   canEnter: boolean;
   canManage: boolean;
+  workbenchReady?: boolean;
+  enterPath?: string | null;
+  enterBlockedReason?: string | null;
   effectivePermissions?: string[];
   createdAt: string;
 }
@@ -62,6 +73,9 @@ export interface OrgProjectDetail {
   myAccessStatus: ProjectMyAccessStatus;
   canEnter: boolean;
   canManage: boolean;
+  workbenchReady?: boolean;
+  enterPath?: string | null;
+  enterBlockedReason?: string | null;
   effectivePermissions?: string[];
   createdAt: string;
   updatedAt: string;
@@ -84,11 +98,6 @@ export interface ProjectMemberPermissions {
     name: string;
     description?: string;
   }>;
-}
-
-export interface ProjectTypeDescriptor {
-  type: string;
-  label: string;
 }
 
 export interface CreateOrgProjectPayload {

@@ -90,6 +90,22 @@
             </p>
           </el-form-item>
 
+          <el-alert
+            v-if="selectedSite?.autopilot?.lastRun"
+            class="mb-4"
+            :type="autopilotRunTagType"
+            :closable="false"
+            show-icon
+            :title="autopilotRunTitle"
+            :description="autopilotRunHint"
+          >
+            <template v-if="selectedSite?.autopilot?.lastRun?.status === 'failed'" #default>
+              <div class="mt-2">
+                <el-button type="primary" link @click="goAutopilotFailedJobs">查看失败任务</el-button>
+              </div>
+            </template>
+          </el-alert>
+
           <template v-if="autopilotForm.enabled">
             <el-form-item label="发布计划">
               <el-select
@@ -210,6 +226,11 @@ import {
   utcHourToBeijingHour,
   type AutopilotSchedulePreset
 } from "@/utils/seo-factory/autopilot-schedule";
+import {
+  getAutopilotRunHint,
+  getAutopilotRunStatusLabel,
+  getAutopilotRunStatusTagType
+} from "@/utils/seo-factory/autopilot-run-display";
 
 defineOptions({ name: "ProjectSettingsView" });
 
@@ -270,6 +291,29 @@ const selectedSiteHasCms = computed(() => Boolean(selectedSite.value?.cmsType));
 const publishNeedsCms = computed(
   () => autopilotForm.publishMode === "draft" || autopilotForm.publishMode === "publish"
 );
+
+const autopilotRunHint = computed(() =>
+  getAutopilotRunHint(selectedSite.value?.autopilot?.lastRun)
+);
+
+const autopilotRunTitle = computed(() => {
+  const lastRun = selectedSite.value?.autopilot?.lastRun;
+  if (!lastRun) return "";
+  return `上次自动生产：${getAutopilotRunStatusLabel(lastRun.status)}`;
+});
+
+const autopilotRunTagType = computed(() => {
+  const status = selectedSite.value?.autopilot?.lastRun?.status;
+  return status ? getAutopilotRunStatusTagType(status) : "info";
+});
+
+function goAutopilotFailedJobs() {
+  router.push({
+    name: "SeoFactoryJobs",
+    params: { projectId },
+    query: { stage: "failed" }
+  });
+}
 
 function resetAdminForm() {
   adminForm.requireBriefApproval = false;

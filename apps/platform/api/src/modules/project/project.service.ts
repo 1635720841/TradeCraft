@@ -3,12 +3,14 @@
  */
 
 import { Injectable } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ProjectStatus } from '@prisma/client';
 import { type RequestContext } from '@wm/shared-core';
 import { PrismaService } from '../../core/database/prisma.service';
 import { softDeleteTimestamp } from '../../core/prisma/prisma-soft-delete.extension';
 import { BusinessException } from '../../core/exceptions/business.exception';
 import { ErrorCodes } from '../../core/exceptions/error-codes';
+import { PROJECT_CREATED_EVENT } from '../../core/event-bus/events';
 import { tenantVisibleProjectMemberUserFilter } from '../access/tenant-member-visibility';
 import { AuditService } from '../access/audit.service';
 import { EntitlementsService } from '../billing/entitlements.service';
@@ -16,7 +18,7 @@ import { ProjectAccessService } from './project-access.service';
 import {
   resolveProjectOrganizationId,
 } from './project-tenant-scope.util';
-import { listProjectTypeDescriptors } from './project-type.descriptors';
+import { listProjectTypeCatalogForApi } from './project-navigation.util';
 import type { CreateProjectDto } from './dto/create-project.dto';
 
 @Injectable()
@@ -26,6 +28,7 @@ export class ProjectService {
     private readonly projectAccessService: ProjectAccessService,
     private readonly auditService: AuditService,
     private readonly entitlementsService: EntitlementsService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async list(
@@ -98,7 +101,7 @@ export class ProjectService {
   }
 
   listProjectTypes() {
-    return listProjectTypeDescriptors();
+    return listProjectTypeCatalogForApi();
   }
 
   async create(
@@ -137,6 +140,14 @@ export class ProjectService {
       targetType: 'Project',
       targetId: project.id,
       metadata: { name: project.name, projectType: project.projectType },
+      traceId,
+    });
+
+    this.eventEmitter.emit(PROJECT_CREATED_EVENT, {
+      organizationId,
+      projectId: project.id,
+      projectType: project.projectType,
+      creatorUserId,
       traceId,
     });
 

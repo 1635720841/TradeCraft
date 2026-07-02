@@ -15,7 +15,15 @@ function loadRegistry(): IProjectTypePlugin[] {
     const { SeoFactoryPlugin } = require('../../project-types/seo-factory/seo-factory.plugin') as {
       SeoFactoryPlugin: IProjectTypePlugin;
     };
-    registry = [SeoFactoryPlugin];
+    const plugins: IProjectTypePlugin[] = [SeoFactoryPlugin];
+    if (process.env.DEMO_FACTORY_ENABLED === 'true') {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { DemoFactoryPlugin } = require('../../project-types/demo-factory/demo-factory.plugin') as {
+        DemoFactoryPlugin: IProjectTypePlugin;
+      };
+      plugins.push(DemoFactoryPlugin);
+    }
+    registry = plugins;
   }
   return registry;
 }

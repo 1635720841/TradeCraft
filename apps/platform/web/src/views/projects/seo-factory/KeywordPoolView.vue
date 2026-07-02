@@ -63,6 +63,18 @@
         @batch-delete="handleBatchDelete"
       />
 
+      <AsyncErrorAlert
+        :message="error"
+        title="关键词列表加载失败"
+        @retry="retryFetchKeywords"
+      />
+      <AsyncErrorAlert
+        v-if="clustersError"
+        :message="clustersError"
+        title="专题列表加载失败"
+        @retry="retryLoadClusters"
+      />
+
       <KeywordPoolTable
         ref="keywordTableRef"
         v-model:page="page"
@@ -192,6 +204,7 @@ import KeywordImportDialog from "./components/KeywordImportDialog.vue";
 import KeywordPoolFilters from "./components/KeywordPoolFilters.vue";
 import KeywordPoolTable from "./components/KeywordPoolTable.vue";
 import KeywordSeedDialog from "./components/KeywordSeedDialog.vue";
+import AsyncErrorAlert from "@/components/feedback/AsyncErrorAlert.vue";
 
 defineOptions({ name: "KeywordPoolView" });
 
@@ -216,6 +229,8 @@ const emptyKeywordHint = computed(() =>
 
 const {
   loading,
+  error,
+  clustersError,
   keywords,
   page,
   limit,
@@ -227,7 +242,9 @@ const {
   clusters,
   activeFilterTitle,
   fetchKeywords,
+  retryFetchKeywords,
   loadClusters,
+  retryLoadClusters,
   goUnclusteredFilter,
   onQuickFilterChange,
   onFilterChange,

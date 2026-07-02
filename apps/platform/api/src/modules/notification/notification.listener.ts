@@ -28,8 +28,18 @@ import { RedisService } from '../../core/redis/redis.service';
 import { EmailNotificationService } from './email-notification.service';
 import { InAppNotificationService } from './in-app-notification.service';
 import { NotificationRecipientService } from './notification-recipient.service';
+import { buildProjectResourcePath } from '../project/project-navigation.util';
 import { RobotNotificationService } from './robot-notification.service';
 import { appendNotificationLink } from './notification-link.util';
+
+const DEFAULT_PROJECT_TYPE = 'seo-factory';
+
+function jobLinkPath(projectId: string, jobId: string, projectType = DEFAULT_PROJECT_TYPE) {
+  return (
+    buildProjectResourcePath(projectId, projectType, 'jobs', jobId) ??
+    `/projects/${projectId}/seo-factory/jobs/${jobId}`
+  );
+}
 
 const QUOTA_ALERT_TTL_SEC = 86_400;
 
@@ -54,7 +64,7 @@ export class NotificationListener {
       payload.organizationId,
       payload.projectId,
     );
-    const linkPath = `/projects/${payload.projectId}/seo-factory/jobs/${payload.jobId}`;
+    const linkPath = jobLinkPath(payload.projectId, payload.jobId);
     await this.inApp.createForUsers({
       organizationId: payload.organizationId,
       userIds,
@@ -101,7 +111,7 @@ export class NotificationListener {
       payload.organizationId,
       payload.projectId,
     );
-    const linkPath = `/projects/${payload.projectId}/seo-factory/jobs/${payload.jobId}`;
+    const linkPath = jobLinkPath(payload.projectId, payload.jobId);
     await this.inApp.createForUsers({
       organizationId: payload.organizationId,
       userIds,
@@ -208,7 +218,7 @@ export class NotificationListener {
   }
 
   private async handleAssigned(payload: ArticleAssignedPayload): Promise<void> {
-    const linkPath = `/projects/${payload.projectId}/seo-factory/jobs/${payload.jobId}`;
+    const linkPath = jobLinkPath(payload.projectId, payload.jobId);
     await this.inApp.createForUsers({
       organizationId: payload.organizationId,
       userIds: [payload.assigneeUserId],
@@ -251,7 +261,7 @@ export class NotificationListener {
   }
 
   private async handleComment(payload: ArticleCommentAddedPayload): Promise<void> {
-    const linkPath = `/projects/${payload.projectId}/seo-factory/jobs/${payload.jobId}`;
+    const linkPath = jobLinkPath(payload.projectId, payload.jobId);
     const recipientSet = new Set([
       ...payload.assigneeUserIds,
       ...(payload.mentionedUserIds ?? []),

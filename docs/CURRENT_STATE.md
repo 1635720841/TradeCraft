@@ -170,6 +170,15 @@ SERP → Brief → [人工确认?] → 初稿 → 内链 → 配图 → Semrush 
 - [x] **UTM 归因 CSV**：`GET .../sites/:id/attribution-export` + `SiteManageView`
 - [x] **站点负责人**：`Site.settings.ownerUserId` + `?siteOwner=me` 筛选
 
+### MW 三月路线图（2026-07-01）
+
+- [x] **体验断点**：`AsyncErrorAlert` + 列表 composable `error/retry`；autopilot `lastRun`；`workbenchReady` + 动态 `enterPath`
+- [x] **架构 Port**：`ProductionStatsPort` / `BillingMeterPort` / `ConsoleSiteEnrichmentPort` / `ProjectSearchPort`；权限从插件 `permissions()` 聚合
+- [x] **seoCheckData**：`shared-core` 类型 + Zod + lazy migrate on read
+- [x] **M 编号**：`WORKFLOW_M_MAPPING` 单一真相源
+- [x] **可扩展验证**：`demo-factory` 空壳插件（`DEMO_FACTORY_ENABLED=true`）；`WorkflowStepRegistry` POC（serp/brief/ymyl）
+- [x] **ADR**：`docs/adr/ADR-004-project-type-ports.md`
+
 ## 本地验证
 
 ```bash

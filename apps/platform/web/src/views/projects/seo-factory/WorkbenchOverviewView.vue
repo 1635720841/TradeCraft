@@ -35,7 +35,13 @@
     />
 
     <div class="overview-layout">
-      <WorkbenchTodoPanel :loading="loading" :items="todoItems" />
+      <AsyncErrorAlert
+        :message="statsError"
+        title="概览数据加载失败"
+        @retry="loadStats"
+      />
+
+      <WorkbenchTodoPanel :loading="loading && !statsError" :items="todoItems" />
 
       <section v-if="stats?.siteCount === 0" class="overview-panel">
         <header class="overview-panel__head">
@@ -143,6 +149,8 @@ import WorkbenchIcon from "./components/WorkbenchIcon.vue";
 import TopicClusterGrid from "./components/TopicClusterGrid.vue";
 import WorkbenchTodoPanel from "./components/WorkbenchTodoPanel.vue";
 import WorkbenchPipelineStrip from "./components/WorkbenchPipelineStrip.vue";
+import AsyncErrorAlert from "@/components/feedback/AsyncErrorAlert.vue";
+import { runLoad } from "@/composables/run-load";
 import { message } from "@/utils/message";
 
 defineOptions({ name: "WorkbenchOverviewView" });
@@ -161,6 +169,9 @@ const {
 } = useProjectSetupChecklist(projectId);
 
 const loading = ref(false);
+const statsError = ref<string | null>(null);
+const sitesError = ref<string | null>(null);
+const clustersError = ref<string | null>(null);
 const rerunningGscJobId = ref<string | null>(null);
 const importingGscQuery = ref<string | null>(null);
 const clustersLoading = ref(false);
@@ -275,15 +286,27 @@ const todoItems = computed<TodoItem[]>(() => {
     return items;
   }
 
-  if ((s.myAssignedCount ?? 0) > 0) {
+  if (s.sitesMissingProfileCount > 0) {
     items.push({
-      id: "assigned-me",
-      tagLabel: "我的",
+      id: "profile",
+      tagLabel: "站点",
       tagType: "warning",
-      text: `${s.myAssignedCount} 篇任务指派给您，请及时处理`,
-      actionLabel: "查看",
-      buttonType: "primary",
-      action: goAssignedToMe
+      text: `${s.sitesMissingProfileCount} 个站点未填最少写作素材（行业 + 至少 1 条卖点）`,
+      actionLabel: "去填写",
+      buttonType: "warning",
+      action: goSitesMissingProfile
+    });
+  }
+
+  if (s.pendingBriefCount > 0) {
+    items.push({
+      id: "brief-pending",
+      tagLabel: "大纲",
+      tagType: "warning",
+      text: `${s.pendingBriefCount} 篇待确认大纲，确认后才会生成正文`,
+      actionLabel: "去确认",
+      buttonType: "warning",
+      action: goBriefPending
     });
   }
 
@@ -297,17 +320,15 @@ const todoItems = computed<TodoItem[]>(() => {
       buttonType: "warning",
       action: goMyReviewPending
     });
-  }
-
-  if (s.sitesMissingProfileCount > 0) {
+  } else if (s.pendingReviewCount > 0) {
     items.push({
-      id: "profile",
-      tagLabel: "站点",
+      id: "review-pending",
+      tagLabel: "审核",
       tagType: "warning",
-      text: `${s.sitesMissingProfileCount} 个站点未填最少写作素材（行业 + 至少 1 条卖点）`,
-      actionLabel: "去填写",
+      text: `${s.pendingReviewCount} 篇待敏感内容审核`,
+      actionLabel: "去审核",
       buttonType: "warning",
-      action: goSitesMissingProfile
+      action: goReviews
     });
   }
 
@@ -320,6 +341,54 @@ const todoItems = computed<TodoItem[]>(() => {
       actionLabel: "查看失败",
       buttonType: "danger",
       action: goCmsPublishFailed
+    });
+  }
+
+  const autopilotFailedCount = sites.value.filter(
+    (site) => site.autopilot?.enabled && site.autopilot?.lastRun?.status === "failed"
+  ).length;
+  if (autopilotFailedCount > 0) {
+    items.push({
+      id: "autopilot-failed",
+      tagLabel: "自动生产",
+      tagType: "danger",
+      text: `${autopilotFailedCount} 个站点自动生产上次运行失败`,
+      actionLabel: "查看失败任务",
+      buttonType: "danger",
+      action: goFailedJobs
+    });
+  }
+
+  if (
+    canManageGsc.value &&
+    s.gscPendingSyncCount === 0 &&
+    (s.gscUnderperformingJobs?.length ?? 0) > 0
+  ) {
+    for (const row of s.gscUnderperformingJobs.slice(0, 3)) {
+      items.push({
+        id: `gsc-underperform-${row.jobId}`,
+        tagLabel: "搜索",
+        tagType: "warning",
+        text: `「${row.keyword}」展示 ${row.impressions}、点击 ${row.clicks}、排名 ${row.position.toFixed(1)}，建议优化改稿`,
+        actionLabel: "重新优化",
+        buttonType: "primary",
+        loading: rerunningGscJobId.value === row.jobId,
+        action: () => void handleGscRerunOptimization(row.jobId),
+        secondaryActionLabel: "去改稿",
+        secondaryAction: () => goUnderperformingJob(row.jobId)
+      });
+    }
+  }
+
+  if ((s.myAssignedCount ?? 0) > 0) {
+    items.push({
+      id: "assigned-me",
+      tagLabel: "我的",
+      tagType: "warning",
+      text: `${s.myAssignedCount} 篇任务指派给您，请及时处理`,
+      actionLabel: "查看",
+      buttonType: "primary",
+      action: goAssignedToMe
     });
   }
 
@@ -368,44 +437,42 @@ const todoItems = computed<TodoItem[]>(() => {
     }
   }
 
-  if (
-    canManageGsc.value &&
-    s.gscPendingSyncCount === 0 &&
-    (s.gscUnderperformingJobs?.length ?? 0) > 0
-  ) {
-    for (const row of s.gscUnderperformingJobs.slice(0, 3)) {
-      items.push({
-        id: `gsc-underperform-${row.jobId}`,
-        tagLabel: "搜索",
-        tagType: "warning",
-        text: `「${row.keyword}」展示 ${row.impressions}、点击 ${row.clicks}、排名 ${row.position.toFixed(1)}，建议优化改稿`,
-        actionLabel: "重新优化",
-        buttonType: "primary",
-        loading: rerunningGscJobId.value === row.jobId,
-        action: () => void handleGscRerunOptimization(row.jobId),
-        secondaryActionLabel: "去改稿",
-        secondaryAction: () => goUnderperformingJob(row.jobId)
-      });
-    }
-  }
-
   return items;
 });
 
 async function loadStats() {
-  loading.value = true;
-  try {
-    stats.value = await getSeoFactoryProjectStats(
-      projectId,
-      filterSiteId.value || undefined
-    );
-  } finally {
-    loading.value = false;
-  }
+  await runLoad(
+    () => getSeoFactoryProjectStats(projectId, filterSiteId.value || undefined),
+    {
+      setLoading: (value) => {
+        loading.value = value;
+      },
+      setError: (value) => {
+        statsError.value = value;
+      },
+      onSuccess: (result) => {
+        stats.value = result;
+      },
+      fallbackMessage: "概览数据加载失败"
+    }
+  );
 }
 
 async function loadSites() {
-  sites.value = await listSites(projectId);
+  await runLoad(
+    () => listSites(projectId),
+    {
+      setLoading: () => {},
+      setError: (value) => {
+        sitesError.value = value;
+      },
+      onSuccess: (result) => {
+        sites.value = result;
+      },
+      showLoading: false,
+      fallbackMessage: "站点列表加载失败"
+    }
+  );
 }
 
 function syncSiteFilterFromRoute() {
@@ -426,12 +493,21 @@ function navQuery(extra: Record<string, string> = {}) {
 }
 
 async function loadClusters() {
-  clustersLoading.value = true;
-  try {
-    clusters.value = await listKeywordClusters(projectId);
-  } finally {
-    clustersLoading.value = false;
-  }
+  await runLoad(
+    () => listKeywordClusters(projectId),
+    {
+      setLoading: (value) => {
+        clustersLoading.value = value;
+      },
+      setError: (value) => {
+        clustersError.value = value;
+      },
+      onSuccess: (result) => {
+        clusters.value = result;
+      },
+      fallbackMessage: "专题列表加载失败"
+    }
+  );
 }
 
 function goJobs() {

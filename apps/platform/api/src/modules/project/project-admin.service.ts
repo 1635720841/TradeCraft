@@ -94,6 +94,8 @@ export class ProjectAdminService {
         myAccessStatus: item.myAccessStatus,
         canEnter: item.canEnter,
         canManage: item.canManage,
+        workbenchReady: item.workbenchReady,
+        enterPath: item.enterPath,
         createdAt: item.createdAt,
       })),
       page: safePage,

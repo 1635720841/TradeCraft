@@ -3,6 +3,8 @@
  */
 
 import { PARAPHRASE_PROGRESS_DEFAULT } from './paraphrase-copy';
+import { normalizeSeoCheckDataForWrite } from './seo-check-data.migrate';
+import type { ArticleJobSeoCheckData } from './seo-check-data.types';
 
 export interface WorkflowProgressLike {
   phase?: string;
@@ -89,4 +91,38 @@ export function enrichWorkflowProgressMessage(
   }
   if (progress.phase === 'local-scoring') return '本地预检计分中';
   return null;
+}
+
+function mergeSubtree(
+  raw: unknown,
+  key: keyof ArticleJobSeoCheckData,
+  patch: Record<string, unknown>,
+): ArticleJobSeoCheckData {
+  const prev = normalizeSeoCheckDataForWrite(raw);
+  const subtree = { ...((prev[key] as Record<string, unknown> | undefined) ?? {}), ...patch };
+  return { ...prev, [key]: subtree };
+}
+
+/** 写入 local 子树（写库前 normalize + _v） */
+export function withLocalCheck(
+  raw: unknown,
+  local: Record<string, unknown>,
+): ArticleJobSeoCheckData {
+  return mergeSubtree(raw, 'local', local);
+}
+
+/** 写入 semrush 子树 */
+export function withSemrushResult(
+  raw: unknown,
+  semrush: Record<string, unknown>,
+): ArticleJobSeoCheckData {
+  return mergeSubtree(raw, 'semrush', semrush);
+}
+
+/** 写入 ymylReview 子树 */
+export function withYmylReview(
+  raw: unknown,
+  ymylReview: Record<string, unknown>,
+): ArticleJobSeoCheckData {
+  return mergeSubtree(raw, 'ymylReview', ymylReview);
 }

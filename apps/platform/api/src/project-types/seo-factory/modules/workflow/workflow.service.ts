@@ -28,7 +28,10 @@ import {
   resolveFailedStep,
   type WorkflowResumeStep,
 } from '../../constants/workflow-resume';
+import { normalizeSeoCheckDataForWrite } from '@wm/shared-core';
+import { getWorkflowStepHandler } from './workflow-step.registry';
 import { enrichBrandVoiceForPrompt } from '../../constants/site-settings';
+import type { WorkflowStepContext } from './workflow-step.registry';
 import { formatTargetMarketsForPrompt, primaryTargetMarket } from '../site/target-market.util';
 import { isBriefApprovalPending, parseSiteWorkflowSettings } from '../../constants/brief-approval';
 import { resolveSerpResearchOptions } from '../../constants/serp-research-settings';
@@ -119,34 +122,18 @@ export class WorkflowService {
     const startIdx = WORKFLOW_STEPS.indexOf(resumeFrom);
     const steps: Record<WorkflowResumeStep, () => Promise<void>> = {
       serp: async () => {
-        await this.updateStatus(jobId, 'RESEARCHING');
-        const serp = resolveSerpResearchOptions(job.site.settings, scraperOptions, {
-          targetMarket: job.site.targetMarket,
-        });
-        await this.scraperService.researchSerp({
-          jobId: ctx.jobId,
-          traceId: ctx.traceId,
-          organizationId: ctx.organizationId,
-          projectId: ctx.projectId,
-          targetKeyword: ctx.targetKeyword,
-          targetMarket: serp.serpCountry,
-          contentLanguage: ctx.contentLanguage,
-          serpArticleLimit: serp.serpArticleLimit,
-          serpArticlesOnly: serp.serpArticlesOnly,
-          organicFetchNum: serp.organicFetchNum,
-          minArticleCandidates: serp.minArticleCandidates,
-          cacheTtlSeconds: serp.cacheTtlSeconds,
-        });
+        /* migrated to WorkflowStepRegistrationService */
       },
       brief: async () => {
-        await this.updateStatus(jobId, 'DRAFTING');
-        await this.llmService.generateBrief(ctx);
+        /* migrated to WorkflowStepRegistrationService */
       },
       draft: async () => {
+        // TODO: migrate to WorkflowStepRegistry
         await this.updateStatus(jobId, 'DRAFTING');
         await this.llmService.generateDraft(ctx);
       },
       linking: async () => {
+        // TODO: migrate to WorkflowStepRegistry
         await this.updateStatus(jobId, 'LINKING');
         await this.linkingService.injectInternalLinksForJob({
           jobId: ctx.jobId,
@@ -157,6 +144,7 @@ export class WorkflowService {
         });
       },
       images: async () => {
+        // TODO: migrate to WorkflowStepRegistry
         if (!siteWorkflow.enableIllustration) {
           await this.illustrationService.enrichImagesForJob({
             jobId: ctx.jobId,
@@ -179,22 +167,17 @@ export class WorkflowService {
         });
       },
       optimizing: async () => {
+        // TODO: migrate to WorkflowStepRegistry
         await this.updateStatus(jobId, 'OPTIMIZING');
         await this.seoCheckerService.runPostDraftPipeline(ctx);
       },
       paraphrasing: async () => {
+        // TODO: migrate to WorkflowStepRegistry
         await this.updateStatus(jobId, 'OPTIMIZING');
         await this.paraphraseService.runForJob(ctx);
       },
       ymyl: async () => {
-        await this.updateStatus(jobId, 'REVIEWING');
-        await this.contentReviewService.runYmylReview({
-          jobId: ctx.jobId,
-          traceId: ctx.traceId,
-          organizationId: ctx.organizationId,
-          projectId: ctx.projectId,
-          targetKeyword: ctx.targetKeyword,
-        });
+        /* migrated to WorkflowStepRegistrationService */
       },
     };
 
@@ -212,7 +195,12 @@ export class WorkflowService {
       }
 
       const step = WORKFLOW_STEPS[i];
-      await steps[step]();
+      const registered = getWorkflowStepHandler(step);
+      if (registered) {
+        await registered.run({ ...ctx, siteId, scraperOptions });
+      } else {
+        await steps[step]();
+      }
 
       if (step === 'brief') {
         const paused = await this.shouldPauseForBriefApproval(jobId);
@@ -257,7 +245,9 @@ export class WorkflowService {
       data: {
         status: 'COMPLETED',
         outputUrl,
-        seoCheckData: withWorkflowMeta(latest?.seoCheckData, null) as object,
+        seoCheckData: normalizeSeoCheckDataForWrite(
+          withWorkflowMeta(latest?.seoCheckData, null),
+        ) as object,
       },
     });
 
@@ -265,7 +255,9 @@ export class WorkflowService {
       traceId,
       organizationId,
       projectId,
+      projectType: 'seo-factory',
       jobId,
+      meterId: 'article.completed',
     };
     this.eventEmitter.emit(ARTICLE_COMPLETED_EVENT, payload);
 
@@ -351,6 +343,48 @@ export class WorkflowService {
       };
       this.eventEmitter.emit(ARTICLE_FAILED_EVENT, failedPayload);
     }
+  }
+
+  async executeSerpStep(ctx: WorkflowStepContext): Promise<void> {
+    await this.updateStatus(ctx.jobId, 'RESEARCHING');
+    const job = await this.prisma.articleJob.findFirst({
+      where: { id: ctx.jobId },
+      select: { site: { select: { settings: true, targetMarket: true } } },
+    });
+    if (!job?.site) return;
+    const serp = resolveSerpResearchOptions(job.site.settings, ctx.scraperOptions, {
+      targetMarket: job.site.targetMarket,
+    });
+    await this.scraperService.researchSerp({
+      jobId: ctx.jobId,
+      traceId: ctx.traceId,
+      organizationId: ctx.organizationId,
+      projectId: ctx.projectId,
+      targetKeyword: ctx.targetKeyword,
+      targetMarket: serp.serpCountry,
+      contentLanguage: ctx.contentLanguage,
+      serpArticleLimit: serp.serpArticleLimit,
+      serpArticlesOnly: serp.serpArticlesOnly,
+      organicFetchNum: serp.organicFetchNum,
+      minArticleCandidates: serp.minArticleCandidates,
+      cacheTtlSeconds: serp.cacheTtlSeconds,
+    });
+  }
+
+  async executeBriefStep(ctx: WorkflowStepContext): Promise<void> {
+    await this.updateStatus(ctx.jobId, 'DRAFTING');
+    await this.llmService.generateBrief(ctx);
+  }
+
+  async executeYmylStep(ctx: WorkflowStepContext): Promise<void> {
+    await this.updateStatus(ctx.jobId, 'REVIEWING');
+    await this.contentReviewService.runYmylReview({
+      jobId: ctx.jobId,
+      traceId: ctx.traceId,
+      organizationId: ctx.organizationId,
+      projectId: ctx.projectId,
+      targetKeyword: ctx.targetKeyword,
+    });
   }
 
   private async shouldPauseForBriefApproval(jobId: string): Promise<boolean> {

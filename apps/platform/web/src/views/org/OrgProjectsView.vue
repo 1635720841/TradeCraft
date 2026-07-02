@@ -129,12 +129,12 @@
                 查看
               </el-button>
               <el-button
-                v-if="projectRow(row).projectType === 'seo-factory' && projectRow(row).canEnter"
+                v-if="projectRow(row).canEnter && projectRow(row).enterPath"
                 type="primary"
                 link
-                @click.stop="enterProject(projectRow(row).id)"
+                @click.stop="enterProject(projectRow(row))"
               >
-                进入
+                进入工作台
               </el-button>
               <el-button
                 v-if="projectRow(row).canManage && canUpdate"
@@ -152,10 +152,10 @@
                   <el-dropdown-item v-if="projectRow(row).canManage" command="manage">管理</el-dropdown-item>
                   <el-dropdown-item v-else command="preview">查看</el-dropdown-item>
                   <el-dropdown-item
-                    v-if="projectRow(row).projectType === 'seo-factory' && projectRow(row).canEnter"
+                    v-if="projectRow(row).canEnter && projectRow(row).enterPath"
                     command="enter"
                   >
-                    进入
+                    进入工作台
                   </el-dropdown-item>
                   <el-dropdown-item
                     v-if="projectRow(row).canManage && canUpdate"
@@ -190,7 +190,7 @@
         <el-form-item label="项目类型" prop="projectType">
           <el-select v-model="createForm.projectType" class="w-full">
             <el-option
-              v-for="item in projectTypes"
+              v-for="item in creatableProjectTypes"
               :key="item.type"
               :label="item.label"
               :value="item.type"
@@ -491,7 +491,8 @@ import {
   updateOrgProject,
   type OrgProjectDetail,
   type OrgProjectItem,
-  type OrgProjectMember
+  type OrgProjectMember,
+  type ProjectTypeDescriptor
 } from "@/api/org/projects";
 import {
   approveAccessRequest,
@@ -510,6 +511,7 @@ import { message } from "@/utils/message";
 import { tableRow } from "@/utils/table-row";
 import { confirmDestructiveDelete } from "@/utils/confirm-destructive-delete";
 import { invalidateProjectAccessCache } from "@/router/guards/project-access";
+import { navigateToProjectWorkbench, buildProjectEnterPathFromCatalog } from "@/utils/project-navigation";
 
 defineOptions({ name: "OrgProjectsView" });
 
@@ -523,7 +525,10 @@ const loadingPerms = ref(false);
 const saving = ref(false);
 const savingPerms = ref(false);
 const projects = ref<OrgProjectItem[]>([]);
-const projectTypes = ref<Array<{ type: string; label: string }>>([]);
+const projectTypes = ref<ProjectTypeDescriptor[]>([]);
+const creatableProjectTypes = computed(() =>
+  projectTypes.value.filter((item) => item.workbenchReady)
+);
 const page = ref(1);
 const limit = ref(20);
 const total = ref(0);
@@ -637,7 +642,7 @@ function onProjectRowCommand(command: string | number | object, row: OrgProjectI
   const cmd = String(command);
   if (cmd === "manage") void openManage(row);
   else if (cmd === "preview") void openPreview(row);
-  else if (cmd === "enter") void enterProject(row.id);
+  else if (cmd === "enter") enterProject(row);
   else if (cmd === "delete") void handleDeleteProject(row);
 }
 
@@ -723,14 +728,21 @@ async function submitCreate() {
     createVisible.value = false;
     invalidateProjectAccessCache(project.id);
     await loadProjects();
-    if (project.projectType === "seo-factory") {
+    if (creatableProjectTypes.value.some((item) => item.type === project.projectType)) {
       try {
         await ElMessageBox.confirm(
-          "项目已创建，您已自动成为项目负责人。是否进入 SEO 工作台？",
+          "项目已创建，您已自动成为项目负责人。是否进入工作台？",
           "创建成功",
           { confirmButtonText: "进入工作台", cancelButtonText: "继续管理", type: "success" }
         );
-        enterProject(project.id);
+        const enterPath = buildProjectEnterPathFromCatalog(
+          project.id,
+          project.projectType,
+          projectTypes.value
+        );
+        if (enterPath) {
+          navigateToProjectWorkbench(router, enterPath);
+        }
       } catch {
         message("项目已创建", { type: "success" });
       }
@@ -861,8 +873,9 @@ async function saveMemberPermissions() {
   }
 }
 
-function enterProject(projectId: string) {
-  router.push(`/projects/${projectId}/seo-factory/overview`);
+function enterProject(project: OrgProjectItem) {
+  if (!project.enterPath) return;
+  navigateToProjectWorkbench(router, project.enterPath);
 }
 
 function applyPreset(permissions: string[]) {

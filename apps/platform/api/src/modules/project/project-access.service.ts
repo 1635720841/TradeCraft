@@ -15,6 +15,7 @@ import {
   resolveProjectListAccessMeta,
   resolveProjectMemberRoleDefaults,
 } from './project-access.constants';
+import { buildProjectEnterPath, isProjectTypeWorkbenchReady } from './project-navigation.util';
 
 @Injectable()
 export class ProjectAccessService {
@@ -124,6 +125,25 @@ export class ProjectAccessService {
     const allowed = required.some((id) => effective.includes(id));
     if (!allowed) {
       throw new BusinessException(ErrorCodes.FORBIDDEN, '无权执行此操作');
+    }
+  }
+
+  /** 进入项目工作台：成员可用 + 项目类型 workbenchReady */
+  async assertWorkbenchEnterable(
+    ctx: Pick<RequestContext, 'userId' | 'role'>,
+    project: {
+      id: string;
+      projectType: string;
+      accessStart: Date | null;
+      accessEnd: Date | null;
+    },
+  ): Promise<void> {
+    await this.assertUserCanUseProject(ctx, project);
+    if (!isProjectTypeWorkbenchReady(project.projectType)) {
+      throw new BusinessException(
+        ErrorCodes.PROJECT_WORKBENCH_NOT_READY,
+        '该项目类型工作台尚未上线，敬请期待',
+      );
     }
   }
 
@@ -244,6 +264,7 @@ export class ProjectAccessService {
       status: string;
       accessStart: Date | null;
       accessEnd: Date | null;
+      projectType?: string;
     },
   >(items: T[], ctx: Pick<RequestContext, 'userId' | 'role'>) {
     if (items.length === 0) {
@@ -276,7 +297,24 @@ export class ProjectAccessService {
         isSuperAdmin,
         member,
       });
-      return { ...item, ...access };
+      const projectType = item.projectType ?? 'seo-factory';
+      const workbenchReady = isProjectTypeWorkbenchReady(projectType);
+      const canEnter = access.canEnter && workbenchReady;
+      const enterPath = canEnter ? buildProjectEnterPath(item.id, projectType) : null;
+      const enterBlockedReason =
+        access.canEnter && !workbenchReady
+          ? 'workbench_not_ready'
+          : !access.canEnter
+            ? access.myAccessStatus
+            : null;
+      return {
+        ...item,
+        ...access,
+        canEnter,
+        workbenchReady,
+        enterPath,
+        enterBlockedReason,
+      };
     });
   }
 }

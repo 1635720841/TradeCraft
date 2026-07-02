@@ -3,21 +3,12 @@
  */
 
 import { ProjectMemberRole } from '@prisma/client';
+import {
+  getAggregatedPluginPermissions,
+  getRegisteredProjectTypes,
+} from './project-type.registry';
 
-/** 各项目类型可授予的权限 ID */
-export const PROJECT_TYPE_PERMISSION_IDS: Record<string, string[]> = {
-  'seo-factory': [
-    'project:read',
-    'project:update',
-    'seo:job:create',
-    'seo:job:read',
-    'seo:job:review',
-    'seo:keyword:manage',
-    'seo:site:manage',
-  ],
-};
-
-/** 项目成员角色默认权限 */
+/** 项目成员角色默认权限（按角色模板，实际授予时与插件权限求交） */
 export const PROJECT_MEMBER_ROLE_PERMISSIONS: Record<ProjectMemberRole, string[]> = {
   OWNER: [],
   EDITOR: [
@@ -26,23 +17,27 @@ export const PROJECT_MEMBER_ROLE_PERMISSIONS: Record<ProjectMemberRole, string[]
     'seo:job:read',
     'seo:keyword:manage',
     'seo:site:manage',
+    'demo:item:read',
   ],
-  VIEWER: ['project:read', 'seo:job:read'],
+  VIEWER: ['project:read', 'seo:job:read', 'demo:item:read'],
 };
+
+export function listGrantablePermissionsForProjectType(projectType: string): string[] {
+  const globalIds = new Set(getAggregatedPluginPermissions().map((perm) => perm.id));
+  const plugin = getRegisteredProjectTypes().find((entry) => entry.type === projectType);
+  if (!plugin) return ['project:read'];
+  return plugin.permissions().map((perm) => perm.id).filter((id) => globalIds.has(id));
+}
 
 export function resolveProjectMemberRoleDefaults(
   role: ProjectMemberRole,
   projectType: string,
 ): string[] {
   if (role === ProjectMemberRole.OWNER) {
-    return [...(PROJECT_TYPE_PERMISSION_IDS[projectType] ?? ['project:read'])];
+    return listGrantablePermissionsForProjectType(projectType);
   }
-  const allowed = new Set(PROJECT_TYPE_PERMISSION_IDS[projectType] ?? []);
+  const allowed = new Set(listGrantablePermissionsForProjectType(projectType));
   return PROJECT_MEMBER_ROLE_PERMISSIONS[role].filter((id) => allowed.has(id));
-}
-
-export function listGrantablePermissionsForProjectType(projectType: string): string[] {
-  return [...(PROJECT_TYPE_PERMISSION_IDS[projectType] ?? [])];
 }
 
 export function isWithinAccessWindow(

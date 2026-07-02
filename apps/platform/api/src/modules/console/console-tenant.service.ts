@@ -106,7 +106,7 @@ export class ConsoleTenantService {
   async listTenantProjects(organizationId: string) {
     await this.assertCustomerTenant(organizationId);
     const projects = await this.prisma.project.findMany({
-      where: { organizationId, projectType: 'seo-factory' },
+      where: { organizationId },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,

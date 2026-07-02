@@ -23,6 +23,7 @@ import {
   isArticleJobInProgress
 } from "@/utils/seo-factory/job-delete-confirm";
 import { message } from "@/utils/message";
+import { useArticleQuotaPreview } from "@/composables/useArticleQuotaPreview";
 import { canPublishJobToCms } from "@/utils/seo-factory/cms-publish-status";
 import { isBriefPending } from "@/utils/seo-factory/job-progress";
 import { isJobReleaseReady } from "@/utils/seo-factory/release-readiness";
@@ -33,8 +34,9 @@ export function useJobListBatchActions(options: {
   clearSelection: () => void;
   fetchJobs: (showLoading?: boolean) => Promise<void>;
   startPolling: () => void;
+  quotaPreview?: ReturnType<typeof useArticleQuotaPreview>;
 }) {
-  const { projectId, jobs, clearSelection, fetchJobs, startPolling } = options;
+  const { projectId, jobs, clearSelection, fetchJobs, startPolling, quotaPreview } = options;
 
   const selectedJobs = ref<ArticleJobItem[]>([]);
   const retryingId = ref<string | null>(null);
@@ -178,6 +180,22 @@ export function useJobListBatchActions(options: {
 
   async function handleBatchRetry() {
     if (retryableSelected.value.length === 0) return;
+    const count = retryableSelected.value.length;
+    if (quotaPreview) {
+      await quotaPreview.refreshQuota();
+      if (!quotaPreview.canConsume(count)) {
+        const remaining = quotaPreview.quota.value?.remaining ?? 0;
+        try {
+          await ElMessageBox.confirm(
+            `本次将重试 ${count} 篇，但本账期剩余配额仅 ${remaining} 篇。继续可能导致部分任务无法完成，是否仍要重试？`,
+            "配额可能不足",
+            { type: "warning", confirmButtonText: "继续重试", cancelButtonText: "取消" }
+          );
+        } catch {
+          return;
+        }
+      }
+    }
     batchRetrying.value = true;
     try {
       const result = await batchRetryArticleJobs(

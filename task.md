@@ -17,6 +17,7 @@
 | P2 | 自动化攻坚 | 🟡 进行中 | Semrush、内链、配图、QuillBot 已接入；队列/browser 池待做 |
 | P3 | SaaS 化基座 | 🟡 进行中 | Auth、多租户、项目 CRUD、工作台壳、站点/关键词/审核页已接入 |
 | P4 | 资产完善与变现 | 🟡 进行中 | 导出、计费、Prompt、CMS（含 Shopify 产品页）、Brief/批量运营、概览待办已接入 |
+| MW | 三月路线图（体验/架构/验证） | ✅ 已完成 | 见下方 **MW-ROADMAP** |
 
 ---
 
@@ -665,6 +666,21 @@ Phase 4 — 变现
 | P5-015 | UTM 归因 CSV 导出 | [x] |
 | P5-016 | Site.settings.ownerUserId + 按负责人筛选 | [x] |
 
+## MW-ROADMAP 三月路线图（2026-07-01）
+
+| ID | 任务 | 状态 |
+|----|------|------|
+| MW-M1-001 | 列表统一错误态 `AsyncErrorAlert` + composable `error/retry` | [x] |
+| MW-M1-002 | autopilot `site.settings.autopilot.lastRun` + 前端展示 | [x] |
+| MW-M1-003 | `workbenchReady` + 动态 `enterPath` | [x] |
+| MW-M1-004 | 待办重排 / 批量配额预检 / JobDetail callout | [x] |
+| MW-M2-001 | `ProductionStatsPort` + `BillingMeterPort` | [x] |
+| MW-M2-002 | Navigation / ConsoleSite / ProjectSearch Port + permissions 接线 | [x] |
+| MW-M2-003 | seoCheckData shared-core + Zod + migrate on read | [x] |
+| MW-M2-004 | `WORKFLOW_M_MAPPING` + 文档/注释同步 | [x] |
+| MW-M3-001 | `demo-factory` 空壳插件（`DEMO_FACTORY_ENABLED`） | [x] |
+| MW-M3-002 | `WorkflowStepRegistry` POC（serp/brief/ymyl） | [x] |
+
 ## SEO 外贸优化 Backlog（P1/P2，待排期）
 
 | ID | 任务 | 状态 |
@@ -689,4 +705,4 @@ Phase 4 — 变现
 
 ---
 
-*最后更新：2026-06-29 | P5-ENTERPRISE 企业 UX Full Pack；见 `docs/CURRENT_STATE.md`*
+*最后更新：2026-07-01 | MW 三月路线图全量落地；见 `docs/CURRENT_STATE.md`*

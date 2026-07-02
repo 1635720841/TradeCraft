@@ -6,6 +6,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { listKeywordClusters, type KeywordClusterItem } from "@/api/seo-factory/keyword-cluster";
 import { listKeywords, type KeywordEntryItem } from "@/api/seo-factory/keyword";
+import { runLoad } from "@/composables/run-load";
 
 export type KeywordQuickFilter = "all" | "queueable" | "unclustered" | "gscVerified";
 
@@ -14,6 +15,8 @@ export function useKeywordPoolData(projectId: string) {
   const router = useRouter();
 
   const loading = ref(false);
+  const error = ref<string | null>(null);
+  const clustersError = ref<string | null>(null);
   const keywords = ref<KeywordEntryItem[]>([]);
   const page = ref(1);
   const limit = ref(20);
@@ -37,23 +40,38 @@ export function useKeywordPoolData(projectId: string) {
   });
 
   async function fetchKeywords() {
-    loading.value = true;
-    try {
-      const res = await listKeywords(projectId, page.value, limit.value, {
-        status: quickFilter.value === "queueable" ? undefined : filterStatus.value || undefined,
-        intent: filterIntent.value || undefined,
-        clusterId: filterClusterId.value || undefined,
-        unclustered: quickFilter.value === "unclustered",
-        queueable: quickFilter.value === "queueable",
-        gscVerified: quickFilter.value === "gscVerified",
-        excludeArchived:
-          quickFilter.value === "all" && !filterStatus.value ? undefined : false
-      });
-      keywords.value = res.data ?? [];
-      total.value = res.meta?.pagination?.total ?? keywords.value.length;
-    } finally {
-      loading.value = false;
-    }
+    await runLoad(
+      async () => {
+        const res = await listKeywords(projectId, page.value, limit.value, {
+          status: quickFilter.value === "queueable" ? undefined : filterStatus.value || undefined,
+          intent: filterIntent.value || undefined,
+          clusterId: filterClusterId.value || undefined,
+          unclustered: quickFilter.value === "unclustered",
+          queueable: quickFilter.value === "queueable",
+          gscVerified: quickFilter.value === "gscVerified",
+          excludeArchived:
+            quickFilter.value === "all" && !filterStatus.value ? undefined : false
+        });
+        return res;
+      },
+      {
+        setLoading: (value) => {
+          loading.value = value;
+        },
+        setError: (value) => {
+          error.value = value;
+        },
+        onSuccess: (res) => {
+          keywords.value = res.data ?? [];
+          total.value = res.meta?.pagination?.total ?? keywords.value.length;
+        },
+        fallbackMessage: "关键词列表加载失败"
+      }
+    );
+  }
+
+  async function retryFetchKeywords() {
+    await fetchKeywords();
   }
 
   function goUnclusteredFilter() {
@@ -124,7 +142,24 @@ export function useKeywordPoolData(projectId: string) {
   }
 
   async function loadClusters() {
-    clusters.value = await listKeywordClusters(projectId);
+    await runLoad(
+      () => listKeywordClusters(projectId),
+      {
+        setLoading: () => {},
+        setError: (value) => {
+          clustersError.value = value;
+        },
+        onSuccess: (result) => {
+          clusters.value = result;
+        },
+        showLoading: false,
+        fallbackMessage: "专题列表加载失败"
+      }
+    );
+  }
+
+  async function retryLoadClusters() {
+    await loadClusters();
   }
 
   watch(
@@ -144,6 +179,8 @@ export function useKeywordPoolData(projectId: string) {
 
   return {
     loading,
+    error,
+    clustersError,
     keywords,
     page,
     limit,
@@ -155,7 +192,9 @@ export function useKeywordPoolData(projectId: string) {
     clusters,
     activeFilterTitle,
     fetchKeywords,
+    retryFetchKeywords,
     loadClusters,
+    retryLoadClusters,
     goUnclusteredFilter,
     onQuickFilterChange,
     onFilterChange,

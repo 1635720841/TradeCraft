@@ -62,6 +62,18 @@
         @batch-delete="handleBatchDelete"
       />
 
+      <AsyncErrorAlert
+        :message="error"
+        title="任务列表加载失败"
+        @retry="retryFetchJobs"
+      />
+      <AsyncErrorAlert
+        v-if="sitesError"
+        :message="sitesError"
+        title="站点筛选加载失败"
+        @retry="retryLoadSites"
+      />
+
       <JobListTable
         ref="tableComponentRef"
         :jobs="jobs"
@@ -104,8 +116,10 @@ import { WORDPRESS_CMS_UI_ENABLED } from "@/constants/feature-flags";
 import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
 import { useJobListQuery } from "@/composables/seo-factory/useJobListQuery";
 import { useJobListBatchActions } from "@/composables/seo-factory/useJobListBatchActions";
+import { useArticleQuotaPreview } from "@/composables/useArticleQuotaPreview";
 import JobListToolbar from "./components/job-list/JobListToolbar.vue";
 import JobListTable from "./components/job-list/JobListTable.vue";
+import AsyncErrorAlert from "@/components/feedback/AsyncErrorAlert.vue";
 
 defineOptions({ name: "JobListView" });
 
@@ -134,9 +148,12 @@ function onShowSeoScoreChange(value: boolean) {
 }
 
 const tableComponentRef = ref<{ clearSelection: () => void }>();
+const quotaPreview = useArticleQuotaPreview();
 
 const {
   loading,
+  error,
+  sitesError,
   polling,
   jobs,
   page,
@@ -152,6 +169,8 @@ const {
   siteOwnerMeAlert,
   siteOwnerMeFilter,
   fetchJobs,
+  retryFetchJobs,
+  retryLoadSites,
   startPolling,
   onSizeChange,
   onKeywordSearchInput,
@@ -205,7 +224,8 @@ const {
   jobs,
   clearSelection: () => tableComponentRef.value?.clearSelection(),
   fetchJobs,
-  startPolling
+  startPolling,
+  quotaPreview
 });
 
 function goCreate() {

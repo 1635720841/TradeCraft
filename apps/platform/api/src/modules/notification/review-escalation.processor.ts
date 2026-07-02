@@ -12,6 +12,7 @@ import { EmailNotificationService } from './email-notification.service';
 import { InAppNotificationService } from './in-app-notification.service';
 import { NotificationRecipientService } from './notification-recipient.service';
 import { appendNotificationLink } from './notification-link.util';
+import { buildProjectResourcePath } from '../project/project-navigation.util';
 
 const ESCALATION_TTL_SEC = 86_400;
 
@@ -42,6 +43,7 @@ export class ReviewEscalationProcessor extends WorkerHost {
         organizationId: true,
         projectId: true,
         targetKeyword: true,
+        project: { select: { projectType: true } },
       },
       take: 200,
     });
@@ -58,7 +60,13 @@ export class ReviewEscalationProcessor extends WorkerHost {
       );
       if (userIds.length === 0) continue;
 
-      const linkPath = `/projects/${jobRow.projectId}/seo-factory/jobs/${jobRow.id}`;
+      const linkPath =
+        buildProjectResourcePath(
+          jobRow.projectId,
+          jobRow.project.projectType,
+          'jobs',
+          jobRow.id,
+        ) ?? `/projects/${jobRow.projectId}/seo-factory/jobs/${jobRow.id}`;
       await this.inApp.createForUsers({
         organizationId: jobRow.organizationId,
         userIds,

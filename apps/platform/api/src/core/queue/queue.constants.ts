@@ -23,3 +23,6 @@ export const WEBHOOK_DELIVER_QUEUE = 'platform-webhook-deliver';
 
 /** 平台审核超时升级通知 */
 export const REVIEW_ESCALATION_QUEUE = 'platform-review-escalation';
+
+/** demo-factory 空壳队列 */
+export const DEMO_FACTORY_QUEUE = 'demo-factory-tick';

@@ -22,6 +22,7 @@ export const SeoFactoryPlugin: IProjectTypePlugin = {
       { id: 'project:update', name: '编辑项目', module: 'project' },
       { id: 'seo:job:create', name: '创建任务', module: 'seo' },
       { id: 'seo:job:read', name: '查看任务', module: 'seo' },
+      { id: 'seo:job:review', name: '审核任务', module: 'seo' },
       { id: 'seo:keyword:manage', name: '管理词库', module: 'seo' },
       { id: 'seo:site:manage', name: '管理站点', module: 'seo' },
     ];
@@ -32,6 +33,18 @@ export const SeoFactoryPlugin: IProjectTypePlugin = {
   },
 
   billingMeters() {
-    return [{ id: 'article.completed', label: '完成文章' }];
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getBillingMeterPort } = require('../../core/billing/billing-meter.registry') as {
+      getBillingMeterPort: (type: string) => { meters: () => Array<{ id: string; label: string }> } | undefined;
+    };
+    return getBillingMeterPort('seo-factory')?.meters() ?? [{ id: 'article.completed', label: '完成文章' }];
+  },
+
+  bridgeModules() {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { ConsoleGscBridgeModule } = require('./modules/console-bridge/console-gsc-bridge.module') as {
+      ConsoleGscBridgeModule: unknown;
+    };
+    return [ConsoleGscBridgeModule];
   },
 };

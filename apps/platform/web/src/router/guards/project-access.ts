@@ -1,7 +1,5 @@
 /**
  * 项目工作台路由守卫：未加入或非开放期用户不可进入；子路由可要求项目级 seo:* 权限。
- *
- * super_admin 可绕过 canEnter（平台排障），但仍受 meta.seoPermission 约束（与 05-access-permissions 一致）。
  */
 
 import type { RouteLocationNormalized } from "vue-router";
@@ -15,7 +13,13 @@ export { hasProjectSeoPermission } from "@/utils/project-seo-permission";
 
 const permissionCache = new Map<
   string,
-  { canEnter: boolean; permissions: string[]; at: number }
+  {
+    canEnter: boolean;
+    workbenchReady: boolean;
+    enterBlockedReason: string | null;
+    permissions: string[];
+    at: number;
+  }
 >();
 const CACHE_MS = 60_000;
 
@@ -36,6 +40,8 @@ async function loadProjectAccess(projectId: string) {
   const project = await getOrgProject(projectId);
   const entry = {
     canEnter: project.canEnter === true,
+    workbenchReady: project.workbenchReady !== false,
+    enterBlockedReason: project.enterBlockedReason ?? null,
     permissions: project.effectivePermissions ?? [],
     at: Date.now()
   };
@@ -65,13 +71,18 @@ export async function ensureProjectEnterable(
 
   try {
     const access = await loadProjectAccess(id);
-    return access.canEnter;
+    return access.canEnter && access.workbenchReady;
   } catch {
     return false;
   }
 }
 
-export type ProjectRouteAccessResult = "ok" | "project_access" | "seo_permission" | "denied";
+export type ProjectRouteAccessResult =
+  | "ok"
+  | "project_access"
+  | "workbench_not_ready"
+  | "seo_permission"
+  | "denied";
 
 /** 校验 canEnter + 可选 meta.seoPermission（项目成员权限，非企业级） */
 export async function ensureProjectRouteAccess(
@@ -94,6 +105,9 @@ export async function ensureProjectRouteAccessResult(
 
   try {
     const access = await loadProjectAccess(id);
+    if (!access.workbenchReady || access.enterBlockedReason === "workbench_not_ready") {
+      return "workbench_not_ready";
+    }
     if (!isSuperAdmin && !access.canEnter) {
       return "project_access";
     }

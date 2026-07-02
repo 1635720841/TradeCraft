@@ -1,15 +1,14 @@
 /**
- * 企业级内容生产看板：聚合可进入的 seo-factory 项目统计。
+ * 企业级内容生产看板：按 project-type Port 聚合可进入项目统计。
  */
 
 import { Injectable } from '@nestjs/common';
-import { JobStatus } from '@prisma/client';
 import type { RequestContext } from '@wm/shared-core';
 import { PrismaService } from '../../core/database/prisma.service';
+import { getProductionStatsPort, listProductionStatsPorts } from '../../core/organization/production-stats.registry';
 import { BillingService } from '../billing/billing.service';
 import { ProjectAccessService } from '../project/project-access.service';
-import { canReviewInSeoProject } from '../project/project-notification.util';
-import { isPendingHumanReview } from '@wm/shared-core';
+import { buildProjectEnterPath } from '../project/project-navigation.util';
 
 export interface OrgProductionProjectSummary {
   id: string;
@@ -36,8 +35,14 @@ export class OrgProductionService {
     const organizationId = ctx.organizationId;
     const quota = await this.billingService.getQuotaSummary(organizationId);
 
+    const supportedTypes = new Set(listProductionStatsPorts().map((port) => port.projectType));
+
     const rows = await this.prisma.project.findMany({
-      where: { organizationId, projectType: 'seo-factory', status: 'ACTIVE' },
+      where: {
+        organizationId,
+        status: 'ACTIVE',
+        projectType: { in: [...supportedTypes] },
+      },
       select: {
         id: true,
         name: true,
@@ -66,11 +71,17 @@ export class OrgProductionService {
     let myReviewPendingCount = 0;
 
     for (const project of enterable) {
-      const stats = await this.getProjectProductionStats(
+      const port = getProductionStatsPort(project.projectType);
+      if (!port?.supportsOrgDashboard()) continue;
+
+      const stats = await port.getProjectProductionStats(
         organizationId,
         project.id,
         ctx.userId,
       );
+      const enterPath = buildProjectEnterPath(project.id, project.projectType);
+      if (!enterPath) continue;
+
       projectSummaries.push({
         id: project.id,
         name: project.name,
@@ -81,7 +92,7 @@ export class OrgProductionService {
         pendingReviewCount: stats.pendingReviewCount,
         pendingPublishCount: stats.pendingPublishCount,
         staleDraftCount: stats.staleDraftCount,
-        enterPath: `/projects/${project.id}/seo-factory/overview`,
+        enterPath,
       });
       totals.completedJobs += stats.completedJobs;
       totals.activeJobs += stats.activeJobs;
@@ -104,107 +115,6 @@ export class OrgProductionService {
       totals,
       myTodos: { assignedCount: myAssignedCount, reviewPendingCount: myReviewPendingCount },
       projects: projectSummaries,
-    };
-  }
-
-  private async getProjectProductionStats(
-    organizationId: string,
-    projectId: string,
-    actorUserId: string,
-  ) {
-    const jobWhere = { organizationId, projectId };
-    const activeStatusFilter = { notIn: [JobStatus.COMPLETED, JobStatus.FAILED] };
-
-    const [
-      completedJobs,
-      activeJobs,
-      failedJobs,
-      pendingBriefCount,
-      ymylCandidates,
-      publishCandidates,
-      staleDraftCandidates,
-      myAssignedCount,
-      member,
-    ] = await Promise.all([
-      this.prisma.articleJob.count({ where: { ...jobWhere, status: 'COMPLETED' } }),
-      this.prisma.articleJob.count({ where: { ...jobWhere, status: activeStatusFilter } }),
-      this.prisma.articleJob.count({ where: { ...jobWhere, status: 'FAILED' } }),
-      this.prisma.articleJob.count({
-        where: {
-          ...jobWhere,
-          status: 'DRAFTING',
-          briefData: { path: ['approvalStatus'], equals: 'pending' },
-        },
-      }),
-      this.prisma.articleJob.findMany({
-        where: {
-          ...jobWhere,
-          status: 'COMPLETED',
-          seoCheckData: {
-            path: ['ymylReview', 'requires_human_review'],
-            equals: true,
-          },
-        },
-        select: { seoCheckData: true },
-      }),
-      this.prisma.articleJob.findMany({
-        where: { ...jobWhere, status: 'COMPLETED', outputUrl: { not: null } },
-        select: { seoCheckData: true },
-      }),
-      this.prisma.articleJob.findMany({
-        where: { ...jobWhere, status: { notIn: ['FAILED', 'QUEUED'] } },
-        select: { draftData: true },
-        take: 200,
-      }),
-      this.prisma.articleJobAssignee.count({
-        where: {
-          userId: actorUserId,
-          job: { ...jobWhere, status: activeStatusFilter },
-        },
-      }),
-      this.prisma.projectMember.findUnique({
-        where: { projectId_userId: { projectId, userId: actorUserId } },
-        select: { id: true, role: true },
-      }),
-    ]);
-
-    const pendingReviewCount = ymylCandidates.filter((row) =>
-      isPendingHumanReview(row.seoCheckData),
-    ).length;
-
-    const pendingPublishCount = publishCandidates.filter((row) => {
-      const cmsPublish = (row.seoCheckData as { cmsPublish?: { postUrl?: string | null } } | null)
-        ?.cmsPublish;
-      return !cmsPublish?.postUrl;
-    }).length;
-
-    const staleDraftCount = staleDraftCandidates.filter((row) => {
-      const draft = row.draftData as { stale?: boolean } | null;
-      return draft?.stale === true;
-    }).length;
-
-    let myReviewPendingCount = 0;
-    if (member) {
-      const perms = await this.projectAccess.resolveMemberPermissions(
-        member.id,
-        member.role,
-        'seo-factory',
-      );
-      if (canReviewInSeoProject(perms)) {
-        myReviewPendingCount = pendingBriefCount + pendingReviewCount;
-      }
-    }
-
-    return {
-      completedJobs,
-      activeJobs,
-      failedJobs,
-      pendingBriefCount,
-      pendingReviewCount,
-      pendingPublishCount,
-      staleDraftCount,
-      myAssignedCount,
-      myReviewPendingCount,
     };
   }
 }

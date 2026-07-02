@@ -37,7 +37,13 @@
         </template>
       </el-alert>
 
-      <el-table v-loading="sitesLoading" :data="displayedSites" stripe :row-class-name="siteRowClassName">
+      <AsyncErrorAlert
+        :message="loadError"
+        title="站点列表加载失败"
+        @retry="loadSites"
+      />
+
+      <el-table v-loading="sitesLoading && !loadError" :data="displayedSites" stripe :row-class-name="siteRowClassName">
         <el-table-column prop="domain" label="域名" min-width="180" />
         <el-table-column prop="targetMarket" label="目标市场" min-width="140">
           <template #default="{ row }">
@@ -117,7 +123,7 @@
         </el-table-column>
       </el-table>
 
-      <el-empty v-if="!sitesLoading && displayedSites.length === 0" :description="sitesEmptyHint" />
+      <el-empty v-if="!sitesLoading && !loadError && displayedSites.length === 0" :description="sitesEmptyHint" />
     </el-card>
 
     <SiteConversionTrackingExportDialog
@@ -216,6 +222,8 @@ import {
 } from "@/utils/seo-factory/site-gsc-display";
 import { useProjectSeoAccess } from "@/composables/seo-factory/useProjectSeoAccess";
 import SiteConversionTrackingExportDialog from "./components/SiteConversionTrackingExportDialog.vue";
+import AsyncErrorAlert from "@/components/feedback/AsyncErrorAlert.vue";
+import { runLoad } from "@/composables/run-load";
 
 defineOptions({ name: "SiteManageView" });
 
@@ -226,6 +234,7 @@ const { can } = useProjectSeoAccess();
 const canManageSite = computed(() => can("seo:site:manage"));
 
 const sitesLoading = ref(false);
+const loadError = ref<string | null>(null);
 const siteSaving = ref(false);
 const attributionExportDialogVisible = ref(false);
 const attributionExportSite = ref<SiteItem | null>(null);
@@ -393,15 +402,21 @@ async function submitSiteForm() {
 }
 
 async function loadSites() {
-  sitesLoading.value = true;
-  try {
-    sites.value = await listSites(projectId, mySitesOnly.value ? { siteOwner: "me" } : undefined);
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : "加载站点失败";
-    message(msg, { type: "error" });
-  } finally {
-    sitesLoading.value = false;
-  }
+  await runLoad(
+    () => listSites(projectId, mySitesOnly.value ? { siteOwner: "me" } : undefined),
+    {
+      setLoading: (value) => {
+        sitesLoading.value = value;
+      },
+      setError: (value) => {
+        loadError.value = value;
+      },
+      onSuccess: (result) => {
+        sites.value = result;
+      },
+      fallbackMessage: "加载站点失败"
+    }
+  );
 }
 
 async function loadProjectMembers() {

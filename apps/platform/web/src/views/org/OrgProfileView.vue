@@ -9,17 +9,11 @@
       </el-button>
     </template>
 
-    <el-alert
-      v-if="profileError"
-      type="error"
-      :title="profileError"
-      show-icon
-      class="mb-4"
-    >
-      <template #default>
-        <el-button type="primary" link @click="retryProfile">重试</el-button>
-      </template>
-    </el-alert>
+    <AsyncErrorAlert
+      :message="profileError"
+      title="企业资料加载失败"
+      @retry="retryProfile"
+    />
 
     <template v-if="profileData">
         <div class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -163,6 +157,7 @@ import { hasPerms } from "@/utils/auth";
 import { formatPeriodWindow } from "@/utils/period";
 import { message } from "@/utils/message";
 import QuotaSummaryCard from "@/components/org/QuotaSummaryCard.vue";
+import AsyncErrorAlert from "@/components/feedback/AsyncErrorAlert.vue";
 
 defineOptions({ name: "OrgProfileView" });
 

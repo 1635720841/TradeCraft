@@ -166,7 +166,12 @@ export default [
       if (result === "ok") return;
       const projectId = to.params.projectId;
       const id = Array.isArray(projectId) ? projectId[0] : projectId;
-      const reason = result === "seo_permission" ? "seo_permission" : "project_access";
+      const reason =
+        result === "seo_permission"
+          ? "seo_permission"
+          : result === "workbench_not_ready"
+            ? "workbench_not_ready"
+            : "project_access";
       return { path: "/error/403", query: id ? { projectId: id, reason } : { reason } };
     },
     children: [
@@ -328,6 +333,46 @@ export default [
           {
             path: "sites/config",
             redirect: "sites"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    path: "/projects/:projectId/demo-factory",
+    name: "DemoFactory",
+    component: Layout,
+    meta: {
+      title: "演示插件",
+      showLink: false,
+      fillViewport: true,
+      hideFooter: true
+    },
+    beforeEnter: async (to) => {
+      const result = await ensureProjectRouteAccessResult(to);
+      if (result === "ok") return;
+      const projectId = to.params.projectId;
+      const id = Array.isArray(projectId) ? projectId[0] : projectId;
+      const reason =
+        result === "workbench_not_ready"
+          ? "workbench_not_ready"
+          : "project_access";
+      return { path: "/error/403", query: id ? { projectId: id, reason } : { reason } };
+    },
+    children: [
+      {
+        path: "",
+        component: () => import("@/views/projects/demo-factory/DemoFactoryLayout.vue"),
+        redirect: "/projects/:projectId/demo-factory/overview",
+        children: [
+          {
+            path: "overview",
+            name: "DemoFactoryOverview",
+            component: () => import("@/views/projects/demo-factory/DemoOverviewView.vue"),
+            meta: {
+              title: "概览",
+              showLink: false
+            }
           }
         ]
       }

@@ -41,4 +41,7 @@ export interface IProjectTypePlugin {
 
   /** 计费计量项（可选） */
   billingMeters?(): BillingMeterDescriptor[];
+
+  /** 平台桥接子模块（如 Console GSC Port），由 AppModule 统一装配 */
+  bridgeModules?(): unknown[];
 }

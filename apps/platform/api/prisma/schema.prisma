@@ -407,6 +407,7 @@ model Project {
   keywordClusters KeywordCluster[]
   members         ProjectMember[]
   mediaAssets     MediaAsset[]
+  demoItems       DemoItem[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   deletedAt       DateTime?
@@ -744,4 +745,16 @@ model SiteGscConnection {
   updatedAt         DateTime  @updatedAt
 
   @@index([organizationId])
+}
+
+/// demo-factory 插件演示数据（空壳验证用）
+model DemoItem {
+  id             String   @id @default(uuid())
+  organizationId String
+  projectId      String
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title          String
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, projectId])
 }

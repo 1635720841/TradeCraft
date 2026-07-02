@@ -25,6 +25,7 @@ import { AutopilotProcessor } from './processors/autopilot.processor';
 import { PlaywrightQueueModule } from './playwright-queue.module';
 import { SeoFactoryProvidersModule } from './providers/seo-factory-providers.module';
 import { SeoFactoryQueueModule } from './seo-factory-queue.module';
+import { SeoFactoryProductionBridgeModule } from './modules/production-bridge/seo-factory-production-bridge.module';
 import { SeoFactoryQueueJobEnrichmentService } from './modules/console-bridge/seo-factory-queue-job-enrichment.service';
 
 @Module({
@@ -42,6 +43,7 @@ import { SeoFactoryQueueJobEnrichmentService } from './modules/console-bridge/se
     GscModule,
     AutopilotModule,
     ScoreCalibrationModule,
+    SeoFactoryProductionBridgeModule,
   ],
   providers: [ArticleJobProcessor, GscSyncProcessor, AutopilotProcessor, SeoFactoryQueueJobEnrichmentService],
 })
